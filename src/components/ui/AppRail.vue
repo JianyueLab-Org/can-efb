@@ -22,6 +22,7 @@
  * 式通道。详见 globals.css 的 "can-efb only" 一节和 RailScript.astro。
  */
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { api } from "@/lib/canApi";
 import { createTranslator } from "@/lib/i18n";
 import { useOverlay } from "@/lib/useOverlay";
 import Icon from "@/components/ui/Icon.vue";
@@ -37,15 +38,14 @@ const props = withDefaults(
     pathname: string;
     messages: Record<string, unknown>;
     locale?: string;
-    /** 会话还没接，现在恒为 null —— 见 src/lib/session.ts。 */
-    user?: EfbUser | null;
     /**
-     * 登录 / 退出的去向。**现在两个都不传**：会话由 can-api 在父域上签发，地
-     * 址要等那一头接好才知道，写一颗指向 404 的按钮比不写更糟。传进来之后账户
-     * 区自己会长出对应的入口，不需要改这个组件。
+     * 当前成员。中间件保证了页面路由上它一定有值（整站要登录），所以下面那个
+     * 「未登录」分支实际上走不到 —— 留着是因为组件不该假设调用方一定先做过重
+     * 定向，而且 can-api 不可达时它是唯一还能渲染出来的东西。
      */
+    user?: EfbUser | null;
+    /** 登录页地址；由 `@/lib/config` 的 `signInUrl()` 给出（指向 can-web）。 */
     signInHref?: string;
-    signOutHref?: string;
   }>(),
   { locale: "zh-cn", user: null },
 );
@@ -154,6 +154,22 @@ const initials = computed(() => {
   if (!parts.length) return "?";
   return (parts[0][0] + (parts[1]?.[0] ?? "")).toUpperCase();
 });
+
+/**
+ * 退出登录。
+ *
+ * 清 cookie 是 can-api 的活 —— 属性（域、SameSite、Secure）是它设的，这边补一
+ * 个对不上的 Set-Cookie 只会让浏览器同时留着两个。跳转是我们的，而且**无论成
+ * 败都跳**：按了退出的人不该因为请求失败就还停在一个登录态的页面上。
+ */
+const signingOut = ref(false);
+function handleSignOut() {
+  if (signingOut.value) return;
+  signingOut.value = true;
+  api("/api/v1/auth/signout", { method: "POST" }).finally(() => {
+    window.location.assign("/");
+  });
+}
 
 /* -------------------------------------------------------------------------- */
 
@@ -333,15 +349,16 @@ onBeforeUnmount(() => {
                   <Icon name="cog6Tooth" class="size-4" />
                   {{ t("nav.settings") }}
                 </a>
-                <a
-                  v-if="signOutHref"
-                  :href="signOutHref"
+                <button
+                  type="button"
                   role="menuitem"
-                  class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-muted transition-colors hover:bg-surface-sunken hover:text-danger"
+                  :disabled="signingOut"
+                  class="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-muted transition-colors hover:bg-surface-sunken hover:text-danger disabled:opacity-50"
+                  @click="handleSignOut"
                 >
                   <Icon name="arrowRightOnRectangle" class="size-4" />
                   {{ t("account.signOut") }}
-                </a>
+                </button>
               </div>
             </div>
 

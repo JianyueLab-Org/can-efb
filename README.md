@@ -6,8 +6,14 @@ Cerulean Aviation Network 的**电子飞行包**（Electronic Flight Bag）—�
 
 Astro SSR + Vue 岛屿 + Tailwind v4，和 can-web / can-dev / can-radar 同一套形状。
 
-> **现在只有框架。** 外壳、导航、主题和四种语言已经落地；十个路由全部指向同一
-> 个「这一页还没有内容」的占位组件，数据要等接上 can-api 之后才有。
+已经接上 can-api：**概览、飞行计划（含 SimBrief 导入）、气象、飞行日志、航路展
+开、设置**都是真数据。**航图、机场、性能、检查单**还是占位 —— 它们没有数据源，
+页面上会写清楚缺的是什么。
+
+> **本地跑起来会看到 302。** 整站要登录，而登录态是 can-api 签在
+> `.airwaysn.org` 上的 cookie，`localhost` 上拿不到，所以每个页面都会跳到主站
+> 登录页。那是正确行为。不登录也能验证的两处：`/healthz` 和
+> `/api/v1/metar?icao=ZBAA`。详见 [`AGENTS.md`](./AGENTS.md)。
 
 ## 快速开始
 
@@ -40,19 +46,25 @@ bun run dev        # http://localhost:4324
 ## 目录
 
 ```
+deploy/k8s.yaml      jyl-tyo 上的部署（无 Secret）
 language/            四本词典 zh-cn / zh-tw / en-us / ja-jp
 src/
 ├── components/
 │   ├── ui/          AppRail（外壳）、SidebarNav、Icon、ThemeLangControls
+│   ├── Dashboard    概览 · FlightPlan 飞行计划 · Weather 气象
+│   ├── Logbook      飞行日志 · RoutePlanner 航路 · Settings 设置
 │   ├── PageHeader   页面标题区（不是站头）
-│   ├── Placeholder  「这一页还没有内容」
-│   ├── ThemeScript  无闪烁主题初始化
-│   └── RailScript   无闪烁侧栏折叠初始化
+│   ├── Placeholder  没有数据源的四个页面，并说明缺什么
+│   └── *Script      无闪烁的主题 / 侧栏初始化
 ├── layouts/
 │   ├── BaseLayout   <head> + 两个首屏脚本，不带外壳
 │   └── AppLayout    轨 + 正文，页面都用这个
-├── lib/             i18n、nav（导航的唯一定义）、session（还是空的接缝）
-├── pages/           十个路由
+├── lib/             canApi（浏览器）、config、i18n、nav、session
+├── server/canApi    SSR 调 can-api，转发 Cookie
+├── middleware.ts    整站登录门
+├── pages/
+│   ├── api/v1/      走白名单的 can-api 同源反代
+│   └── *.astro      十个页面 + 404 + healthz
 └── styles/          globals.css（前 957 行同步自 can-radar）
 ```
 

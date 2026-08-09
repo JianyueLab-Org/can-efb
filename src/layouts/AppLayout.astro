@@ -17,7 +17,8 @@ import BaseLayout from "@/layouts/BaseLayout.astro";
 import AppRail from "@/components/ui/AppRail.vue";
 import { getLocale, getMessages, useTranslations } from "@/lib/i18n";
 import { buildCrossLinks, buildNav } from "@/lib/nav";
-import { getUser } from "@/lib/session";
+import { toEfbUser } from "@/lib/session";
+import { signInUrl } from "@/lib/config";
 
 interface Props {
   title?: string;
@@ -32,7 +33,10 @@ const { title, description, width = "default" } = Astro.props;
 
 const locale = getLocale(Astro.cookies);
 const t = useTranslations(locale, "efb");
-const user = getUser(Astro.cookies);
+
+// 中间件已经问过 can-api 了，这里只是取出来 —— 不要在页面里再解一次会话，那会
+// 变成每渲染一个页面就多打一次 /auth/session。
+const user = toEfbUser(Astro.locals.user);
 
 const sections = buildNav(t);
 const crossLinks = buildCrossLinks(t);
@@ -47,6 +51,7 @@ const mainWidth = width === "full" ? "max-w-none" : "max-w-6xl";
     messages={getMessages(locale, "efb")}
     locale={locale}
     user={user}
+    signInHref={signInUrl()}
     client:load
   />
 

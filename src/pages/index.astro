@@ -1,15 +1,25 @@
 ---
 import AppLayout from "@/layouts/AppLayout.astro";
 import PageHeader from "@/components/PageHeader.astro";
-import Placeholder from "@/components/Placeholder.astro";
-import { getLocale, useTranslations } from "@/lib/i18n";
+import Dashboard from "@/components/Dashboard.vue";
+import { getLocale, getMessages, useTranslations } from "@/lib/i18n";
+import { toEfbUser } from "@/lib/session";
 
-const t = useTranslations(getLocale(Astro.cookies), "efb");
+const locale = getLocale(Astro.cookies);
+const t = useTranslations(locale, "efb");
 const title = t("pages.dashboard.title");
 const description = t("pages.dashboard.description");
+
+// 中间件保证了这里一定有人（整站要登录）；`?? ""` 只是让类型闭合，不是一个真
+// 的会出现的分支。
+const user = toEfbUser(Astro.locals.user);
 ---
 
 <AppLayout title={title} description={description}>
   <PageHeader title={title} description={description} />
-  <Placeholder />
+  <Dashboard
+    messages={getMessages(locale, "efb")}
+    userName={user?.name ?? ""}
+    client:load
+  />
 </AppLayout>

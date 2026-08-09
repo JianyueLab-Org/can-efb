@@ -1,15 +1,28 @@
 ---
 import AppLayout from "@/layouts/AppLayout.astro";
 import PageHeader from "@/components/PageHeader.astro";
-import Placeholder from "@/components/Placeholder.astro";
-import { getLocale, useTranslations } from "@/lib/i18n";
+import Settings from "@/components/Settings.vue";
+import { getLocale, getMessages, useTranslations } from "@/lib/i18n";
 
-const t = useTranslations(getLocale(Astro.cookies), "efb");
+const locale = getLocale(Astro.cookies);
+const t = useTranslations(locale, "efb");
 const title = t("pages.settings.title");
 const description = t("pages.settings.description");
+
+// 账户那一块是**只读**的，所以直接从会话渲染，不再向 can-api 要一次
+// /pilot/data —— 那个接口会带回 FSD 网络密码，一个只想显示名字和评级的页面不
+// 该把它取到进程里来。
+const session = Astro.locals.user;
 ---
 
 <AppLayout title={title} description={description}>
   <PageHeader title={title} description={description} />
-  <Placeholder />
+  <Settings
+    messages={getMessages(locale, "efb")}
+    userName={session?.name ?? session?.username ?? ""}
+    userId={session?.username ?? ""}
+    email={session?.email ?? ""}
+    rating={session?.rating ?? 0}
+    client:load
+  />
 </AppLayout>
