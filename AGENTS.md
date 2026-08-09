@@ -189,7 +189,15 @@ bun install
 bun run dev          # :4324；后台跑用 bunx astro dev --background
 bun run lint         # format:check + astro check + vue-tsc，CI 的门就是这个
 bun run build
+PUBLIC_ORIGIN=http://localhost:4324 bun run preview   # 预览构建产物，前缀别省
 ```
+
+**预览构建产物时 `PUBLIC_ORIGIN` 不能省。** 写操作要比对 Origin 头，比对的
+对象是 `lib/config.ts` 里的 `origin()`，它兜底成 `https://efb.airwaysn.org` ——
+在 localhost 上预览而不覆盖它，浏览器发出的每一个 POST / DELETE 都会被本站的反
+代挡成 **403**：交计划、撤计划、退出登录、绑定 SimBrief 全都不动，而且失败得毫
+无线索（curl 不带 Origin 头，所以命令行试是通的，只有浏览器会中招）。`bun run
+dev` 用的是同一个 `origin()`，同样的坑，同样的加法。
 
 **本地开发有一件事要先知道：整站要登录，而登录态来自 can-api 签在
 `.airwaysn.org` 上的 cookie。** 所以在 `localhost` 上打开任何页面都会 302 到
@@ -207,4 +215,5 @@ bun run build
 的外壳整个是 Vue。所以 `typecheck` 是两步：`astro check` 加
 `scripts/typecheck-vue.mjs`（vue-tsc）。别只跑前者。
 
-后台开发服务器用 `astro dev stop` / `status` / `logs` 管理。
+后台开发服务器用 `astro dev stop` / `status` / `logs` 管理；`astro preview` 也
+会自己转到后台，对应 `astro preview stop` / `status` / `logs`。

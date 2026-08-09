@@ -26,9 +26,18 @@ bun run dev        # http://localhost:4324
 | ----------------- | ------------------------------ |
 | `bun run dev`     | 开发服务器（:4324）            |
 | `bun run build`   | 构建到 `./dist/`               |
-| `bun run preview` | 本地预览构建产物               |
+| `bun run preview` | 本地预览构建产物（:4324）      |
 | `bun run lint`    | 格式检查 + 类型检查（CI 的门） |
 | `bun run format`  | prettier 格式化                |
+
+本地跑 `dev` / `preview` 时把 origin 一起给上，否则浏览器发出的写请求一律 403：
+
+```bash
+PUBLIC_ORIGIN=http://localhost:4324 bun run preview
+```
+
+原因见 [`AGENTS.md`](./AGENTS.md) 的「命令」一节 —— 写操作要比对 Origin 头，而
+它兜底成生产域名。
 
 类型检查是两步：`astro check` 看 `.astro`/`.ts`，`scripts/typecheck-vue.mjs`
 （vue-tsc）看 Vue 岛屿。前者对 SFC 里的类型错误一律报 0 错误，所以两步都要跑。
