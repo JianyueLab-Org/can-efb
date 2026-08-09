@@ -5,8 +5,8 @@ import Placeholder from "@/components/Placeholder.astro";
 import { getLocale, useTranslations } from "@/lib/i18n";
 
 const t = useTranslations(getLocale(Astro.cookies), "efb");
-const title = t("pages.dashboard.title");
-const description = t("pages.dashboard.description");
+const title = t("pages.performance.title");
+const description = t("pages.performance.description");
 ---
 
 <AppLayout title={title} description={description}>

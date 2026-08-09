@@ -1,0 +1,14 @@
+{
+  // `astro check` reports 0 errors for a Vue SFC no matter what is in it — it
+  // only diagnoses .astro/.ts. The shell (rail, nav, quick nav, theme/lang) is
+  // entirely Vue, so without this the interactive half of the app has no type
+  // gate at all. vue-tsc covers it; .astro files are excluded here because
+  // vue-tsc cannot parse them, so the two runs are complementary and
+  // `bun run typecheck` invokes both.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [".astro/types.d.ts", "src/**/*.ts", "src/**/*.vue"],
+  "exclude": ["node_modules", "dist"]
+}

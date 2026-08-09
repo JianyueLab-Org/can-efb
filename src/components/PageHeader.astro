@@ -1,0 +1,34 @@
+---
+/**
+ * 页面的标题区。
+ *
+ * 没有站头的代价全落在这里：页面自己的名字、说明和动作按钮再没有别的地方可
+ * 放，所以每个页面都从它开始。写成组件而不是让每个页面自己拼一段 markup，是
+ * 因为 can-web 上正是那样开始漂移的 —— 一个页面 mb-6、另一个 mb-8，标题一个
+ * text-2xl 一个 text-xl。
+ *
+ * `actions` 具名插槽放页面级按钮（提交计划、新建检查单……）。
+ */
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description } = Astro.props;
+---
+
+<header
+  class="mb-6 flex flex-col gap-3 border-b border-subtle pb-5 sm:flex-row sm:items-start sm:justify-between"
+>
+  <div class="min-w-0">
+    <h1 class="text-2xl font-semibold tracking-tight text-ink">{title}</h1>
+    {
+      description && (
+        <p class="mt-1.5 max-w-2xl text-sm text-muted">{description}</p>
+      )
+    }
+  </div>
+  <div class="flex shrink-0 items-center gap-2">
+    <slot name="actions" />
+  </div>
+</header>

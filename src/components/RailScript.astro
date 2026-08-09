@@ -1,0 +1,31 @@
+---
+/**
+ * 侧栏折叠状态的无闪烁初始化，和 ThemeScript 同一个道理、同一种写法。
+ *
+ * 这两件事都是「用户上次选的样子」，都存在 localStorage 里，也都在首屏就看得
+ * 见。等 AppRail 水合再读，用户会先看到一次展开的轨、再看着它收起去 —— 和主
+ * 题闪烁一模一样的毛病，只不过这一次跳动的是布局：正文那一列会横向平移 12rem。
+ *
+ * 写的是 <html> 上的 data-rail，因为轨的宽度和正文的左内边距都从同一个 CSS 变
+ * 量取值（globals.css 的 "can-efb only" 一节）。AppRail 挂载时把它读回来当作
+ * 自己的初始 state，而不是第二次去读 localStorage：两处各判断一次，就会有两个
+ * 可能不一致的答案。
+ *
+ * `is:inline` 是必须的 —— 整件事的意义就在于它不被打包、不被 defer。
+ */
+---
+
+<script is:inline>
+  (function () {
+    try {
+      document.documentElement.dataset.rail =
+        localStorage.getItem("efb.rail") === "collapsed"
+          ? "collapsed"
+          : "expanded";
+    } catch (e) {
+      // 锁死的浏览器里 localStorage 会抛。默认展开是个完全合理的结果，而且这
+      // 么早也没有地方可以上报。
+      document.documentElement.dataset.rail = "expanded";
+    }
+  })();
+</script>

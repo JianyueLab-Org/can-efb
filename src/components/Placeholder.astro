@@ -1,0 +1,20 @@
+---
+/**
+ * 「这一页还没有内容」。
+ *
+ * 十个路由现在都指向它，而它**说自己是空的**，不画假的表格和假的数字 —— 一个
+ * 摆着占位数据的仪表盘会被当成坏掉的真页面，而不是还没写的页面。等某个页面真
+ * 的接上数据，把它从那个页面删掉即可，不需要改别的地方。
+ */
+import { getLocale, useTranslations } from "@/lib/i18n";
+
+const locale = getLocale(Astro.cookies);
+const t = useTranslations(locale, "efb");
+---
+
+<div
+  class="surface-grid flex flex-col items-center justify-center rounded-card border border-dashed border-subtle px-6 py-16 text-center"
+>
+  <p class="text-sm font-semibold text-ink">{t("placeholder.title")}</p>
+  <p class="mt-2 max-w-md text-sm text-muted">{t("placeholder.body")}</p>
+</div>

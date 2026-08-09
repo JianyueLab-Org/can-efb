@@ -1,0 +1,96 @@
+{
+  "efb": {
+    "siteName": "CAN 電子フライトバッグ",
+    "shortName": "EFB",
+    "tagline": "Cerulean Aviation Network のパイロット向け電子フライトバッグ",
+    "skipToContent": "本文へスキップ",
+    "rail": {
+      "label": "メインナビゲーション",
+      "open": "ナビゲーションを開く",
+      "close": "ナビゲーションを閉じる",
+      "collapse": "サイドバーを折りたたむ",
+      "expand": "サイドバーを展開する"
+    },
+    "search": {
+      "label": "クイックナビ",
+      "placeholder": "ページを検索…",
+      "noResults": "該当するページがありません"
+    },
+    "account": {
+      "menu": "アカウントメニュー",
+      "signIn": "ログイン",
+      "signedOut": "未ログイン",
+      "signedOutHint": "ログインすると自分のフライトプランとログブックが表示されます",
+      "signOut": "ログアウト"
+    },
+    "sections": {
+      "flight": "フライト",
+      "briefing": "ブリーフィング",
+      "ops": "運航"
+    },
+    "nav": {
+      "dashboard": "概要",
+      "flightplan": "フライトプラン",
+      "route": "ルート",
+      "performance": "性能・重量配分",
+      "charts": "チャート",
+      "airports": "空港",
+      "weather": "気象",
+      "checklists": "チェックリスト",
+      "logbook": "ログブック",
+      "settings": "設定"
+    },
+    "links": {
+      "label": "ほかのサイト",
+      "web": "メインサイト",
+      "radar": "ライブレーダー",
+      "dev": "デベロッパーセンター"
+    },
+    "pages": {
+      "dashboard": {
+        "title": "概要",
+        "description": "このフライトでまず見るもの — プラン、気象、ノータム。"
+      },
+      "flightplan": {
+        "title": "フライトプラン",
+        "description": "フライトプランの作成・提出・追跡。"
+      },
+      "route": {
+        "title": "ルート",
+        "description": "ルートの計画と検証。"
+      },
+      "performance": {
+        "title": "性能・重量配分",
+        "description": "離着陸性能、重量とバランス。"
+      },
+      "charts": {
+        "title": "チャート",
+        "description": "空港図、SID、STAR、進入方式。"
+      },
+      "airports": {
+        "title": "空港",
+        "description": "滑走路、周波数、誘導路、スポット。"
+      },
+      "weather": {
+        "title": "気象",
+        "description": "METAR、TAF、悪天情報。"
+      },
+      "checklists": {
+        "title": "チェックリスト",
+        "description": "機種別のノーマル／非ノーマルチェックリスト。"
+      },
+      "logbook": {
+        "title": "ログブック",
+        "description": "完了したフライトの記録と統計。"
+      },
+      "settings": {
+        "title": "設定",
+        "description": "単位、テーマ、言語、アカウント。"
+      }
+    },
+    "placeholder": {
+      "title": "このページはまだ空です",
+      "body": "先に組み上げたのは枠組みです — シェル、ナビゲーション、テーマ、多言語。中身は can-api に接続してから入ります。"
+    }
+  }
+}

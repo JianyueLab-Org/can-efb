@@ -1,0 +1,96 @@
+{
+  "efb": {
+    "siteName": "CAN Electronic Flight Bag",
+    "shortName": "EFB",
+    "tagline": "The pilot's electronic flight bag for Cerulean Aviation Network",
+    "skipToContent": "Skip to content",
+    "rail": {
+      "label": "Main navigation",
+      "open": "Open navigation",
+      "close": "Close navigation",
+      "collapse": "Collapse sidebar",
+      "expand": "Expand sidebar"
+    },
+    "search": {
+      "label": "Quick nav",
+      "placeholder": "Jump to…",
+      "noResults": "No matching page"
+    },
+    "account": {
+      "menu": "Account menu",
+      "signIn": "Sign in",
+      "signedOut": "Signed out",
+      "signedOutHint": "Sign in to see your own flight plans and logbook",
+      "signOut": "Sign out"
+    },
+    "sections": {
+      "flight": "Flight",
+      "briefing": "Briefing",
+      "ops": "Operations"
+    },
+    "nav": {
+      "dashboard": "Overview",
+      "flightplan": "Flight plan",
+      "route": "Route",
+      "performance": "Performance",
+      "charts": "Charts",
+      "airports": "Airports",
+      "weather": "Weather",
+      "checklists": "Checklists",
+      "logbook": "Logbook",
+      "settings": "Settings"
+    },
+    "links": {
+      "label": "Elsewhere",
+      "web": "Main site",
+      "radar": "Live radar",
+      "dev": "Developer centre"
+    },
+    "pages": {
+      "dashboard": {
+        "title": "Overview",
+        "description": "What this flight needs first: the plan, the weather, the notices."
+      },
+      "flightplan": {
+        "title": "Flight plan",
+        "description": "File, submit and track your flight plan."
+      },
+      "route": {
+        "title": "Route",
+        "description": "Route planning and validation."
+      },
+      "performance": {
+        "title": "Performance",
+        "description": "Takeoff and landing performance, weight and balance."
+      },
+      "charts": {
+        "title": "Charts",
+        "description": "Airport diagrams, SIDs, STARs and approaches."
+      },
+      "airports": {
+        "title": "Airports",
+        "description": "Runways, frequencies, taxiways and stands."
+      },
+      "weather": {
+        "title": "Weather",
+        "description": "METAR, TAF and significant weather."
+      },
+      "checklists": {
+        "title": "Checklists",
+        "description": "Normal and non-normal checklists, by aircraft type."
+      },
+      "logbook": {
+        "title": "Logbook",
+        "description": "Completed flights and their statistics."
+      },
+      "settings": {
+        "title": "Settings",
+        "description": "Units, theme, language and account."
+      }
+    },
+    "placeholder": {
+      "title": "Nothing here yet",
+      "body": "The frame lands first: shell, navigation, theme and languages are in place. The content waits on can-api being wired up."
+    }
+  }
+}

@@ -1,0 +1,96 @@
+{
+  "efb": {
+    "siteName": "CAN 電子飛行包",
+    "shortName": "EFB",
+    "tagline": "Cerulean Aviation Network 的飛行員電子飛行包",
+    "skipToContent": "跳到主要內容",
+    "rail": {
+      "label": "主導覽",
+      "open": "開啟導覽",
+      "close": "關閉導覽",
+      "collapse": "收合側欄",
+      "expand": "展開側欄"
+    },
+    "search": {
+      "label": "快速跳轉",
+      "placeholder": "跳轉到…",
+      "noResults": "沒有符合的頁面"
+    },
+    "account": {
+      "menu": "帳戶選單",
+      "signIn": "登入",
+      "signedOut": "未登入",
+      "signedOutHint": "登入後才能看到你自己的飛行計畫與日誌",
+      "signOut": "登出"
+    },
+    "sections": {
+      "flight": "飛行",
+      "briefing": "資料",
+      "ops": "運行"
+    },
+    "nav": {
+      "dashboard": "總覽",
+      "flightplan": "飛行計畫",
+      "route": "航路",
+      "performance": "性能與配載",
+      "charts": "航圖",
+      "airports": "機場",
+      "weather": "氣象",
+      "checklists": "檢查表",
+      "logbook": "飛行日誌",
+      "settings": "設定"
+    },
+    "links": {
+      "label": "其他站台",
+      "web": "主站",
+      "radar": "線上雷達",
+      "dev": "開發者中心"
+    },
+    "pages": {
+      "dashboard": {
+        "title": "總覽",
+        "description": "這趟飛行要先看的幾件事：計畫、天氣、通告。"
+      },
+      "flightplan": {
+        "title": "飛行計畫",
+        "description": "填寫、送出並追蹤你的飛行計畫。"
+      },
+      "route": {
+        "title": "航路",
+        "description": "航路規劃與檢核。"
+      },
+      "performance": {
+        "title": "性能與配載",
+        "description": "起飛與落地性能，重量與平衡。"
+      },
+      "charts": {
+        "title": "航圖",
+        "description": "機場圖、離到場與進場程序。"
+      },
+      "airports": {
+        "title": "機場",
+        "description": "跑道、頻率、滑行道與停機位。"
+      },
+      "weather": {
+        "title": "氣象",
+        "description": "METAR、TAF 與顯著天氣。"
+      },
+      "checklists": {
+        "title": "檢查表",
+        "description": "依機型整理的正常與非正常檢查表。"
+      },
+      "logbook": {
+        "title": "飛行日誌",
+        "description": "已完成航班的紀錄與統計。"
+      },
+      "settings": {
+        "title": "設定",
+        "description": "單位、主題、語言與帳戶。"
+      }
+    },
+    "placeholder": {
+      "title": "這一頁還沒有內容",
+      "body": "先落地的是框架：外殼、導覽、主題與多語系已經就位。頁面內容要等接上 can-api 之後再填。"
+    }
+  }
+}

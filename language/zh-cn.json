@@ -1,0 +1,96 @@
+{
+  "efb": {
+    "siteName": "CAN 电子飞行包",
+    "shortName": "EFB",
+    "tagline": "Cerulean Aviation Network 的飞行员电子飞行包",
+    "skipToContent": "跳到主要内容",
+    "rail": {
+      "label": "主导航",
+      "open": "打开导航",
+      "close": "关闭导航",
+      "collapse": "收起侧栏",
+      "expand": "展开侧栏"
+    },
+    "search": {
+      "label": "快速跳转",
+      "placeholder": "跳转到…",
+      "noResults": "没有匹配的页面"
+    },
+    "account": {
+      "menu": "账户菜单",
+      "signIn": "登录",
+      "signedOut": "未登录",
+      "signedOutHint": "登录后才能看到你自己的飞行计划与日志",
+      "signOut": "退出登录"
+    },
+    "sections": {
+      "flight": "飞行",
+      "briefing": "资料",
+      "ops": "运行"
+    },
+    "nav": {
+      "dashboard": "概览",
+      "flightplan": "飞行计划",
+      "route": "航路",
+      "performance": "性能与配载",
+      "charts": "航图",
+      "airports": "机场",
+      "weather": "气象",
+      "checklists": "检查单",
+      "logbook": "飞行日志",
+      "settings": "设置"
+    },
+    "links": {
+      "label": "其他站点",
+      "web": "主站",
+      "radar": "在线雷达",
+      "dev": "开发者中心"
+    },
+    "pages": {
+      "dashboard": {
+        "title": "概览",
+        "description": "这一次飞行需要先看的几件事：计划、天气、通告。"
+      },
+      "flightplan": {
+        "title": "飞行计划",
+        "description": "填写、提交并跟踪你的飞行计划。"
+      },
+      "route": {
+        "title": "航路",
+        "description": "航路规划与校验。"
+      },
+      "performance": {
+        "title": "性能与配载",
+        "description": "起飞与着陆性能，重量与平衡。"
+      },
+      "charts": {
+        "title": "航图",
+        "description": "机场图、进离场与进近程序。"
+      },
+      "airports": {
+        "title": "机场",
+        "description": "跑道、频率、滑行道与停机位。"
+      },
+      "weather": {
+        "title": "气象",
+        "description": "METAR、TAF 与显著天气。"
+      },
+      "checklists": {
+        "title": "检查单",
+        "description": "按机型组织的正常与非正常检查单。"
+      },
+      "logbook": {
+        "title": "飞行日志",
+        "description": "已完成航班的记录与统计。"
+      },
+      "settings": {
+        "title": "设置",
+        "description": "单位、主题、语言与账户。"
+      }
+    },
+    "placeholder": {
+      "title": "这一页还没有内容",
+      "body": "先落地的是框架：外壳、导航、主题与多语言已经就位。页面内容要等接上 can-api 之后再填。"
+    }
+  }
+}
