@@ -3,22 +3,40 @@
  * 航路展开。把飞行计划里那一串航路字符串解析成航路点序列。
  *
  * can-api 的 `/api/v1/route` 返回的是坐标点（`ident`/`lat`/`lon`/`kind`/`via`），
- * 它本来是给雷达画线用的。这里没有地图，所以换一种用法：**把它铺成航段表**，
- * 每一段算出大圆距离，再累计出总里程 —— 那是填计划时真正想知道的事（航路串到
- * 底通不通、总共多远、燃油够不够）。
+ * 它本来是给雷达画线用的。这里两种用法都要：**上面一张图，下面一张航段表**。
+ * 图回答「这条航路长什么样、绕不绕」，表回答「每段多远、一共多远」—— 那是填计
+ * 划时真正想知道的两件事，缺一个都要自己在脑子里补。
  *
  * 距离在前端算而不是找后端要：那边根本没有这个字段，而大圆距离是一个封闭的公
  * 式，不依赖任何数据。**它不是航程计算** —— 没有风、没有 SID/STAR 的实际展开
  * 长度，所以标签写的是「大圆」，不要在别处把它当计划燃油的依据。
  *
+ * 地图是**异步组件**，而且只在解出航路之后才渲染：Leaflet 有一百多 KB，没解航
+ * 路的人不该为它付流量。理由和实现都在 `RouteMap.vue` 顶上。
+ *
  * `503 navDataUnavailable` 是常态而不是故障：导航数据是 AIRAC 商业数据，按仓库
  * 的规矩不进公开镜像，某个环境上没挂它完全正常。所以这一支单独给一句人话，而
  * 不是塌进通用错误。
  */
-import { ref } from "vue";
+import { defineAsyncComponent, onMounted, ref } from "vue";
 import { api } from "@/lib/canApi";
 import { createTranslator } from "@/lib/i18n";
 import Icon from "@/components/ui/Icon.vue";
+import { distanceNm } from "@/lib/geo";
+
+/**
+ * Leaflet 摸 `window`，静态 import 会让这个岛屿的 SSR 直接抛。异步引它，等于把
+ * 整个依赖挪到浏览器那一侧，顺带拆成一个独立 chunk。
+ */
+const RouteMap = defineAsyncComponent(
+  () => import("@/components/RouteMap.vue"),
+);
+
+/** SSR 那一遍不能碰地图，所以等挂载之后再允许它出现。 */
+const mounted = ref(false);
+onMounted(() => {
+  mounted.value = true;
+});
 
 const props = defineProps<{ messages: Record<string, unknown> }>();
 const t = createTranslator(props.messages);
@@ -48,17 +66,9 @@ const error = ref("");
 const unavailable = ref(false);
 const resolved = ref(false);
 
-/** 大圆距离，海里。半径取 3440.065 nm。 */
-function distanceNm(a: Point, b: Point): number {
-  const toRad = Math.PI / 180;
-  const dLat = (b.lat - a.lat) * toRad;
-  const dLon = (b.lon - a.lon) * toRad;
-  const lat1 = a.lat * toRad;
-  const lat2 = b.lat * toRad;
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-  return 2 * 3440.065 * Math.asin(Math.min(1, Math.sqrt(h)));
+/** 大圆距离，海里。公式和地图画弧用的是同一个（`@/lib/geo`），不另开一份。 */
+function legDistance(a: Point, b: Point): number {
+  return distanceNm([a.lat, a.lon], [b.lat, b.lon]);
 }
 
 /** 把已提交的计划填进来，省得再抄一遍。 */
@@ -108,7 +118,7 @@ async function resolve() {
   let running = 0;
   legs.value = points.map((point, index) => {
     const previous = points[index - 1];
-    const legNm = previous ? distanceNm(previous, point) : 0;
+    const legNm = previous ? legDistance(previous, point) : 0;
     running += legNm;
     return { ...point, legNm, cumulativeNm: running };
   });
@@ -195,6 +205,8 @@ async function resolve() {
       </p>
 
       <template v-else>
+        <RouteMap v-if="mounted" :points="legs" :label="t('route.map.label')" />
+
         <div class="card flex items-baseline justify-between gap-3 p-4">
           <span class="text-sm text-muted">{{ t("route.total") }}</span>
           <span class="font-mono text-2xl font-semibold text-ink">

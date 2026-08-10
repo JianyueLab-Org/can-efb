@@ -211,6 +211,9 @@
         "position": "位置",
         "leg": "航段 (nm)",
         "cumulative": "累计 (nm)"
+      },
+      "map": {
+        "label": "航路地图：解出的航路点连成的大圆航迹"
       }
     },
     "dashboard": {

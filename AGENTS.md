@@ -115,16 +115,27 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 | `src/components/ThemeScript.astro`        | 无闪烁主题初始化                                                                              |
 | `src/components/icons.ts`                 | **前 47 个键**逐字相同；本站新增的在末尾 `can-efb only` 一段                                  |
 | `src/styles/globals.css`                  | **前 957 行**逐字等于 can-radar（Leaflet 那两百行没抄）；本站新增的在末尾 `can-efb only` 一节 |
+| `src/lib/geo.ts`                          | `distanceNm` / `greatCircle` / `arc` 逐字取自 can-radar 的 `radar.ts` 与 `RadarMap.vue`       |
 
-后两个文件都按「上游部分在前、本站部分在末尾单独一节」切开，就是为了同步时可以
+前两个文件都按「上游部分在前、本站部分在末尾单独一节」切开，就是为了同步时可以
 整段替换上半截。
+
+`geo.ts` 是**复制**，不是共享包：两个站分属不同仓库、不同 CI，为三个纯函数拉一
+条发布通道不划算。这三个函数是封闭的数学，没有产品需求会推着它们变；唯一会变的
+是发现算错了，而那时两边都得改，跨仓库的包也拦不住。改之前先看 can-radar 那份。
 
 **这个站自己的**：外壳（`AppRail.vue`、`SidebarNav.vue`、`RailScript.astro`、
 两个 layout、`PageHeader.astro`、`Placeholder.astro`）、数据层
 （`lib/canApi.ts`、`server/canApi.ts`、`lib/config.ts`、`lib/session.ts`、
 `middleware.ts`、`pages/api/v1/[...path].ts`）、六个功能岛屿
-（`Dashboard`、`FlightPlan`、`Weather`、`Logbook`、`RoutePlanner`、`Settings`）、
-`lib/nav.ts`、`language/*.json`。
+（`Dashboard`、`FlightPlan`、`Weather`、`Logbook`、`RoutePlanner`、`Settings`）
+和航路地图 `RouteMap.vue`、`lib/nav.ts`、`language/*.json`。
+
+**`RouteMap.vue` 是这个站唯一一个不能被服务端渲染的组件**：Leaflet 在模块顶层
+就摸 `window`。它由 `RoutePlanner` 用 `defineAsyncComponent` 引入，并且只在真的
+解出航路之后才渲染 —— 于是那 152 KB 的 chunk 只在用了这个功能的人身上产生流量
+（15 KB 的 leaflet.css 仍然随页面走，Vite 会把异步 chunk 的样式提到 `<head>`）。
+静态 import 它，或者给它加 `client:load`，两种改法都会让 `/route` 直接 500。
 
 `SidebarNav.vue` 虽然形状来自 can-web，但把可折叠的 `children` 换成了**扁平分
 节** —— 理由见 `src/lib/nav.ts`：轨能收成图标态，而手风琴在图标态下没有讲得通

@@ -62,13 +62,14 @@ src/
 │   ├── ui/          AppRail（外壳）、SidebarNav、Icon、ThemeLangControls
 │   ├── Dashboard    概览 · FlightPlan 飞行计划 · Weather 气象
 │   ├── Logbook      飞行日志 · RoutePlanner 航路 · Settings 设置
+│   ├── RouteMap     航路地图（Leaflet，异步加载，从不 SSR）
 │   ├── PageHeader   页面标题区（不是站头）
 │   ├── Placeholder  没有数据源的四个页面，并说明缺什么
 │   └── *Script      无闪烁的主题 / 侧栏初始化
 ├── layouts/
 │   ├── BaseLayout   <head> + 两个首屏脚本，不带外壳
 │   └── AppLayout    轨 + 正文，页面都用这个
-├── lib/             canApi（浏览器）、config、i18n、nav、session
+├── lib/             canApi（浏览器）、config、geo、i18n、nav、session
 ├── server/canApi    SSR 调 can-api，转发 Cookie
 ├── middleware.ts    整站登录门
 ├── pages/

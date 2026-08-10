@@ -211,6 +211,9 @@
         "position": "Position",
         "leg": "Leg (nm)",
         "cumulative": "Total (nm)"
+      },
+      "map": {
+        "label": "Route map: the resolved waypoints joined as a great-circle track"
       }
     },
     "dashboard": {

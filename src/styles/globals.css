@@ -1022,3 +1022,60 @@ html.theme-transitioning::view-transition-new(root) {
 :root[data-rail="collapsed"] .app-rail .rail-label {
   display: none;
 }
+
+/* 航路地图（RouteMap.vue）。
+
+   can-radar 的 globals.css 里有约 250 行 Leaflet 样式，这里**没有照抄** —— 那
+   一整块伺候的是雷达的弹窗、扇区边界和席位配色，这个站一个都没有。留下的只有
+   两件事：让容器在深浅两套主题下都不露出 Leaflet 自带的灰底，以及把控件和归属
+   声明调到和站内其余控件一个观感。
+
+   高度写死而不是按比例：地图在航段表上面，太高会把表整个顶到折叠线以下，而航
+   路的形状看个大概就够了 —— 要细看有下面的表。 */
+.route-map {
+  height: 22rem;
+  width: 100%;
+  background: var(--surface-sunken);
+}
+@media (min-width: 1024px) {
+  .route-map {
+    height: 28rem;
+  }
+}
+/* Leaflet 自己给容器设了字体，不接管的话地图上的文字和全站不是一套。 */
+.leaflet-container {
+  font: inherit;
+}
+
+.leaflet-control-attribution {
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+}
+.leaflet-control-attribution a {
+  color: var(--color-muted);
+}
+
+.leaflet-control-zoom a {
+  background: var(--surface-raised);
+  color: var(--color-ink);
+  border-color: var(--border-subtle);
+}
+.leaflet-control-zoom a:hover {
+  background: var(--surface-overlay);
+}
+
+/* 航路点的名字。深浅两套都要，默认那个白底黑字在深色底图上很扎眼。 */
+.route-map-tip {
+  background: var(--surface-raised);
+  color: var(--color-ink);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.375rem;
+  box-shadow: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.6875rem;
+  padding: 0.125rem 0.375rem;
+}
+.route-map-tip::before {
+  display: none;
+}

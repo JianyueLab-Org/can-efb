@@ -211,6 +211,9 @@
         "position": "位置",
         "leg": "区間 (nm)",
         "cumulative": "累計 (nm)"
+      },
+      "map": {
+        "label": "ルートマップ：解決したウェイポイントを結んだ大圏航跡"
       }
     },
     "dashboard": {
