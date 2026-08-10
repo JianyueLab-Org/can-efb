@@ -1,0 +1,263 @@
+{
+  "efb": {
+    "siteName": "CAN 電子フライトバッグ",
+    "shortName": "EFB",
+    "tagline": "Cerulean Aviation Network のパイロット向け電子フライトバッグ",
+    "skipToContent": "本文へスキップ",
+    "rail": {
+      "label": "メインナビゲーション",
+      "open": "ナビゲーションを開く",
+      "close": "ナビゲーションを閉じる",
+      "collapse": "サイドバーを折りたたむ",
+      "expand": "サイドバーを展開する"
+    },
+    "search": {
+      "label": "クイックナビ",
+      "placeholder": "ページを検索…",
+      "noResults": "該当するページがありません"
+    },
+    "account": {
+      "menu": "アカウントメニュー",
+      "signIn": "ログイン",
+      "signedOut": "未ログイン",
+      "signedOutHint": "ログインすると自分のフライトプランとログブックが表示されます",
+      "signOut": "ログアウト"
+    },
+    "sections": {
+      "flight": "フライト",
+      "briefing": "ブリーフィング",
+      "ops": "運航"
+    },
+    "nav": {
+      "dashboard": "概要",
+      "flightplan": "フライトプラン",
+      "route": "ルート",
+      "performance": "性能・重量配分",
+      "charts": "チャート",
+      "airports": "空港",
+      "weather": "気象",
+      "checklists": "チェックリスト",
+      "logbook": "ログブック",
+      "settings": "設定"
+    },
+    "links": {
+      "label": "ほかのサイト",
+      "web": "メインサイト",
+      "radar": "ライブレーダー",
+      "dev": "デベロッパーセンター"
+    },
+    "pages": {
+      "dashboard": {
+        "title": "概要",
+        "description": "このフライトでまず見るもの — プラン、気象、ノータム。"
+      },
+      "flightplan": {
+        "title": "フライトプラン",
+        "description": "フライトプランの作成・提出・追跡。"
+      },
+      "route": {
+        "title": "ルート",
+        "description": "ルートの計画と検証。"
+      },
+      "performance": {
+        "title": "性能・重量配分",
+        "description": "離着陸性能、重量とバランス。"
+      },
+      "charts": {
+        "title": "チャート",
+        "description": "空港図、SID、STAR、進入方式。"
+      },
+      "airports": {
+        "title": "空港",
+        "description": "滑走路、周波数、誘導路、スポット。"
+      },
+      "weather": {
+        "title": "気象",
+        "description": "METAR、TAF、悪天情報。"
+      },
+      "checklists": {
+        "title": "チェックリスト",
+        "description": "機種別のノーマル／非ノーマルチェックリスト。"
+      },
+      "logbook": {
+        "title": "ログブック",
+        "description": "完了したフライトの記録と統計。"
+      },
+      "settings": {
+        "title": "設定",
+        "description": "単位、テーマ、言語、アカウント。"
+      }
+    },
+    "placeholder": {
+      "title": "このページはまだ空です",
+      "body": "先に組み上げたのは枠組みです — シェル、ナビゲーション、テーマ、多言語。中身は can-api に接続してから入ります。",
+      "reasons": {
+        "charts": "チャートは著作権のあるデータで、ネットワーク内のどこも提供していません。ライセンスか自作の図源が用意できてからのページです。",
+        "airports": "滑走路・周波数・誘導路を持つ空港データベースがまだありません。Sector/ と Ground/ に一部ありますが EuroScope 形式なので、まず配信する口が要ります。",
+        "performance": "離着陸性能と重量配分には機体マニュアルのデータが必要です。can-api にはなく、このサイトが勝手に作るものでもありません。",
+        "checklists": "チェックリストは機種ごとに入力が要ります。データ自体がまだ存在せず、エンドポイントも同様です。"
+      }
+    },
+    "common": {
+      "loading": "読み込み中…",
+      "refresh": "更新"
+    },
+    "notFound": {
+      "title": "ページが見つかりません",
+      "body": "アドレスが間違っているか、このページはまだ作られていません。",
+      "home": "概要へ戻る"
+    },
+    "flightplan": {
+      "fields": {
+        "callsign": "コールサイン",
+        "flightRules": "飛行方式",
+        "aircraft": "機材",
+        "cruiseTas": "巡航真対気速度",
+        "departure": "出発空港",
+        "departureTime": "出発時刻 (UTC)",
+        "arrival": "到着空港",
+        "alternate": "代替空港",
+        "cruisingAltitude": "巡航高度",
+        "enroute": "航路時間",
+        "fuel": "搭載燃料",
+        "hours": "時間",
+        "minutes": "分",
+        "route": "ルート",
+        "remarks": "備考"
+      },
+      "rules": {
+        "I": "IFR 計器",
+        "V": "VFR 有視界",
+        "S": "SVFR 特別有視界",
+        "D": "DVFR"
+      },
+      "actions": {
+        "file": "プランを提出",
+        "refile": "プランを更新",
+        "filing": "送信中…",
+        "delete": "プランを取り下げ",
+        "import": "SimBrief から取り込む"
+      },
+      "status": {
+        "filed": "提出済み",
+        "none": "提出済みのフライトプランはありません。",
+        "updatedAt": "更新",
+        "fromClient": "クライアントから提出"
+      },
+      "notice": {
+        "filed": "フライトプランを提出しました。",
+        "deleted": "フライトプランを取り下げました。",
+        "imported": "SimBrief から取り込みました。内容を確認してから提出してください。",
+        "invalid": "いくつか入力に誤りがあります。下の赤い欄を確認してください。",
+        "tracked": "この機のレーダートラックは {controller} が保持しているため、プランの修正はその管制官が行います。",
+        "notLinked": "SimBrief アカウントが未連携です。設定から連携してください。"
+      },
+      "errors": {
+        "callsign": "コールサインの形式が正しくありません。",
+        "flightRules": "飛行方式を選んでください。",
+        "aircraft": "機材型式を入力してください。",
+        "cruiseTas": "真対気速度は正の数で入力してください。",
+        "icao": "4 文字の ICAO コードが必要です。",
+        "time": "時刻は 4 桁 HHMM で入力してください。",
+        "cruisingAltitude": "巡航高度を入力してください。",
+        "number": "2 桁の数字が必要です。",
+        "minutes": "分は 59 を超えられません。",
+        "route": "ルートが長すぎるか、使用できない文字が含まれています。",
+        "remarksLength": "備考が長すぎます。",
+        "structural": "コロンと改行は使えません — FSD のパケットが分割されてしまいます。"
+      },
+      "confirmDelete": "現在のフライトプランを取り下げますか？"
+    },
+    "weather": {
+      "placeholder": "ICAO コード",
+      "addLabel": "空港を追加",
+      "add": "追加",
+      "remove": "削除",
+      "empty": "空港がまだありません。4 文字の ICAO コードを入力してください。",
+      "noReport": "この空港の METAR はありません。",
+      "invalidIcao": "4 文字の ICAO コードが必要です。"
+    },
+    "logbook": {
+      "stats": {
+        "flights": "フライト数",
+        "total": "合計時間",
+        "longest": "最長",
+        "callsigns": "使用コールサイン"
+      },
+      "table": {
+        "callsign": "コールサイン",
+        "logon": "接続",
+        "logoff": "切断",
+        "duration": "時間"
+      },
+      "live": "飛行中",
+      "empty": "まだ記録がありません。",
+      "byCallsign": "コールサイン別"
+    },
+    "route": {
+      "departure": "出発空港",
+      "arrival": "到着空港",
+      "route": "ルート文字列",
+      "resolve": "ルートを展開",
+      "fromPlan": "自分のプランから入力",
+      "total": "大圏距離の合計",
+      "noPlan": "提出済みのフライトプランはありません。",
+      "noPoints": "このルートからウェイポイントを解決できませんでした。",
+      "navdataUnavailable": "この環境にはナビゲーションデータが配置されていないため、ルートを展開できません。AIRAC の商用データなので公開イメージには入りません。",
+      "disclaimer": "距離は隣接する 2 点間の大圏距離です。風も SID/STAR の実際の飛行距離も含まないため、燃料計画の根拠にはできません。",
+      "table": {
+        "ident": "ウェイポイント",
+        "via": "経由",
+        "position": "位置",
+        "leg": "区間 (nm)",
+        "cumulative": "累計 (nm)"
+      },
+      "map": {
+        "label": "ルートマップ：解決したウェイポイントを結んだ大圏航跡"
+      }
+    },
+    "dashboard": {
+      "greeting": "{name} さん、おかえりなさい。",
+      "plan": {
+        "title": "現在のフライトプラン",
+        "none": "フライトプランはまだ提出されていません。",
+        "file": "提出する",
+        "edit": "表示 / 修正",
+        "alternate": "代替",
+        "aircraft": "機材",
+        "off": "出発時刻",
+        "level": "巡航高度"
+      },
+      "weather": {
+        "none": "報文なし"
+      }
+    },
+    "settings": {
+      "account": {
+        "title": "アカウント",
+        "hint": "ネットワークアカウントの情報です。変更はメインサイトで行ってください。",
+        "name": "氏名",
+        "id": "ASN ID",
+        "email": "メール",
+        "rating": "レーティング"
+      },
+      "simbrief": {
+        "title": "SimBrief",
+        "hint": "連携すると、最新の OFP をフライトプラン画面にワンクリックで取り込めます。",
+        "placeholder": "Pilot ID または Navigraph ユーザー名",
+        "link": "連携",
+        "unlink": "連携解除",
+        "bound": "連携済み",
+        "linked": "SimBrief を連携しました。",
+        "unlinked": "SimBrief の連携を解除しました。"
+      },
+      "local": {
+        "title": "この端末の設定",
+        "hint": "この端末にのみ保存され、アカウントには同期されません。",
+        "rail": "サイドバーを既定で折りたたむ",
+        "railHint": "ナビゲーションをアイコン列に縮め、本文に幅を返します。",
+        "themeHint": "テーマと言語はサイドバー下部で切り替えます。"
+      }
+    }
+  }
+}

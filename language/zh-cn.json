@@ -1,0 +1,263 @@
+{
+  "efb": {
+    "siteName": "CAN 电子飞行包",
+    "shortName": "EFB",
+    "tagline": "Cerulean Aviation Network 的飞行员电子飞行包",
+    "skipToContent": "跳到主要内容",
+    "rail": {
+      "label": "主导航",
+      "open": "打开导航",
+      "close": "关闭导航",
+      "collapse": "收起侧栏",
+      "expand": "展开侧栏"
+    },
+    "search": {
+      "label": "快速跳转",
+      "placeholder": "跳转到…",
+      "noResults": "没有匹配的页面"
+    },
+    "account": {
+      "menu": "账户菜单",
+      "signIn": "登录",
+      "signedOut": "未登录",
+      "signedOutHint": "登录后才能看到你自己的飞行计划与日志",
+      "signOut": "退出登录"
+    },
+    "sections": {
+      "flight": "飞行",
+      "briefing": "资料",
+      "ops": "运行"
+    },
+    "nav": {
+      "dashboard": "概览",
+      "flightplan": "飞行计划",
+      "route": "航路",
+      "performance": "性能与配载",
+      "charts": "航图",
+      "airports": "机场",
+      "weather": "气象",
+      "checklists": "检查单",
+      "logbook": "飞行日志",
+      "settings": "设置"
+    },
+    "links": {
+      "label": "其他站点",
+      "web": "主站",
+      "radar": "在线雷达",
+      "dev": "开发者中心"
+    },
+    "pages": {
+      "dashboard": {
+        "title": "概览",
+        "description": "这一次飞行需要先看的几件事：计划、天气、通告。"
+      },
+      "flightplan": {
+        "title": "飞行计划",
+        "description": "填写、提交并跟踪你的飞行计划。"
+      },
+      "route": {
+        "title": "航路",
+        "description": "航路规划与校验。"
+      },
+      "performance": {
+        "title": "性能与配载",
+        "description": "起飞与着陆性能，重量与平衡。"
+      },
+      "charts": {
+        "title": "航图",
+        "description": "机场图、进离场与进近程序。"
+      },
+      "airports": {
+        "title": "机场",
+        "description": "跑道、频率、滑行道与停机位。"
+      },
+      "weather": {
+        "title": "气象",
+        "description": "METAR、TAF 与显著天气。"
+      },
+      "checklists": {
+        "title": "检查单",
+        "description": "按机型组织的正常与非正常检查单。"
+      },
+      "logbook": {
+        "title": "飞行日志",
+        "description": "已完成航班的记录与统计。"
+      },
+      "settings": {
+        "title": "设置",
+        "description": "单位、主题、语言与账户。"
+      }
+    },
+    "placeholder": {
+      "title": "这一页还没有内容",
+      "body": "先落地的是框架：外壳、导航、主题与多语言已经就位。页面内容要等接上 can-api 之后再填。",
+      "reasons": {
+        "charts": "航图是有版权的数据，网络里现在没有任何一处提供它 —— 这一页要等有了图源（自建或者授权）之后才能做。",
+        "airports": "还没有一份带跑道、频率和滑行道的机场数据库可读。Sector/ 和 Ground/ 里有一部分，但它们是 EuroScope 的格式，要先有一个接口把它喂出来。",
+        "performance": "起降性能和重量平衡要机型手册的数据，那既不在 can-api 里，也不该由这个站凭空编。",
+        "checklists": "检查单要按机型逐条录入。数据本身还不存在，接口也就无从谈起。"
+      }
+    },
+    "common": {
+      "loading": "载入中…",
+      "refresh": "刷新"
+    },
+    "notFound": {
+      "title": "没有这一页",
+      "body": "地址可能打错了，或者这个页面还没有做出来。",
+      "home": "回到概览"
+    },
+    "flightplan": {
+      "fields": {
+        "callsign": "呼号",
+        "flightRules": "飞行规则",
+        "aircraft": "航空器",
+        "cruiseTas": "巡航真空速",
+        "departure": "起飞机场",
+        "departureTime": "起飞时间 (UTC)",
+        "arrival": "落地机场",
+        "alternate": "备降场",
+        "cruisingAltitude": "巡航高度",
+        "enroute": "航路时间",
+        "fuel": "可用燃油",
+        "hours": "小时",
+        "minutes": "分钟",
+        "route": "航路",
+        "remarks": "备注"
+      },
+      "rules": {
+        "I": "IFR 仪表",
+        "V": "VFR 目视",
+        "S": "SVFR 特殊目视",
+        "D": "DVFR 防空识别区目视"
+      },
+      "actions": {
+        "file": "提交计划",
+        "refile": "更新计划",
+        "filing": "提交中…",
+        "delete": "撤销计划",
+        "import": "从 SimBrief 导入"
+      },
+      "status": {
+        "filed": "已提交",
+        "none": "当前没有已提交的飞行计划。",
+        "updatedAt": "更新于",
+        "fromClient": "由客户端提交"
+      },
+      "notice": {
+        "filed": "飞行计划已提交。",
+        "deleted": "飞行计划已撤销。",
+        "imported": "已从 SimBrief 导入，检查无误后再提交。",
+        "invalid": "有几项填得不对，看一下下面标红的字段。",
+        "tracked": "这架航空器的雷达标牌正由 {controller} 占用，计划要由该管制员修改。",
+        "notLinked": "还没有绑定 SimBrief 账号，去设置里绑一个。"
+      },
+      "errors": {
+        "callsign": "呼号格式不对。",
+        "flightRules": "选一个飞行规则。",
+        "aircraft": "填写航空器型别。",
+        "cruiseTas": "真空速要是一个正整数。",
+        "icao": "要一个四字母 ICAO 代码。",
+        "time": "时间要写成四位 HHMM。",
+        "cruisingAltitude": "填写巡航高度。",
+        "number": "要两位数字。",
+        "minutes": "分钟不能超过 59。",
+        "route": "航路太长或含有不被接受的字符。",
+        "remarksLength": "备注太长。",
+        "structural": "不能包含冒号或换行 —— 那会把 FSD 的数据包拆开。"
+      },
+      "confirmDelete": "确定撤销当前的飞行计划吗？"
+    },
+    "weather": {
+      "placeholder": "输入 ICAO 代码",
+      "addLabel": "添加机场",
+      "add": "添加",
+      "remove": "移除",
+      "empty": "还没有添加机场。输入一个四字母 ICAO 代码开始。",
+      "noReport": "这个机场当前没有 METAR 报文。",
+      "invalidIcao": "要一个四字母 ICAO 代码。"
+    },
+    "logbook": {
+      "stats": {
+        "flights": "航班数",
+        "total": "总时长",
+        "longest": "最长一段",
+        "callsigns": "使用过的呼号"
+      },
+      "table": {
+        "callsign": "呼号",
+        "logon": "连线",
+        "logoff": "离线",
+        "duration": "时长"
+      },
+      "live": "在线",
+      "empty": "还没有飞行记录。",
+      "byCallsign": "按呼号统计"
+    },
+    "route": {
+      "departure": "起飞机场",
+      "arrival": "落地机场",
+      "route": "航路串",
+      "resolve": "展开航路",
+      "fromPlan": "从我的计划填入",
+      "total": "大圆总距离",
+      "noPlan": "当前没有已提交的飞行计划。",
+      "noPoints": "这条航路没有解析出任何航路点。",
+      "navdataUnavailable": "这个环境没有部署导航数据，航路无法展开。导航数据是 AIRAC 商业数据，不进公开镜像。",
+      "disclaimer": "距离是相邻两点之间的大圆距离，不含风、不含离到场程序的实际展开长度，不能直接当作计划燃油的依据。",
+      "table": {
+        "ident": "航路点",
+        "via": "沿",
+        "position": "位置",
+        "leg": "航段 (nm)",
+        "cumulative": "累计 (nm)"
+      },
+      "map": {
+        "label": "航路地图：解出的航路点连成的大圆航迹"
+      }
+    },
+    "dashboard": {
+      "greeting": "{name}，欢迎回来。",
+      "plan": {
+        "title": "当前飞行计划",
+        "none": "还没有提交飞行计划。",
+        "file": "去提交",
+        "edit": "查看 / 修改",
+        "alternate": "备降",
+        "aircraft": "航空器",
+        "off": "起飞时间",
+        "level": "巡航高度"
+      },
+      "weather": {
+        "none": "暂无报文"
+      }
+    },
+    "settings": {
+      "account": {
+        "title": "账户",
+        "hint": "这些信息来自网络账户，要修改请到主站。",
+        "name": "姓名",
+        "id": "ASN ID",
+        "email": "邮箱",
+        "rating": "评级"
+      },
+      "simbrief": {
+        "title": "SimBrief",
+        "hint": "绑定之后可以在飞行计划页一键导入最近一份 OFP。",
+        "placeholder": "Pilot ID 或 Navigraph 用户名",
+        "link": "绑定",
+        "unlink": "解绑",
+        "bound": "已绑定",
+        "linked": "SimBrief 已绑定。",
+        "unlinked": "SimBrief 已解绑。"
+      },
+      "local": {
+        "title": "本机偏好",
+        "hint": "只存在这台设备上，不会同步到账户。",
+        "rail": "默认收起侧栏",
+        "railHint": "把左侧导航收成一列图标，给正文让出宽度。",
+        "themeHint": "主题和语言在侧栏底部切换。"
+      }
+    }
+  }
+}

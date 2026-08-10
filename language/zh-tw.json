@@ -1,0 +1,263 @@
+{
+  "efb": {
+    "siteName": "CAN 電子飛行包",
+    "shortName": "EFB",
+    "tagline": "Cerulean Aviation Network 的飛行員電子飛行包",
+    "skipToContent": "跳到主要內容",
+    "rail": {
+      "label": "主導覽",
+      "open": "開啟導覽",
+      "close": "關閉導覽",
+      "collapse": "收合側欄",
+      "expand": "展開側欄"
+    },
+    "search": {
+      "label": "快速跳轉",
+      "placeholder": "跳轉到…",
+      "noResults": "沒有符合的頁面"
+    },
+    "account": {
+      "menu": "帳戶選單",
+      "signIn": "登入",
+      "signedOut": "未登入",
+      "signedOutHint": "登入後才能看到你自己的飛行計畫與日誌",
+      "signOut": "登出"
+    },
+    "sections": {
+      "flight": "飛行",
+      "briefing": "資料",
+      "ops": "運行"
+    },
+    "nav": {
+      "dashboard": "總覽",
+      "flightplan": "飛行計畫",
+      "route": "航路",
+      "performance": "性能與配載",
+      "charts": "航圖",
+      "airports": "機場",
+      "weather": "氣象",
+      "checklists": "檢查表",
+      "logbook": "飛行日誌",
+      "settings": "設定"
+    },
+    "links": {
+      "label": "其他站台",
+      "web": "主站",
+      "radar": "線上雷達",
+      "dev": "開發者中心"
+    },
+    "pages": {
+      "dashboard": {
+        "title": "總覽",
+        "description": "這趟飛行要先看的幾件事：計畫、天氣、通告。"
+      },
+      "flightplan": {
+        "title": "飛行計畫",
+        "description": "填寫、送出並追蹤你的飛行計畫。"
+      },
+      "route": {
+        "title": "航路",
+        "description": "航路規劃與檢核。"
+      },
+      "performance": {
+        "title": "性能與配載",
+        "description": "起飛與落地性能，重量與平衡。"
+      },
+      "charts": {
+        "title": "航圖",
+        "description": "機場圖、離到場與進場程序。"
+      },
+      "airports": {
+        "title": "機場",
+        "description": "跑道、頻率、滑行道與停機位。"
+      },
+      "weather": {
+        "title": "氣象",
+        "description": "METAR、TAF 與顯著天氣。"
+      },
+      "checklists": {
+        "title": "檢查表",
+        "description": "依機型整理的正常與非正常檢查表。"
+      },
+      "logbook": {
+        "title": "飛行日誌",
+        "description": "已完成航班的紀錄與統計。"
+      },
+      "settings": {
+        "title": "設定",
+        "description": "單位、主題、語言與帳戶。"
+      }
+    },
+    "placeholder": {
+      "title": "這一頁還沒有內容",
+      "body": "先落地的是框架：外殼、導覽、主題與多語系已經就位。頁面內容要等接上 can-api 之後再填。",
+      "reasons": {
+        "charts": "航圖是有版權的資料，網路裡現在沒有任何一處提供它 —— 這一頁要等有了圖源（自建或者授權）之後才能做。",
+        "airports": "還沒有一份帶跑道、頻率和滑行道的機場資料庫可讀。Sector/ 和 Ground/ 裡有一部分，但它們是 EuroScope 的格式，要先有一個介面把它餵出來。",
+        "performance": "起降性能和重量平衡要機型手冊的資料，那既不在 can-api 裡，也不該由這個站憑空編。",
+        "checklists": "檢查表要按機型逐條輸入。資料本身還不存在，介面也就無從談起。"
+      }
+    },
+    "common": {
+      "loading": "載入中…",
+      "refresh": "重新整理"
+    },
+    "notFound": {
+      "title": "沒有這一頁",
+      "body": "網址可能打錯了，或者這個頁面還沒有做出來。",
+      "home": "回到總覽"
+    },
+    "flightplan": {
+      "fields": {
+        "callsign": "呼號",
+        "flightRules": "飛行規則",
+        "aircraft": "航空器",
+        "cruiseTas": "巡航真空速",
+        "departure": "起飛機場",
+        "departureTime": "起飛時間 (UTC)",
+        "arrival": "落地機場",
+        "alternate": "備降場",
+        "cruisingAltitude": "巡航高度",
+        "enroute": "航路時間",
+        "fuel": "可用燃油",
+        "hours": "小時",
+        "minutes": "分鐘",
+        "route": "航路",
+        "remarks": "備註"
+      },
+      "rules": {
+        "I": "IFR 儀器",
+        "V": "VFR 目視",
+        "S": "SVFR 特殊目視",
+        "D": "DVFR 防空識別區目視"
+      },
+      "actions": {
+        "file": "送出計畫",
+        "refile": "更新計畫",
+        "filing": "送出中…",
+        "delete": "撤銷計畫",
+        "import": "從 SimBrief 匯入"
+      },
+      "status": {
+        "filed": "已送出",
+        "none": "目前沒有已送出的飛行計畫。",
+        "updatedAt": "更新於",
+        "fromClient": "由客戶端送出"
+      },
+      "notice": {
+        "filed": "飛行計畫已送出。",
+        "deleted": "飛行計畫已撤銷。",
+        "imported": "已從 SimBrief 匯入，檢查無誤後再送出。",
+        "invalid": "有幾項填得不對，看一下下面標紅的欄位。",
+        "tracked": "這架航空器的雷達標牌正由 {controller} 佔用，計畫要由該管制員修改。",
+        "notLinked": "還沒有綁定 SimBrief 帳號，去設定裡綁一個。"
+      },
+      "errors": {
+        "callsign": "呼號格式不對。",
+        "flightRules": "選一個飛行規則。",
+        "aircraft": "填寫航空器型別。",
+        "cruiseTas": "真空速要是一個正整數。",
+        "icao": "要一個四字母 ICAO 代碼。",
+        "time": "時間要寫成四位 HHMM。",
+        "cruisingAltitude": "填寫巡航高度。",
+        "number": "要兩位數字。",
+        "minutes": "分鐘不能超過 59。",
+        "route": "航路太長或含有不被接受的字元。",
+        "remarksLength": "備註太長。",
+        "structural": "不能包含冒號或換行 —— 那會把 FSD 的封包拆開。"
+      },
+      "confirmDelete": "確定撤銷目前的飛行計畫嗎？"
+    },
+    "weather": {
+      "placeholder": "輸入 ICAO 代碼",
+      "addLabel": "新增機場",
+      "add": "新增",
+      "remove": "移除",
+      "empty": "還沒有新增機場。輸入一個四字母 ICAO 代碼開始。",
+      "noReport": "這個機場目前沒有 METAR 報文。",
+      "invalidIcao": "要一個四字母 ICAO 代碼。"
+    },
+    "logbook": {
+      "stats": {
+        "flights": "航班數",
+        "total": "總時長",
+        "longest": "最長一段",
+        "callsigns": "使用過的呼號"
+      },
+      "table": {
+        "callsign": "呼號",
+        "logon": "連線",
+        "logoff": "離線",
+        "duration": "時長"
+      },
+      "live": "線上",
+      "empty": "還沒有飛行紀錄。",
+      "byCallsign": "按呼號統計"
+    },
+    "route": {
+      "departure": "起飛機場",
+      "arrival": "落地機場",
+      "route": "航路字串",
+      "resolve": "展開航路",
+      "fromPlan": "從我的計畫填入",
+      "total": "大圓總距離",
+      "noPlan": "目前沒有已送出的飛行計畫。",
+      "noPoints": "這條航路沒有解析出任何航路點。",
+      "navdataUnavailable": "這個環境沒有部署導航資料，航路無法展開。導航資料是 AIRAC 商業資料，不進公開鏡像。",
+      "disclaimer": "距離是相鄰兩點之間的大圓距離，不含風、不含離到場程序的實際展開長度，不能直接當作計畫燃油的依據。",
+      "table": {
+        "ident": "航路點",
+        "via": "沿",
+        "position": "位置",
+        "leg": "航段 (nm)",
+        "cumulative": "累計 (nm)"
+      },
+      "map": {
+        "label": "航路地圖：解出的航路點連成的大圓航跡"
+      }
+    },
+    "dashboard": {
+      "greeting": "{name}，歡迎回來。",
+      "plan": {
+        "title": "目前飛行計畫",
+        "none": "還沒有送出飛行計畫。",
+        "file": "去送出",
+        "edit": "檢視 / 修改",
+        "alternate": "備降",
+        "aircraft": "航空器",
+        "off": "起飛時間",
+        "level": "巡航高度"
+      },
+      "weather": {
+        "none": "暫無報文"
+      }
+    },
+    "settings": {
+      "account": {
+        "title": "帳戶",
+        "hint": "這些資訊來自網路帳戶，要修改請到主站。",
+        "name": "姓名",
+        "id": "ASN ID",
+        "email": "電子郵件",
+        "rating": "評級"
+      },
+      "simbrief": {
+        "title": "SimBrief",
+        "hint": "綁定之後可以在飛行計畫頁一鍵匯入最近一份 OFP。",
+        "placeholder": "Pilot ID 或 Navigraph 使用者名稱",
+        "link": "綁定",
+        "unlink": "解除綁定",
+        "bound": "已綁定",
+        "linked": "SimBrief 已綁定。",
+        "unlinked": "SimBrief 已解除綁定。"
+      },
+      "local": {
+        "title": "本機偏好",
+        "hint": "只存在這台裝置上，不會同步到帳戶。",
+        "rail": "預設收合側欄",
+        "railHint": "把左側導覽收成一列圖示，給正文讓出寬度。",
+        "themeHint": "主題和語言在側欄底部切換。"
+      }
+    }
+  }
+}

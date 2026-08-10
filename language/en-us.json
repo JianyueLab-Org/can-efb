@@ -1,0 +1,263 @@
+{
+  "efb": {
+    "siteName": "CAN Electronic Flight Bag",
+    "shortName": "EFB",
+    "tagline": "The pilot's electronic flight bag for Cerulean Aviation Network",
+    "skipToContent": "Skip to content",
+    "rail": {
+      "label": "Main navigation",
+      "open": "Open navigation",
+      "close": "Close navigation",
+      "collapse": "Collapse sidebar",
+      "expand": "Expand sidebar"
+    },
+    "search": {
+      "label": "Quick nav",
+      "placeholder": "Jump to…",
+      "noResults": "No matching page"
+    },
+    "account": {
+      "menu": "Account menu",
+      "signIn": "Sign in",
+      "signedOut": "Signed out",
+      "signedOutHint": "Sign in to see your own flight plans and logbook",
+      "signOut": "Sign out"
+    },
+    "sections": {
+      "flight": "Flight",
+      "briefing": "Briefing",
+      "ops": "Operations"
+    },
+    "nav": {
+      "dashboard": "Overview",
+      "flightplan": "Flight plan",
+      "route": "Route",
+      "performance": "Performance",
+      "charts": "Charts",
+      "airports": "Airports",
+      "weather": "Weather",
+      "checklists": "Checklists",
+      "logbook": "Logbook",
+      "settings": "Settings"
+    },
+    "links": {
+      "label": "Elsewhere",
+      "web": "Main site",
+      "radar": "Live radar",
+      "dev": "Developer centre"
+    },
+    "pages": {
+      "dashboard": {
+        "title": "Overview",
+        "description": "What this flight needs first: the plan, the weather, the notices."
+      },
+      "flightplan": {
+        "title": "Flight plan",
+        "description": "File, submit and track your flight plan."
+      },
+      "route": {
+        "title": "Route",
+        "description": "Route planning and validation."
+      },
+      "performance": {
+        "title": "Performance",
+        "description": "Takeoff and landing performance, weight and balance."
+      },
+      "charts": {
+        "title": "Charts",
+        "description": "Airport diagrams, SIDs, STARs and approaches."
+      },
+      "airports": {
+        "title": "Airports",
+        "description": "Runways, frequencies, taxiways and stands."
+      },
+      "weather": {
+        "title": "Weather",
+        "description": "METAR, TAF and significant weather."
+      },
+      "checklists": {
+        "title": "Checklists",
+        "description": "Normal and non-normal checklists, by aircraft type."
+      },
+      "logbook": {
+        "title": "Logbook",
+        "description": "Completed flights and their statistics."
+      },
+      "settings": {
+        "title": "Settings",
+        "description": "Units, theme, language and account."
+      }
+    },
+    "placeholder": {
+      "title": "Nothing here yet",
+      "body": "The frame lands first: shell, navigation, theme and languages are in place. The content waits on can-api being wired up.",
+      "reasons": {
+        "charts": "Charts are copyrighted data and nothing on the network serves them today. This page waits on a source — licensed or our own.",
+        "airports": "There is no airport database with runways, frequencies and taxiways to read. Sector/ and Ground/ hold some of it, but in EuroScope's formats; something has to serve it first.",
+        "performance": "Takeoff and landing performance needs manufacturer data. It is not in can-api, and this app should not invent it.",
+        "checklists": "Checklists have to be entered per aircraft type. The data does not exist yet, so neither does an endpoint for it."
+      }
+    },
+    "common": {
+      "loading": "Loading…",
+      "refresh": "Refresh"
+    },
+    "notFound": {
+      "title": "No such page",
+      "body": "The address may be wrong, or this page has not been built yet.",
+      "home": "Back to overview"
+    },
+    "flightplan": {
+      "fields": {
+        "callsign": "Callsign",
+        "flightRules": "Flight rules",
+        "aircraft": "Aircraft",
+        "cruiseTas": "Cruise TAS",
+        "departure": "Departure",
+        "departureTime": "Off-block (UTC)",
+        "arrival": "Arrival",
+        "alternate": "Alternate",
+        "cruisingAltitude": "Cruising level",
+        "enroute": "Time enroute",
+        "fuel": "Fuel endurance",
+        "hours": "Hours",
+        "minutes": "Minutes",
+        "route": "Route",
+        "remarks": "Remarks"
+      },
+      "rules": {
+        "I": "IFR",
+        "V": "VFR",
+        "S": "SVFR",
+        "D": "DVFR"
+      },
+      "actions": {
+        "file": "File plan",
+        "refile": "Update plan",
+        "filing": "Filing…",
+        "delete": "Withdraw plan",
+        "import": "Import from SimBrief"
+      },
+      "status": {
+        "filed": "Filed",
+        "none": "No flight plan on file.",
+        "updatedAt": "Updated",
+        "fromClient": "filed from a client"
+      },
+      "notice": {
+        "filed": "Flight plan filed.",
+        "deleted": "Flight plan withdrawn.",
+        "imported": "Imported from SimBrief — check it over before filing.",
+        "invalid": "Some fields need fixing; see the ones marked below.",
+        "tracked": "{controller} is holding this aircraft's radar track, so the plan is theirs to amend.",
+        "notLinked": "No SimBrief account linked yet — link one in Settings."
+      },
+      "errors": {
+        "callsign": "Callsign format is not valid.",
+        "flightRules": "Pick a flight rule.",
+        "aircraft": "Enter an aircraft type.",
+        "cruiseTas": "True airspeed must be a positive number.",
+        "icao": "Needs a four-letter ICAO code.",
+        "time": "Time must be four digits, HHMM.",
+        "cruisingAltitude": "Enter a cruising level.",
+        "number": "Two digits required.",
+        "minutes": "Minutes cannot exceed 59.",
+        "route": "Route is too long or contains characters that are not accepted.",
+        "remarksLength": "Remarks are too long.",
+        "structural": "No colons or newlines — they would split the FSD packet apart."
+      },
+      "confirmDelete": "Withdraw the current flight plan?"
+    },
+    "weather": {
+      "placeholder": "ICAO code",
+      "addLabel": "Add an airport",
+      "add": "Add",
+      "remove": "Remove",
+      "empty": "No airports yet. Enter a four-letter ICAO code to start.",
+      "noReport": "No METAR is available for this station.",
+      "invalidIcao": "Needs a four-letter ICAO code."
+    },
+    "logbook": {
+      "stats": {
+        "flights": "Flights",
+        "total": "Total time",
+        "longest": "Longest",
+        "callsigns": "Callsigns used"
+      },
+      "table": {
+        "callsign": "Callsign",
+        "logon": "Logon",
+        "logoff": "Logoff",
+        "duration": "Duration"
+      },
+      "live": "Live",
+      "empty": "No flights logged yet.",
+      "byCallsign": "By callsign"
+    },
+    "route": {
+      "departure": "Departure",
+      "arrival": "Arrival",
+      "route": "Route string",
+      "resolve": "Expand route",
+      "fromPlan": "Fill from my plan",
+      "total": "Great-circle total",
+      "noPlan": "No flight plan on file.",
+      "noPoints": "This route resolved to no waypoints.",
+      "navdataUnavailable": "Navigation data is not deployed on this instance, so routes cannot be expanded. It is AIRAC commercial data and never ships in a public image.",
+      "disclaimer": "Distances are great-circle between consecutive points. No wind, and no allowance for how a SID or STAR actually flies — do not plan fuel from this.",
+      "table": {
+        "ident": "Waypoint",
+        "via": "Via",
+        "position": "Position",
+        "leg": "Leg (nm)",
+        "cumulative": "Total (nm)"
+      },
+      "map": {
+        "label": "Route map: the resolved waypoints joined as a great-circle track"
+      }
+    },
+    "dashboard": {
+      "greeting": "Welcome back, {name}.",
+      "plan": {
+        "title": "Current flight plan",
+        "none": "No flight plan filed yet.",
+        "file": "File one",
+        "edit": "View / amend",
+        "alternate": "ALTN",
+        "aircraft": "Aircraft",
+        "off": "Off-block",
+        "level": "Level"
+      },
+      "weather": {
+        "none": "No report"
+      }
+    },
+    "settings": {
+      "account": {
+        "title": "Account",
+        "hint": "This comes from your network account. Change it on the main site.",
+        "name": "Name",
+        "id": "ASN ID",
+        "email": "Email",
+        "rating": "Rating"
+      },
+      "simbrief": {
+        "title": "SimBrief",
+        "hint": "Link an account to pull your latest OFP into the flight plan page in one click.",
+        "placeholder": "Pilot ID or Navigraph username",
+        "link": "Link",
+        "unlink": "Unlink",
+        "bound": "Linked",
+        "linked": "SimBrief linked.",
+        "unlinked": "SimBrief unlinked."
+      },
+      "local": {
+        "title": "This device",
+        "hint": "Stored on this device only; never synced to your account.",
+        "rail": "Collapse the sidebar by default",
+        "railHint": "Shrinks the rail to a column of icons and gives the width back to the page.",
+        "themeHint": "Theme and language are at the foot of the sidebar."
+      }
+    }
+  }
+}

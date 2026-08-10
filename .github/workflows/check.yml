@@ -1,0 +1,32 @@
+name: Check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# 门就是本地那一条 `bun run lint` 加一次构建，一字不差 —— CI 和本地跑的不是同
+# 一组命令，是「在我机器上是好的」的标准来源。
+#
+# 步骤写在这里而不是复用组织里的 web-check.yml：那份工作流的输入形状要去
+# JianyueLab-Org/actions 里确认，猜错了 CI 会以 startup_failure 收场，而那种
+# 失败连日志都没有。等确认过再换成 uses: 也只是删掉这几行的事。
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # --frozen-lockfile：CI 不该顺手升级依赖。锁文件对不上就该红，而不是装
+      # 一套和本地不同的东西然后通过。
+      - run: bun install --frozen-lockfile
+
+      # format:check + astro check + vue-tsc。最后那个是必要的：astro check
+      # 对 Vue SFC 里的任何类型错误都报 0 错误，而这个站的外壳整个是 Vue。
+      - run: bun run lint
+
+      - run: bun run build

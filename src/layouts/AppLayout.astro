@@ -1,0 +1,67 @@
+---
+/**
+ * 轨 + 正文。**没有站头，也不要加回来** —— 为什么见 AppRail.vue 顶上的注释。
+ *
+ * 每个页面都用这一层，所以导航、快速跳转、账户、主题只有一份实现；can-web 上
+ * 那几十个各自拼一遍外壳的页面是历史，不是值得抄的东西。
+ *
+ * `client:load` 而不是 `client:idle`：轨是这个站唯一的导航，在它水合之前手机
+ * 上那颗抽屉按钮按下去没有反应 —— 一个看得见、按得动、却不动作的按钮比晚一点
+ * 出现更糟。桌面上导航链接本身是 <a>，不依赖水合，所以这个代价只在手机上真正
+ * 兑现。
+ *
+ * `messages` 只传 `efb` 这一本，而不是整本词典：岛屿的 props 会原样序列化进每
+ * 个页面的 HTML，多传的每一个 KB 都要在每次访问里付一遍。
+ */
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import AppRail from "@/components/ui/AppRail.vue";
+import { getLocale, getMessages, useTranslations } from "@/lib/i18n";
+import { buildCrossLinks, buildNav } from "@/lib/nav";
+import { toEfbUser } from "@/lib/session";
+import { signInUrl } from "@/lib/config";
+
+interface Props {
+  title?: string;
+  description?: string;
+  /**
+   * 正文容器的宽度。航图和地图那类页面要整幅，`full` 去掉最大宽度限制。
+   */
+  width?: "default" | "full";
+}
+
+const { title, description, width = "default" } = Astro.props;
+
+const locale = getLocale(Astro.cookies);
+const t = useTranslations(locale, "efb");
+
+// 中间件已经问过 can-api 了，这里只是取出来 —— 不要在页面里再解一次会话，那会
+// 变成每渲染一个页面就多打一次 /auth/session。
+const user = toEfbUser(Astro.locals.user);
+
+const sections = buildNav(t);
+const crossLinks = buildCrossLinks(t);
+const mainWidth = width === "full" ? "max-w-none" : "max-w-6xl";
+---
+
+<BaseLayout title={title} description={description}>
+  <AppRail
+    sections={sections}
+    crossLinks={crossLinks}
+    pathname={Astro.url.pathname}
+    messages={getMessages(locale, "efb")}
+    locale={locale}
+    user={user}
+    signInHref={signInUrl()}
+    client:load
+  />
+
+  <div class="app-main-offset min-h-dvh">
+    <main
+      id="main-content"
+      tabindex="-1"
+      class={`mx-auto w-full px-4 py-8 sm:px-6 lg:px-8 lg:py-10 ${mainWidth}`}
+    >
+      <slot />
+    </main>
+  </div>
+</BaseLayout>

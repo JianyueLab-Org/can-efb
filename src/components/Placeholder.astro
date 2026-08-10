@@ -1,0 +1,31 @@
+---
+/**
+ * 「这一页还没有内容」，并且**说清楚缺的是什么**。
+ *
+ * 四个页面还指着它：航图、机场、性能、检查单。它们不是没写，是没有数据源 ——
+ * 航图是版权数据，性能要机型手册，机场要一份带跑道和频率的数据库，检查单要按
+ * 机型录入。can-api 一条都不提供，凭空造一个假的仪表盘只会让人以为是坏了。
+ *
+ * `reason` 就是那句「缺什么」。加数据源的人看到它就知道该去接哪一头。
+ */
+import { getLocale, useTranslations } from "@/lib/i18n";
+
+interface Props {
+  /** i18n 键，落在 `efb.placeholder.reasons.*` 下。 */
+  reason?: string;
+}
+
+const { reason } = Astro.props;
+
+const locale = getLocale(Astro.cookies);
+const t = useTranslations(locale, "efb");
+---
+
+<div
+  class="surface-grid flex flex-col items-center justify-center rounded-card border border-dashed border-subtle px-6 py-16 text-center"
+>
+  <p class="text-sm font-semibold text-ink">{t("placeholder.title")}</p>
+  <p class="mt-2 max-w-md text-sm text-muted">
+    {reason ? t(`placeholder.reasons.${reason}`) : t("placeholder.body")}
+  </p>
+</div>

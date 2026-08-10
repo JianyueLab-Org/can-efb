@@ -1,0 +1,25 @@
+---
+/**
+ * 404。**带外壳**，不是一个孤零零的错误页。
+ *
+ * 走错一个地址的人下一步一定是去别的地方，而这个站的「别的地方」全在轨里。用
+ * BaseLayout 渲染会让他们只剩下浏览器的后退按钮。
+ */
+import AppLayout from "@/layouts/AppLayout.astro";
+import { getLocale, useTranslations } from "@/lib/i18n";
+
+const t = useTranslations(getLocale(Astro.cookies), "efb");
+---
+
+<AppLayout title={t("notFound.title")}>
+  <div
+    class="surface-grid flex flex-col items-center justify-center rounded-card border border-dashed border-subtle px-6 py-20 text-center"
+  >
+    <p class="font-mono text-5xl font-semibold tracking-tight text-faint">
+      404
+    </p>
+    <h1 class="mt-4 text-lg font-semibold text-ink">{t("notFound.title")}</h1>
+    <p class="mt-2 max-w-sm text-sm text-muted">{t("notFound.body")}</p>
+    <a href="/" class="btn btn-primary mt-6">{t("notFound.home")}</a>
+  </div>
+</AppLayout>
