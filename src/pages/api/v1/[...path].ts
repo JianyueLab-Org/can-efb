@@ -30,7 +30,22 @@ interface Allowed {
   methods: string[];
   /** 谁在用它 —— 没有这一句，以后没人敢删任何一条。 */
   who: string;
+  /**
+   * 这一条允许跑多久，毫秒。缺省 {@link DEFAULT_TIMEOUT}。
+   *
+   * 存在的理由只有一个：**取图不是一次接口调用，是一次下载**。默认那 15 秒对
+   * 一个回 JSON 的接口是宽裕的上限，对一份三兆的进近图是一把铡刀 —— 而且铡的
+   * 不是我们这边，是成员那边：字节是流着走的，浏览器读得慢，背压就一路顶回
+   * 上游，于是机场 wifi 上一份大图会在 15 秒整被切断，看起来像图坏了。
+   */
+  timeoutMs?: number;
 }
+
+/** 回 JSON 的接口的上限。can-api 在集群里，正常都在几十毫秒。 */
+const DEFAULT_TIMEOUT = 15_000;
+
+/** 取图的上限。见 Allowed.timeoutMs —— 这一条量的是成员的连接，不是我们的。 */
+const DOWNLOAD_TIMEOUT = 180_000;
 
 const ALLOW_LIST: Record<string, Allowed> = {
   // 外壳：轨脚的账户区、退出按钮。
@@ -66,7 +81,30 @@ const ALLOW_LIST: Record<string, Allowed> = {
   // 有页面要用再加，别先摆着。
   metar: { methods: ["GET"], who: "Weather.vue / Dashboard.vue" },
   route: { methods: ["GET"], who: "RoutePlanner.vue" },
+
+  // 航图。三条路由在 can-api 那边都要会话、而且**都不带 scope** —— 图是只授权
+  // 给本网络成员看的 AIP 资料，会话在那里是一条授权边界。这边照转就行，鉴权不
+  // 在这一层判。
+  "charts/airports": { methods: ["GET"], who: "Charts.vue 机场选择" },
+  charts: { methods: ["GET"], who: "Charts.vue 图册清单" },
 };
+
+/**
+ * 带参数的路径。
+ *
+ * 上面那张表是精确匹配，而取图的地址里有一个 id。**没有把它放宽成前缀匹配**：
+ * 一条 `charts/` 开头就放行的规则会把 can-api 将来任何 `/charts/...` 的路由一起
+ * 放出去，包括还没写的那些。所以这里是一条锚定的正则，紧到和精确匹配只差那个
+ * id —— 加第二条之前先想清楚同样的问题。
+ */
+const ALLOW_PATTERNS: Array<Allowed & { pattern: RegExp }> = [
+  {
+    pattern: /^charts\/[1-9][0-9]{0,9}\/file$/,
+    methods: ["GET"],
+    who: "ChartViewer.vue 取图字节",
+    timeoutMs: DOWNLOAD_TIMEOUT,
+  },
+];
 
 const UNSAFE = new Set(["POST", "PATCH", "PUT", "DELETE"]);
 
@@ -75,12 +113,36 @@ const UNSAFE = new Set(["POST", "PATCH", "PUT", "DELETE"]);
  *
  * `set-cookie` **必须**在里面：退出登录是 can-api 用一个 Set-Cookie 清掉会话
  * 的，漏掉它成员就永远登不出去。
+ *
+ * 后面五条是给航图的。取图回来的是几百 KB 到几 MB 的 PDF，而 pdf.js 会先要
+ * 一段字节把第一页画出来 —— 少了 `accept-ranges` 它根本不会去问，少了
+ * `content-range` 它会把 206 的那一小段当成整份文件解析。`content-length` 让
+ * 进度条是真的，`content-disposition` 让成员另存下来的文件叫图的名字而不是叫
+ * `file`。
  */
-const PASS_THROUGH = ["content-type", "cache-control", "set-cookie"];
+const PASS_THROUGH = [
+  "content-type",
+  "cache-control",
+  "set-cookie",
+  "content-length",
+  "content-disposition",
+  "accept-ranges",
+  "content-range",
+  "etag",
+];
+
+/**
+ * 逐字转发**上去**的请求头。
+ *
+ * 只有 Range，而且只有它：这一层是白名单，转发头也该是。cookie 和
+ * content-type 在下面单独处理，因为它们每个请求都要。
+ */
+const FORWARD_UP = ["range"];
 
 const handler: APIRoute = async (context) => {
   const rest = context.params.path ?? "";
-  const entry = ALLOW_LIST[rest];
+  const entry =
+    ALLOW_LIST[rest] ?? ALLOW_PATTERNS.find((p) => p.pattern.test(rest));
 
   if (!entry) {
     return Response.json(
@@ -117,6 +179,10 @@ const handler: APIRoute = async (context) => {
   if (cookie) headers.set("cookie", cookie);
   const contentType = context.request.headers.get("content-type");
   if (contentType) headers.set("content-type", contentType);
+  for (const name of FORWARD_UP) {
+    const value = context.request.headers.get(name);
+    if (value) headers.set(name, value);
+  }
 
   let upstream: Response;
   try {
@@ -129,7 +195,7 @@ const handler: APIRoute = async (context) => {
           : context.request.body,
       // body 是流，Node 的 fetch 要求显式声明才肯发。
       ...(method === "GET" || method === "HEAD" ? {} : { duplex: "half" }),
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(entry.timeoutMs ?? DEFAULT_TIMEOUT),
     } as RequestInit);
   } catch (error) {
     console.error(`can-api ${rest} unreachable:`, error);

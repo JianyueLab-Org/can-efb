@@ -92,7 +92,6 @@
       "title": "這一頁還沒有內容",
       "body": "先落地的是框架：外殼、導覽、主題與多語系已經就位。頁面內容要等接上 can-api 之後再填。",
       "reasons": {
-        "charts": "航圖是有版權的資料，網路裡現在沒有任何一處提供它 —— 這一頁要等有了圖源（自建或者授權）之後才能做。",
         "airports": "還沒有一份帶跑道、頻率和滑行道的機場資料庫可讀。Sector/ 和 Ground/ 裡有一部分，但它們是 EuroScope 的格式，要先有一個介面把它餵出來。",
         "performance": "起降性能和重量平衡要機型手冊的資料，那既不在 can-api 裡，也不該由這個站憑空編。",
         "checklists": "檢查表要按機型逐條輸入。資料本身還不存在，介面也就無從談起。"
@@ -100,7 +99,8 @@
     },
     "common": {
       "loading": "載入中…",
-      "refresh": "重新整理"
+      "refresh": "重新整理",
+      "back": "返回"
     },
     "notFound": {
       "title": "沒有這一頁",
@@ -257,6 +257,36 @@
         "rail": "預設收合側欄",
         "railHint": "把左側導覽收成一列圖示，給正文讓出寬度。",
         "themeHint": "主題和語言在側欄底部切換。"
+      }
+    },
+    "charts": {
+      "searchLabel": "搜尋機場",
+      "searchPlaceholder": "ICAO 四字碼",
+      "emptyLibrary": "航圖庫裡還沒有任何機場。",
+      "noCharts": "這個機場還沒有航圖。",
+      "pickAirport": "先選一個機場。",
+      "pickChart": "選一張圖。",
+      "unavailable": "這個部署沒有設定航圖庫。航圖存放在一個私有儲存桶裡，需要管理員設定之後才能檢視。",
+      "categories": {
+        "REF": "機場資料",
+        "ADC": "機場圖",
+        "GMC": "地面活動",
+        "SID": "標準儀器離場",
+        "STAR": "標準儀器進場",
+        "IAC": "儀器進場",
+        "MISC": "其他"
+      },
+      "viewer": {
+        "loading": "正在開啟…",
+        "failed": "這張圖開不了。",
+        "page": "頁",
+        "zoomIn": "放大",
+        "zoomOut": "縮小",
+        "rotate": "旋轉 90°",
+        "invert": "夜間反色",
+        "fitWidth": "貼合寬度",
+        "prev": "上一頁",
+        "next": "下一頁"
       }
     }
   }

@@ -92,7 +92,6 @@
       "title": "Nothing here yet",
       "body": "The frame lands first: shell, navigation, theme and languages are in place. The content waits on can-api being wired up.",
       "reasons": {
-        "charts": "Charts are copyrighted data and nothing on the network serves them today. This page waits on a source — licensed or our own.",
         "airports": "There is no airport database with runways, frequencies and taxiways to read. Sector/ and Ground/ hold some of it, but in EuroScope's formats; something has to serve it first.",
         "performance": "Takeoff and landing performance needs manufacturer data. It is not in can-api, and this app should not invent it.",
         "checklists": "Checklists have to be entered per aircraft type. The data does not exist yet, so neither does an endpoint for it."
@@ -100,7 +99,8 @@
     },
     "common": {
       "loading": "Loading…",
-      "refresh": "Refresh"
+      "refresh": "Refresh",
+      "back": "Back"
     },
     "notFound": {
       "title": "No such page",
@@ -257,6 +257,36 @@
         "rail": "Collapse the sidebar by default",
         "railHint": "Shrinks the rail to a column of icons and gives the width back to the page.",
         "themeHint": "Theme and language are at the foot of the sidebar."
+      }
+    },
+    "charts": {
+      "searchLabel": "Search airports",
+      "searchPlaceholder": "ICAO code",
+      "emptyLibrary": "The chart library has no airports yet.",
+      "noCharts": "No charts for this airport yet.",
+      "pickAirport": "Pick an airport to begin.",
+      "pickChart": "Pick a chart.",
+      "unavailable": "This deployment has no chart library configured. Charts live in a private bucket and an administrator has to set it up before they can be viewed.",
+      "categories": {
+        "REF": "Aerodrome information",
+        "ADC": "Aerodrome chart",
+        "GMC": "Ground movement",
+        "SID": "Standard instrument departure",
+        "STAR": "Standard instrument arrival",
+        "IAC": "Instrument approach",
+        "MISC": "Other"
+      },
+      "viewer": {
+        "loading": "Opening…",
+        "failed": "This chart could not be opened.",
+        "page": "Page",
+        "zoomIn": "Zoom in",
+        "zoomOut": "Zoom out",
+        "rotate": "Rotate 90°",
+        "invert": "Night mode",
+        "fitWidth": "Fit width",
+        "prev": "Previous page",
+        "next": "Next page"
       }
     }
   }

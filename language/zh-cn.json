@@ -92,7 +92,6 @@
       "title": "这一页还没有内容",
       "body": "先落地的是框架：外壳、导航、主题与多语言已经就位。页面内容要等接上 can-api 之后再填。",
       "reasons": {
-        "charts": "航图是有版权的数据，网络里现在没有任何一处提供它 —— 这一页要等有了图源（自建或者授权）之后才能做。",
         "airports": "还没有一份带跑道、频率和滑行道的机场数据库可读。Sector/ 和 Ground/ 里有一部分，但它们是 EuroScope 的格式，要先有一个接口把它喂出来。",
         "performance": "起降性能和重量平衡要机型手册的数据，那既不在 can-api 里，也不该由这个站凭空编。",
         "checklists": "检查单要按机型逐条录入。数据本身还不存在，接口也就无从谈起。"
@@ -100,7 +99,8 @@
     },
     "common": {
       "loading": "载入中…",
-      "refresh": "刷新"
+      "refresh": "刷新",
+      "back": "返回"
     },
     "notFound": {
       "title": "没有这一页",
@@ -257,6 +257,36 @@
         "rail": "默认收起侧栏",
         "railHint": "把左侧导航收成一列图标，给正文让出宽度。",
         "themeHint": "主题和语言在侧栏底部切换。"
+      }
+    },
+    "charts": {
+      "searchLabel": "搜索机场",
+      "searchPlaceholder": "ICAO 四字码",
+      "emptyLibrary": "航图库里还没有任何机场。",
+      "noCharts": "这个机场还没有航图。",
+      "pickAirport": "先选一个机场。",
+      "pickChart": "选一张图。",
+      "unavailable": "这个部署没有配置航图库。航图存放在一个私有存储桶里，需要管理员配置之后才能查看。",
+      "categories": {
+        "REF": "机场资料",
+        "ADC": "机场图",
+        "GMC": "地面活动",
+        "SID": "标准仪表离场",
+        "STAR": "标准仪表进场",
+        "IAC": "仪表进近",
+        "MISC": "其他"
+      },
+      "viewer": {
+        "loading": "正在打开…",
+        "failed": "这张图打不开。",
+        "page": "页",
+        "zoomIn": "放大",
+        "zoomOut": "缩小",
+        "rotate": "旋转 90°",
+        "invert": "夜间反色",
+        "fitWidth": "贴合宽度",
+        "prev": "上一页",
+        "next": "下一页"
       }
     }
   }

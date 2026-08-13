@@ -14,7 +14,7 @@ Tailwind v4，Bun 装包。开发端口 **4324**（4321 can-web、4322 can-dev�
 4323 can-radar）。
 
 **已经接上 can-api**：会话、飞行计划（读/交/撤 + SimBrief 导入）、飞行日志、
-METAR、航路展开都是真数据。还有四个页面仍是占位 —— 航图、机场、性能、检查
+METAR、航路展开、航图都是真数据。还有三个页面仍是占位 —— 机场、性能、检查
 单 —— 它们不是没写，是**没有数据源**，占位组件会把缺的那一样说出来。
 
 和 can-dev / can-radar 一样，这个站**一行数据库凭据都不该有**，而且比它们更进
@@ -127,15 +127,19 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 **这个站自己的**：外壳（`AppRail.vue`、`SidebarNav.vue`、`RailScript.astro`、
 两个 layout、`PageHeader.astro`、`Placeholder.astro`）、数据层
 （`lib/canApi.ts`、`server/canApi.ts`、`lib/config.ts`、`lib/session.ts`、
-`middleware.ts`、`pages/api/v1/[...path].ts`）、六个功能岛屿
-（`Dashboard`、`FlightPlan`、`Weather`、`Logbook`、`RoutePlanner`、`Settings`）
-和航路地图 `RouteMap.vue`、`lib/nav.ts`、`language/*.json`。
+`middleware.ts`、`pages/api/v1/[...path].ts`）、七个功能岛屿
+（`Dashboard`、`FlightPlan`、`Weather`、`Logbook`、`RoutePlanner`、`Charts`、
+`Settings`）、两个懒加载组件（航路地图 `RouteMap.vue`、航图阅读器
+`ChartViewer.vue`）、`lib/nav.ts`、`language/*.json`。
 
-**`RouteMap.vue` 是这个站唯一一个不能被服务端渲染的组件**：Leaflet 在模块顶层
-就摸 `window`。它由 `RoutePlanner` 用 `defineAsyncComponent` 引入，并且只在真的
-解出航路之后才渲染 —— 于是那 152 KB 的 chunk 只在用了这个功能的人身上产生流量
-（15 KB 的 leaflet.css 仍然随页面走，Vite 会把异步 chunk 的样式提到 `<head>`）。
-静态 import 它，或者给它加 `client:load`，两种改法都会让 `/route` 直接 500。
+**`RouteMap.vue` 和 `ChartViewer.vue` 是这个站仅有的两个不能被服务端渲染的组
+件**，两个都用 `defineAsyncComponent` 引入，静态 import 或者给它们加
+`client:load` 都会让对应的页面直接 500。
+
+`RouteMap.vue`：Leaflet 在模块顶层就摸 `window`。它由 `RoutePlanner` 引入，并且
+只在真的解出航路之后才渲染 —— 于是那 152 KB 的 chunk 只在用了这个功能的人身上
+产生流量（15 KB 的 leaflet.css 仍然随页面走，Vite 会把异步 chunk 的样式提到
+`<head>`）。`ChartViewer.vue` 是同一件事，理由更硬 —— 见下面「航图」一节。
 
 `SidebarNav.vue` 虽然形状来自 can-web，但把可折叠的 `children` 换成了**扁平分
 节** —— 理由见 `src/lib/nav.ts`：轨能收成图标态，而手风琴在图标态下没有讲得通
@@ -161,12 +165,48 @@ cookie 名是 **`NEXT_LOCALE`**，Next.js 时代留下来的；四个站共用�
 传进岛屿的是 `getMessages(locale, "efb")` 这一本，不是整本词典 —— 岛屿的 props
 会原样序列化进每个页面的 HTML。
 
-## 四个还是占位的页面，以及为什么
+## 航图
+
+图放在 can-api 的一个**私有** R2 桶里，这个站三条路由都走反代：
+`charts/airports`（有图的机场）、`charts?icao=`（一个机场的图册）、
+`charts/{id}/file`（图的字节）。
+
+**这三条在 can-api 那边都要会话，而且都不带 scope。** 会话在那里是一条**授权**
+边界而不是隐私边界：这是只授权给本网络成员看的 AIP 资料，所以没有任何 OAuth 应
+用能拿到它。相应地，这个页面上没有「下载全部」「导出」这类入口，也不该加。
+
+**字节是转发的，不是预签名 URL。** 预签名 URL 就是塞在 query 里的一个 bearer
+token，会留在历史记录和截图里、过期前收不回来。转发多一跳，换来每个请求都验一
+次会话。
+
+三件这边特有的事：
+
+1. **`ChartViewer.vue` 是这个站第二个不能被服务端渲染的组件**，理由和
+   `RouteMap.vue` 一样但更硬：pdf.js 在模块顶层就摸 `window` 和 `Worker`。它由
+   `Charts.vue` 用 `defineAsyncComponent` 引入 —— 页面本身 7.9 KB，阅读器那
+   431 KB 和 worker 那 1.26 MB 只落在真的点开了某张图的人身上。静态 import 它
+   会让 `/charts` 直接 500。
+2. **反代白名单多了一条正则**（`ALLOW_PATTERNS`）。取图的地址里有一个 id，精确
+   匹配放不下。**没有**把它放宽成 `charts/` 前缀匹配：那会把 can-api 将来任何
+   `/charts/...` 的路由一起放出去，包括还没写的那些。加第二条之前先想清楚同样
+   的问题。
+3. **取图那一条的超时是单独的**（`DOWNLOAD_TIMEOUT`，180 秒，默认那条是 15
+   秒）。默认值对一个回 JSON 的接口是宽裕的上限，对一份三兆的进近图是一把铡
+   刀 —— 而且铡的是成员那边：字节是流着走的，浏览器读得慢，背压一路顶回上游，
+   机场 wifi 上一份大图会在 15 秒整被切断，看起来像图坏了。
+
+上传是把文件放进桶，然后在 can-api 跑一次 `go run ./cmd/sync-charts --apply`。
+键的约定（`charts/<AIRAC>/<ICAO>/<CATEGORY>/<NN>-<title>.<ext>`）就是全部
+schema，桶是事实，那张表只是索引。
+
+**周期要显示出来。** 每份图册都带着 AIRAC，界面上必须看得见 —— 一张不知道是哪
+一期的进近图比没有图更危险。
+
+## 三个还是占位的页面，以及为什么
 
 不是没写，是**没有数据源**。`Placeholder.astro` 会把缺的那一样显示出来，文案在
 `efb.placeholder.reasons.*`：
 
-- **航图** —— 有版权的数据，网络里没有任何一处提供它。要么授权，要么自建图源。
 - **机场** —— 没有一份带跑道、频率、滑行道的机场库可读。`Sector/` 和 `Ground/`
   里有一部分，但那是 EuroScope 的格式，要先有接口把它喂出来。
 - **性能** —— 要机型手册的数据。不在 can-api 里，也不该由这个站凭空编。
@@ -174,6 +214,10 @@ cookie 名是 **`NEXT_LOCALE`**，Next.js 时代留下来的；四个站共用�
 
 **别用假数据把它们填上。** 一个摆着占位数字的仪表盘会被当成坏掉的真页面，而不
 是还没做的页面 —— 飞行员会照着它做决定。
+
+航图原本也在这份名单上，理由是「有版权的数据，网络里没有任何一处提供它」。它是
+怎么毕业的值得记一笔：**缺的从来不是代码，是一个我们有权提供的图源。** 上面三
+条也一样。
 
 ## 还没做的事（按该做的顺序）
 
