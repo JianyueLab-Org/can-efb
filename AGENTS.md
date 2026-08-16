@@ -13,6 +13,11 @@ can-radar）刻意保持一致 —— Astro SSR（standalone Node 适配器）+ 
 Tailwind v4，Bun 装包。开发端口 **4324**（4321 can-web、4322 can-dev、
 4323 can-radar）。
 
+仓库是 `JianyueLab-Org/can-efb`，已作为 submodule 挂在 monorepo
+`CeruleanAviationNetwork` 里；CI 和 `deploy/k8s.yaml` 的镜像地址都按这个名字
+写好了。改动照常在本仓库提交并推到自己的 upstream，**推完再**去根仓库移动那个
+commit 指针 —— 根仓库只记录指针，指向一个没推过的 SHA 会让别人克隆出坏掉的树。
+
 **已经接上 can-api**：会话、飞行计划（读/交/撤 + SimBrief 导入）、飞行日志、
 METAR、航路展开都是真数据。还有四个页面仍是占位 —— 航图、机场、性能、检查
 单 —— 它们不是没写，是**没有数据源**，占位组件会把缺的那一样说出来。
@@ -177,20 +182,19 @@ cookie 名是 **`NEXT_LOCALE`**，Next.js 时代留下来的；四个站共用�
 
 ## 还没做的事（按该做的顺序）
 
-1. **仓库还没有 remote**，也还没作为 submodule 挂进上级 monorepo。挂之前先建
-   GitHub 仓库（`JianyueLab-Org/can-efb`）并推上去 —— 根仓库只记录 submodule 的
-   commit 指针，指向一个没推过的 SHA 会让别人克隆出一个坏掉的树。CI 和
-   `deploy/k8s.yaml` 里的镜像地址都已经按这个名字写好了。
-2. **上线前的两件外部事项**：把 `efb.airwaysn.org` 接进 Cloudflare 隧道，确认
-   can-api 的会话 cookie 域覆盖 `.airwaysn.org`。**不需要**动 can-api 的
-   `ALLOWED_ORIGINS`（浏览器从不直连它）。
-3. **品牌资源**。`public/favicon.svg` 现在是一块写着 EFB 的品牌色方牌，占位而
+1. **上线**。这个站**还没有部署** —— `efb.airwaysn.org` 至今不解析。清单本身不
+   缺：`deploy/k8s.yaml` 已经写好，Ingress 走 `cloudflare-tunnel`，host 就是这
+   个域。缺的是两件外部事项：把它接进 Cloudflare 隧道，确认 can-api 的会话
+   cookie 域覆盖 `.airwaysn.org`。**不需要**动 can-api 的 `ALLOWED_ORIGINS`
+   （浏览器从不直连它）。同网络的 can-controller 和 can-docs 已经照同样的形状
+   跑在 jyl-tyo 上，可以拿它们的部署当参照。
+2. **品牌资源**。`public/favicon.svg` 现在是一块写着 EFB 的品牌色方牌，占位而
    已；轨里那块也是。正式标识到位后连同 `apple-touch-icon.png` /
    `icon-512.png` 一起补进 `BaseLayout.astro`。正式 logo 不能用
    `logo-full.png` —— 那张图上写的是旧名字。
-4. **登录后跳回 EFB**。见上面 can-web `callbackUrl` 那一段：要动 can-web，且是
+3. **登录后跳回 EFB**。见上面 can-web `callbackUrl` 那一段：要动 can-web，且是
    一处对开放重定向敏感的改动。
-5. **METAR 解码**。现在只显示原文，那是刻意的（`Weather.vue` 顶上有说明）。真
+4. **METAR 解码**。现在只显示原文，那是刻意的（`Weather.vue` 顶上有说明）。真
    要做，它该是一个带测试的独立模块，不是组件里的一段正则。
 
 ## 命令
