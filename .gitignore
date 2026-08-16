@@ -22,3 +22,9 @@ pnpm-debug.log*
 
 # jetbrains setting folder
 .idea/
+
+# Claude Code 的本地状态。要紧的是 .claude/worktrees/ —— 它在这个仓库里再检出
+# 一份工作副本（连 node_modules 一起，轻易上万个文件）。不忽略的话，把本仓库当
+# submodule 的 CeruleanAviationNetwork 每次 git status 都报「子模块有未跟踪内容」，
+# 而那既不是改动也不是待推送的东西。
+.claude/
