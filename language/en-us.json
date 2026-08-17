@@ -237,7 +237,7 @@
         "title": "Account",
         "hint": "This comes from your network account. Change it on the main site.",
         "name": "Name",
-        "id": "ASN ID",
+        "id": "CAN ID",
         "email": "Email",
         "rating": "Rating"
       },

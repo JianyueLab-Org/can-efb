@@ -6,8 +6,8 @@ export const prerender = false;
 /**
  * 走白名单的 can-api 反代。
  *
- * **为什么有这一层，而不是让岛屿直接打 api.airwaysn.org。** can-web 是直连
- * 的，因为 `airwaysn.org` 写在 can-api 的 `ALLOWED_ORIGINS` 里；EFB 这个域没
+ * **为什么有这一层，而不是让岛屿直接打 api.ceruleanavi.net。** can-web 是直连
+ * 的，因为 `ceruleanavi.net` 写在 can-api 的 `ALLOWED_ORIGINS` 里；EFB 这个域没
  * 写，加进去要改 can-api 的部署环境变量并重启。同源反代让这个站**今天**就能
  * 跑，一行 can-api 都不用动 —— can-radar 出于同一个理由代理了 `/track` 和
  * `/metar`。

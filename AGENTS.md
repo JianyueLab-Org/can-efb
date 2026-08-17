@@ -78,8 +78,8 @@ cookie 转发回去。哪天有人要在这里加 Secret，先确认那件事不
 | `src/pages/api/v1/[...path].ts` | 浏览器       | 走**白名单**的同源反代                 |
 | `src/lib/canApi.ts`             | 岛屿         | 打上面那个反代，拆信封，把失败变成值   |
 
-**为什么浏览器不直连 api.airwaysn.org。** can-web 是直连的，因为
-`airwaysn.org` 写在 can-api 的 `ALLOWED_ORIGINS` 里。EFB 这个域没写，加进去要
+**为什么浏览器不直连 api.ceruleanavi.net。** can-web 是直连的，因为
+`ceruleanavi.net` 写在 can-api 的 `ALLOWED_ORIGINS` 里。EFB 这个域没写，加进去要
 改 can-api 的部署环境变量并重启 —— 同源反代让这个站今天就能跑，一行 can-api 都
 不用动，顺带也不需要 CORS。can-radar 代理 `/track` 和 `/metar` 是同一个理由。
 
@@ -182,10 +182,10 @@ cookie 名是 **`NEXT_LOCALE`**，Next.js 时代留下来的；四个站共用�
 
 ## 还没做的事（按该做的顺序）
 
-1. **上线**。这个站**还没有部署** —— `efb.airwaysn.org` 至今不解析。清单本身不
+1. **上线**。这个站**还没有部署** —— `efb.ceruleanavi.net` 至今不解析。清单本身不
    缺：`deploy/k8s.yaml` 已经写好，Ingress 走 `cloudflare-tunnel`，host 就是这
    个域。缺的是两件外部事项：把它接进 Cloudflare 隧道，确认 can-api 的会话
-   cookie 域覆盖 `.airwaysn.org`。**不需要**动 can-api 的 `ALLOWED_ORIGINS`
+   cookie 域覆盖 `.ceruleanavi.net`。**不需要**动 can-api 的 `ALLOWED_ORIGINS`
    （浏览器从不直连它）。同网络的 can-controller 和 can-docs 已经照同样的形状
    跑在 jyl-tyo 上，可以拿它们的部署当参照。
 2. **品牌资源**。`public/favicon.svg` 现在是一块写着 EFB 的品牌色方牌，占位而
@@ -208,17 +208,17 @@ PUBLIC_ORIGIN=http://localhost:4324 bun run preview   # 预览构建产物，前
 ```
 
 **预览构建产物时 `PUBLIC_ORIGIN` 不能省。** 写操作要比对 Origin 头，比对的
-对象是 `lib/config.ts` 里的 `origin()`，它兜底成 `https://efb.airwaysn.org` ——
+对象是 `lib/config.ts` 里的 `origin()`，它兜底成 `https://efb.ceruleanavi.net` ——
 在 localhost 上预览而不覆盖它，浏览器发出的每一个 POST / DELETE 都会被本站的反
 代挡成 **403**：交计划、撤计划、退出登录、绑定 SimBrief 全都不动，而且失败得毫
 无线索（curl 不带 Origin 头，所以命令行试是通的，只有浏览器会中招）。`bun run
 dev` 用的是同一个 `origin()`，同样的坑，同样的加法。
 
 **本地开发有一件事要先知道：整站要登录，而登录态来自 can-api 签在
-`.airwaysn.org` 上的 cookie。** 所以在 `localhost` 上打开任何页面都会 302 到
-`https://airwaysn.org/signin` —— 那是**正确行为**，不是配置坏了。要真正看到页
+`.ceruleanavi.net` 上的 cookie。** 所以在 `localhost` 上打开任何页面都会 302 到
+`https://ceruleanavi.net/signin` —— 那是**正确行为**，不是配置坏了。要真正看到页
 面，得让浏览器带着一个 can-api 认的会话 cookie 访问这个实例（例如把本地实例挂
-在一个 `*.airwaysn.org` 的名字下，或者本地起一套 can-api）。
+在一个 `*.ceruleanavi.net` 的名字下，或者本地起一套 can-api）。
 
 **不要为此加一个「开发模式假登录」开关。** 整个网络有一条明写的规矩：任何地方
 都不设绕过账号（`../CLAUDE.md`，can-api 那边还有测试盯着这件事）。

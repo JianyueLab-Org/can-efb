@@ -20,5 +20,5 @@ jobs:
       image: ghcr.io/jianyuelab-org/can-efb
       namespace: can-efb
       manifest: deploy/k8s.yaml
-      environment_url: https://efb.airwaysn.org
+      environment_url: https://efb.ceruleanavi.net
     secrets: inherit

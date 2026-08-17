@@ -11,8 +11,8 @@
 # 里，这个站只负责把它转发回 can-api。少一份凭据就少一个泄漏面 —— 如果哪天有人
 # 要在这里加 Secret，先确认那件事不能靠转发 cookie 完成。
 #
-# 上线前要做的一件事：把 efb.airwaysn.org 这个主机名接进 Cloudflare 隧道（控制
-# 器会自己登记），以及确认 can-api 的会话 cookie 域覆盖 `.airwaysn.org`。
+# 上线前要做的一件事：把 efb.ceruleanavi.net 这个主机名接进 Cloudflare 隧道（控制
+# 器会自己登记），以及确认 can-api 的会话 cookie 域覆盖 `.ceruleanavi.net`。
 # **不需要**把这个域加进 can-api 的 ALLOWED_ORIGINS —— 浏览器只打本站的同源
 # 反代，从不直连 can-api，那正是 src/pages/api/v1/[...path].ts 存在的理由。
 ---
@@ -48,14 +48,14 @@ spec:
           env:
             # 数据全部来自 can-api。
             - name: CAN_API_ORIGIN
-              value: https://api.airwaysn.org
+              value: https://api.ceruleanavi.net
             # 只用来指登录页 —— 这个站自己没有登录页，也不该有。
             - name: CAN_WEB_ORIGIN
-              value: https://airwaysn.org
+              value: https://ceruleanavi.net
             # 写操作的 Origin 比对基准。必须是显式值：反代后面从 Host 推出来的
             # 是 http://，浏览器发的是 https://，永远对不上。
             - name: PUBLIC_ORIGIN
-              value: https://efb.airwaysn.org
+              value: https://efb.ceruleanavi.net
           # 探的是 /healthz，不是 /。`/` 在这个站上会先问一次 can-api 再 302，
           # 拿它当探活等于每 10 秒给上游加一次白流量，而且会把上游的抖动放大成
           # 自己的 Pod 重启。详见 src/pages/healthz.ts。
@@ -110,7 +110,7 @@ metadata:
 spec:
   ingressClassName: cloudflare-tunnel
   rules:
-    - host: efb.airwaysn.org
+    - host: efb.ceruleanavi.net
       http:
         paths:
           - backend:

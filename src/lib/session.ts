@@ -17,7 +17,7 @@ export type { SessionUser };
 export interface EfbUser {
   /** 显示名；没有就退回用户名。 */
   name: string;
-  /** ASN ID。 */
+  /** CAN ID。 */
   id: string;
 }
 

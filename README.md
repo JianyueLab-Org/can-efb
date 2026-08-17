@@ -11,7 +11,7 @@ Astro SSR + Vue 岛屿 + Tailwind v4，和 can-web / can-dev / can-radar 同一�
 页面上会写清楚缺的是什么。
 
 > **本地跑起来会看到 302。** 整站要登录，而登录态是 can-api 签在
-> `.airwaysn.org` 上的 cookie，`localhost` 上拿不到，所以每个页面都会跳到主站
+> `.ceruleanavi.net` 上的 cookie，`localhost` 上拿不到，所以每个页面都会跳到主站
 > 登录页。那是正确行为。不登录也能验证的两处：`/healthz` 和
 > `/api/v1/metar?icao=ZBAA`。详见 [`AGENTS.md`](./AGENTS.md)。
 
