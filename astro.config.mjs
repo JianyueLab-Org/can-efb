@@ -25,5 +25,14 @@ export default defineConfig({
   adapter: node({ mode: "standalone" }),
   integrations: [vue()],
   security: { checkOrigin: false },
-  vite: { plugins: [tailwindcss()] },
+  vite: {
+    plugins: [tailwindcss()],
+
+    /**
+     * can-ui 发的是**源码**（`.vue` / `.ts` / `.css`）而不是构建产物。代价是必须
+     * 告诉 Vite 不要把它当外部依赖：不加这行，SSR 会去 `require` 一个 `.vue`
+     * 文件，首屏直接 500。
+     */
+    ssr: { noExternal: ["@jianyuelab-org/can-ui"] },
+  },
 });

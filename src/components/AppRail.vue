@@ -24,10 +24,8 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { api } from "@/lib/canApi";
 import { createTranslator } from "@/lib/i18n";
-import { useOverlay } from "@/lib/useOverlay";
-import Icon from "@/components/ui/Icon.vue";
-import SidebarNav from "@/components/ui/SidebarNav.vue";
-import ThemeLangControls from "@/components/ui/ThemeLangControls.vue";
+import { Icon, ThemeLangControls, useOverlay } from "@jianyuelab-org/can-ui";
+import SidebarNav from "@/components/SidebarNav.vue";
 import type { NavSection } from "@/lib/nav";
 import type { EfbUser } from "@/lib/session";
 

@@ -21,7 +21,7 @@
 import { defineAsyncComponent, onMounted, ref } from "vue";
 import { api } from "@/lib/canApi";
 import { createTranslator } from "@/lib/i18n";
-import Icon from "@/components/ui/Icon.vue";
+import { Icon } from "@jianyuelab-org/can-ui";
 import { distanceNm } from "@/lib/geo";
 
 /**
