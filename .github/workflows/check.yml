@@ -23,7 +23,18 @@ jobs:
 
       # --frozen-lockfile：CI 不该顺手升级依赖。锁文件对不上就该红，而不是装
       # 一套和本地不同的东西然后通过。
+      #
+      # GITHUB_TOKEN 是给 can-ui 用的：它装在 GitHub Packages 上，而 GitHub 的
+      # npm registry **即使是公开包也要求带令牌**。.npmrc 里写的是
+      # `_authToken=${GITHUB_TOKEN}`，那个变量在安装时才从环境里读，Actions
+      # 不会自动把它放进 env —— 缺了就是 401，而且报的是下载地址，不是「少了个
+      # 环境变量」。
+      #
+      # 这个仓库有自己的 check.yml，不走组织共享的 web-check.yml，所以那边加过
+      # 一次的这行在这里要再加一次。
       - run: bun install --frozen-lockfile
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # format:check + astro check + vue-tsc。最后那个是必要的：astro check
       # 对 Vue SFC 里的任何类型错误都报 0 错误，而这个站的外壳整个是 Vue。
