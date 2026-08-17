@@ -36,7 +36,7 @@ function isCurrentPath(href: string): boolean {
 
 const baseItem =
   "rail-item group flex w-full items-center gap-x-3 rounded-control px-2.5 py-2 text-sm font-medium transition-colors duration-150";
-const activeItem = "bg-surface-raised text-airwaysn shadow-card";
+const activeItem = "bg-surface-raised text-can shadow-card";
 const idleItem = "text-muted hover:bg-surface-raised hover:text-ink";
 </script>
 
@@ -75,7 +75,7 @@ const idleItem = "text-muted hover:bg-surface-raised hover:text-ink";
               :class="[
                 'size-5 shrink-0',
                 isCurrentPath(item.href)
-                  ? 'text-airwaysn'
+                  ? 'text-can'
                   : 'text-faint group-hover:text-muted',
               ]"
             />

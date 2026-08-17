@@ -224,7 +224,7 @@ onBeforeUnmount(() => {
           :title="collapsed ? t('siteName') : undefined"
         >
           <span
-            class="flex size-9 shrink-0 items-center justify-center rounded-control bg-airwaysn text-xs font-bold tracking-tight text-white"
+            class="flex size-9 shrink-0 items-center justify-center rounded-control bg-can text-xs font-bold tracking-tight text-white"
           >
             {{ t("shortName") }}
           </span>
@@ -284,7 +284,7 @@ onBeforeUnmount(() => {
                 @click="accountOpen = !accountOpen"
               >
                 <span
-                  class="flex size-8 shrink-0 items-center justify-center rounded-full bg-airwaysn text-xs font-semibold text-white"
+                  class="flex size-8 shrink-0 items-center justify-center rounded-full bg-can text-xs font-semibold text-white"
                 >
                   {{ initials }}
                 </span>
@@ -439,7 +439,7 @@ onBeforeUnmount(() => {
           >
             <a href="/" class="flex items-center gap-2.5 px-1.5 py-1">
               <span
-                class="flex size-9 shrink-0 items-center justify-center rounded-control bg-airwaysn text-xs font-bold tracking-tight text-white"
+                class="flex size-9 shrink-0 items-center justify-center rounded-control bg-can text-xs font-bold tracking-tight text-white"
               >
                 {{ t("shortName") }}
               </span>

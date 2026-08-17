@@ -84,19 +84,19 @@ const SECTIONS: NavSectionSpec[] = [
 const CROSS_LINKS: NavLinkSpec[] = [
   {
     key: "web",
-    href: "https://airwaysn.org",
+    href: "https://ceruleanavi.net",
     icon: "globeAlt",
     external: true,
   },
   {
     key: "radar",
-    href: "https://radar.airwaysn.org",
+    href: "https://radar.ceruleanavi.net",
     icon: "signal",
     external: true,
   },
   {
     key: "dev",
-    href: "https://platform.airwaysn.org",
+    href: "https://platform.ceruleanavi.net",
     icon: "commandLine",
     external: true,
   },

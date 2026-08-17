@@ -15,7 +15,7 @@ function clean(value: string | undefined): string {
  * `PUBLIC_` 前缀让 Astro 把它内联进客户端包 —— 它是主机名，不是密钥。但**浏
  * 览器其实用不到它**：岛屿走本站的 `/api/can/*` 反代（见
  * `src/pages/api/can/[...path].ts`），那样就不需要 can-api 那边为
- * efb.airwaysn.org 开一条 CORS。真正用它的是 SSR 和那个反代。
+ * efb.ceruleanavi.net 开一条 CORS。真正用它的是 SSR 和那个反代。
  *
  * 兜底成生产地址而不是空串：can-web 的 `src/server/canApi.ts` 记着这一条的代
  * 价 —— 空串在浏览器里能解析成同源相对地址，在服务端却是
@@ -25,7 +25,7 @@ function clean(value: string | undefined): string {
 export const CAN_API_ORIGIN =
   clean(process.env.CAN_API_ORIGIN) ||
   clean(import.meta.env.PUBLIC_CAN_API_ORIGIN) ||
-  "https://api.airwaysn.org";
+  "https://api.ceruleanavi.net";
 
 /**
  * can-web 的 origin。**只用来指登录页**，别的什么都不走它。
@@ -36,7 +36,7 @@ export const CAN_API_ORIGIN =
 export const CAN_WEB_ORIGIN =
   clean(process.env.CAN_WEB_ORIGIN) ||
   clean(import.meta.env.PUBLIC_CAN_WEB_ORIGIN) ||
-  "https://airwaysn.org";
+  "https://ceruleanavi.net";
 
 /**
  * 本站自己的 origin，写操作的 Origin 头要和它比对。
@@ -49,7 +49,7 @@ export function origin(): string {
   return (
     clean(process.env.PUBLIC_ORIGIN) ||
     clean(import.meta.env.PUBLIC_ORIGIN) ||
-    "https://efb.airwaysn.org"
+    "https://efb.ceruleanavi.net"
   );
 }
 
@@ -58,7 +58,7 @@ export function origin(): string {
  *
  * **不带 callbackUrl。** can-web 的 `/signin` 只接受站内绝对路径
  * （`/^\/(?!\/)/`），那是一道防开放重定向的检查，把
- * `https://efb.airwaysn.org/...` 传过去只会被丢掉、回落到 `/pilots`。要让成员
+ * `https://efb.ceruleanavi.net/...` 传过去只会被丢掉、回落到 `/pilots`。要让成员
  * 登录完回到 EFB，得先在 can-web 那边显式放行这个域 —— 那是一处对钓鱼很敏感
  * 的改动，属于 can-web 的评审范围，不该在这里偷偷绕过去。
  *

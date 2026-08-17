@@ -5,7 +5,7 @@
  *
  * 和 can-web 的同名文件有一处**关键差别** —— 这里打的是**同源**的
  * `/api/v1/...`，由本站的反代（`src/pages/api/v1/[...path].ts`）转给 can-api，
- * 而不是直连 api.airwaysn.org。理由写在那个文件顶上：can-api 的
+ * 而不是直连 api.ceruleanavi.net。理由写在那个文件顶上：can-api 的
  * `ALLOWED_ORIGINS` 里没有 efb 这个域。
  *
  * 代价是路径必须在那份白名单里，收益是这个站不依赖 can-api 的一次部署改动。

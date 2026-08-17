@@ -217,7 +217,7 @@ onMounted(() => {
           :aria-checked="railCollapsed"
           :class="[
             'relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors',
-            railCollapsed ? 'bg-airwaysn' : 'bg-surface-sunken',
+            railCollapsed ? 'bg-can' : 'bg-surface-sunken',
           ]"
           @click="toggleRail(!railCollapsed)"
         >
