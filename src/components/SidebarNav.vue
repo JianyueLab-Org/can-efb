@@ -2,7 +2,7 @@
 /**
  * 侧栏里的链接列表。
  *
- * 形状是从 can-web/src/components/ui/SidebarNav.vue 来的，但把可折叠的 children
+ * 形状是从 can-ui 的 SidebarNav 来的，但把可折叠的 children
  * 换成了扁平的分节 —— 理由写在 src/lib/nav.ts 里：轨能收成图标态，而手风琴在
  * 图标态下没有讲得通的交互。
  *
@@ -11,7 +11,7 @@
  * 需要在折叠时把 aria-label 补上 —— 文字被 CSS 藏起来了，读屏软件不能跟着一起
  * 失明。
  */
-import Icon from "@/components/ui/Icon.vue";
+import { Icon } from "@jianyuelab-org/can-ui";
 import type { NavSection } from "@/lib/nav";
 
 const props = defineProps<{
