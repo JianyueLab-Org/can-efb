@@ -13,8 +13,8 @@ function clean(value: string | undefined): string {
  * can-api 的 origin。数据全部来自它。
  *
  * `PUBLIC_` 前缀让 Astro 把它内联进客户端包 —— 它是主机名，不是密钥。但**浏
- * 览器其实用不到它**：岛屿走本站的 `/api/can/*` 反代（见
- * `src/pages/api/can/[...path].ts`），那样就不需要 can-api 那边为
+ * 览器其实用不到它**：岛屿走本站的 `/api/v1/*` 反代（见
+ * `src/pages/api/v1/[...path].ts`），那样就不需要 can-api 那边为
  * efb.ceruleanavi.net 开一条 CORS。真正用它的是 SSR 和那个反代。
  *
  * 兜底成生产地址而不是空串：can-web 的 `src/server/canApi.ts` 记着这一条的代
