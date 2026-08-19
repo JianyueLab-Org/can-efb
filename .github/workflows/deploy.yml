@@ -21,4 +21,17 @@ jobs:
       namespace: can-efb
       manifest: deploy/k8s.yaml
       environment_url: https://efb.ceruleanavi.net
-    secrets: inherit
+    # **不能用 `secrets: inherit`。** 这个仓库是私有的，而组织套餐是 Free ——
+    # 那个组合下 inherit 到达被调用的工作流时 KUBECONFIG_B64 是空的，于是
+    # Deploy 每次都倒在 `Check cluster credentials`，错误还写着「注意可见性」，
+    # 把人往组织设置里引（名单其实是对的：/repos/…/actions/organization-secrets
+    # 列得出这两个 secret）。
+    #
+    # 同为私有仓库的 can-web 一直是显式传的，也一直部署成功；那几个用 inherit
+    # 的兄弟站全是 public。所以照 can-web 写。
+    secrets:
+      KUBECONFIG_B64: ${{ secrets.KUBECONFIG_B64 }}
+      # 这个站的 GHCR 包是**私有**的（can-controller 那些是公开的），所以
+      # `Ensure image pull secret` 那一步必须真的跑起来，否则 namespace 里没有
+      # ghcr-pull，Pod 直接 ImagePullBackOff。
+      GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
