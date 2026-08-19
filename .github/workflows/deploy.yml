@@ -21,14 +21,21 @@ jobs:
       namespace: can-efb
       manifest: deploy/k8s.yaml
       environment_url: https://efb.ceruleanavi.net
-    # **不能用 `secrets: inherit`。** 这个仓库是私有的，而组织套餐是 Free ——
-    # 那个组合下 inherit 到达被调用的工作流时 KUBECONFIG_B64 是空的，于是
-    # Deploy 每次都倒在 `Check cluster credentials`，错误还写着「注意可见性」，
-    # 把人往组织设置里引（名单其实是对的：/repos/…/actions/organization-secrets
-    # 列得出这两个 secret）。
+    # **显式传，不用 `secrets: inherit`** —— 显式的写法和仓库可见性无关，而
+    # inherit 不是。
     #
-    # 同为私有仓库的 can-web 一直是显式传的，也一直部署成功；那几个用 inherit
-    # 的兄弟站全是 public。所以照 can-web 写。
+    # 由来：这个站的 Deploy 从第一次起就没成功过，每次都倒在
+    # `Check cluster credentials`。当时仓库是私有的，而组织套餐是 Free，那个组
+    # 合下 inherit 到达被调用的工作流时 KUBECONFIG_B64 是空的。错误文案写着
+    # 「注意 org secret 的可见性要包含本仓库」，把人往组织设置里引，但名单其实
+    # 一直是对的：/repos/JianyueLab-Org/can-efb/actions/organization-secrets 列
+    # 得出这两个 secret，和 can-controller 的一模一样。分辨依据是同组织内的对
+    # 照 —— 用 inherit 且部署成功的兄弟站全是 public，而同为私有的 can-web 一
+    # 直显式传、一直成功。
+    #
+    # 这个仓库后来转成 public 了，所以 inherit 现在也能用。仍然保留显式写法：
+    # 它对两种可见性都成立，于是哪天再转回私有，Deploy 不会又一次静悄悄地断在
+    # 一个指向错误方向的报错上。
     secrets:
       KUBECONFIG_B64: ${{ secrets.KUBECONFIG_B64 }}
       # 这个站的 GHCR 包是**私有**的（can-controller 那些是公开的），所以
