@@ -36,6 +36,14 @@ spec:
       labels:
         app: can-efb
     spec:
+      # 这个站的 GHCR 包是私有的，所以要指名拉取凭据 —— can-web 和 can-controller
+      # 的清单里都有这一段。secret 本身由 CI 的 `Ensure image pull secret` 用
+      # GHCR_PULL_TOKEN 在本 namespace 里建，清单只负责引用它。
+      #
+      # 少了这两行的表现不是「拉不到镜像」这么明显：Deployment 会正常创建，
+      # 然后 Pod 卡在 ImagePullBackOff，而 rollout 要等到超时才报错。
+      imagePullSecrets:
+        - name: ghcr-pull
       containers:
         - name: app
           # 按 sha 钉住，别用 :latest —— 那个标签没有回滚故事：没有更早的标签
