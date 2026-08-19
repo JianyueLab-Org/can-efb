@@ -28,6 +28,21 @@ metadata:
   namespace: can-efb
 spec:
   replicas: 2
+  # **滚动更新期间不留窗口。** 默认策略配上一个说走就走的进程，等于每次部署都
+  # 有一两秒 502：Pod 被删时 kubelet 立刻发 SIGTERM，而它从 Service 端点里摘掉是
+  # **异步**传播的，于是入口仍会把请求转给一个正在退出的进程，拿到 connection
+  # refused —— 在 cloudflare-tunnel 后面，前端看到的就是 502。
+  #
+  # 这不是理论：can-efb 上线当天就被撞上了，集群事件里留着那条
+  # `Readiness probe failed: connection refused`（老 Pod 正在被杀）。
+  #
+  # maxUnavailable: 0 保证新 Pod 就绪之前不摘老的；真正消掉窗口的是下面容器里的
+  # preStop，两者缺一不可。
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: can-efb
@@ -67,6 +82,19 @@ spec:
           # 探的是 /healthz，不是 /。`/` 在这个站上会先问一次 can-api 再 302，
           # 拿它当探活等于每 10 秒给上游加一次白流量，而且会把上游的抖动放大成
           # 自己的 Pod 重启。详见 src/pages/healthz.ts。
+          # 先睡再退，把端点摘除的传播时间让出来 —— 见上面 strategy 那段。
+          #
+          # 睡 10 秒是因为 terminationGracePeriodSeconds 默认 30：preStop 跑完才
+          # 会发 SIGTERM，留 20 秒给进程自己收尾绰绰有余。调大这个值就要一起调大
+          # 宽限期，否则会被硬 kill，反而更糟。
+          #
+          # 用得了 exec 是因为运行时镜像是 node:22-alpine，busybox 自带 sleep。
+          # 哪天基底换成 distroless，这里会**静默失效**（preStop 失败不拦停机），
+          # 那时得改用进程内处理 SIGTERM 的写法。
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "10"]
           readinessProbe:
             httpGet:
               path: /healthz
