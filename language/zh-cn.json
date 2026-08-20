@@ -25,19 +25,15 @@
     },
     "sections": {
       "flight": "飞行",
-      "briefing": "资料",
-      "ops": "运行"
+      "briefing": "资料"
     },
     "nav": {
       "dashboard": "概览",
       "flightplan": "飞行计划",
       "route": "航路",
-      "performance": "性能与配载",
       "charts": "航图",
       "airports": "机场",
       "weather": "气象",
-      "checklists": "检查单",
-      "logbook": "飞行日志",
       "settings": "设置"
     },
     "links": {
@@ -59,10 +55,6 @@
         "title": "航路",
         "description": "航路规划与校验。"
       },
-      "performance": {
-        "title": "性能与配载",
-        "description": "起飞与着陆性能，重量与平衡。"
-      },
       "charts": {
         "title": "航图",
         "description": "机场图、进离场与进近程序。"
@@ -75,14 +67,6 @@
         "title": "气象",
         "description": "METAR、TAF 与显著天气。"
       },
-      "checklists": {
-        "title": "检查单",
-        "description": "按机型组织的正常与非正常检查单。"
-      },
-      "logbook": {
-        "title": "飞行日志",
-        "description": "已完成航班的记录与统计。"
-      },
       "settings": {
         "title": "设置",
         "description": "单位、主题、语言与账户。"
@@ -92,9 +76,7 @@
       "title": "这一页还没有内容",
       "body": "先落地的是框架：外壳、导航、主题与多语言已经就位。页面内容要等接上 can-api 之后再填。",
       "reasons": {
-        "charts": "航图是有版权的数据，网络里现在没有任何一处提供它 —— 这一页要等有了图源（自建或者授权）之后才能做。",
-        "performance": "起降性能和重量平衡要机型手册的数据，那既不在 can-api 里，也不该由这个站凭空编。",
-        "checklists": "检查单要按机型逐条录入。数据本身还不存在，接口也就无从谈起。"
+        "charts": "航图是有版权的数据，网络里现在没有任何一处提供它 —— 这一页要等有了图源（自建或者授权）之后才能做。"
       }
     },
     "common": {
@@ -175,23 +157,6 @@
       "empty": "还没有添加机场。输入一个四字母 ICAO 代码开始。",
       "noReport": "这个机场当前没有 METAR 报文。",
       "invalidIcao": "要一个四字母 ICAO 代码。"
-    },
-    "logbook": {
-      "stats": {
-        "flights": "航班数",
-        "total": "总时长",
-        "longest": "最长一段",
-        "callsigns": "使用过的呼号"
-      },
-      "table": {
-        "callsign": "呼号",
-        "logon": "连线",
-        "logoff": "离线",
-        "duration": "时长"
-      },
-      "live": "在线",
-      "empty": "还没有飞行记录。",
-      "byCallsign": "按呼号统计"
     },
     "route": {
       "departure": "起飞机场",

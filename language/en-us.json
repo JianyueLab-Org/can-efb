@@ -25,19 +25,15 @@
     },
     "sections": {
       "flight": "Flight",
-      "briefing": "Briefing",
-      "ops": "Operations"
+      "briefing": "Briefing"
     },
     "nav": {
       "dashboard": "Overview",
       "flightplan": "Flight plan",
       "route": "Route",
-      "performance": "Performance",
       "charts": "Charts",
       "airports": "Airports",
       "weather": "Weather",
-      "checklists": "Checklists",
-      "logbook": "Logbook",
       "settings": "Settings"
     },
     "links": {
@@ -59,10 +55,6 @@
         "title": "Route",
         "description": "Route planning and validation."
       },
-      "performance": {
-        "title": "Performance",
-        "description": "Takeoff and landing performance, weight and balance."
-      },
       "charts": {
         "title": "Charts",
         "description": "Airport diagrams, SIDs, STARs and approaches."
@@ -75,14 +67,6 @@
         "title": "Weather",
         "description": "METAR, TAF and significant weather."
       },
-      "checklists": {
-        "title": "Checklists",
-        "description": "Normal and non-normal checklists, by aircraft type."
-      },
-      "logbook": {
-        "title": "Logbook",
-        "description": "Completed flights and their statistics."
-      },
       "settings": {
         "title": "Settings",
         "description": "Units, theme, language and account."
@@ -92,9 +76,7 @@
       "title": "Nothing here yet",
       "body": "The frame lands first: shell, navigation, theme and languages are in place. The content waits on can-api being wired up.",
       "reasons": {
-        "charts": "Charts are copyrighted data and nothing on the network serves them today. This page waits on a source — licensed or our own.",
-        "performance": "Takeoff and landing performance needs manufacturer data. It is not in can-api, and this app should not invent it.",
-        "checklists": "Checklists have to be entered per aircraft type. The data does not exist yet, so neither does an endpoint for it."
+        "charts": "Charts are copyrighted data and nothing on the network serves them today. This page waits on a source — licensed or our own."
       }
     },
     "common": {
@@ -175,23 +157,6 @@
       "empty": "No airports yet. Enter a four-letter ICAO code to start.",
       "noReport": "No METAR is available for this station.",
       "invalidIcao": "Needs a four-letter ICAO code."
-    },
-    "logbook": {
-      "stats": {
-        "flights": "Flights",
-        "total": "Total time",
-        "longest": "Longest",
-        "callsigns": "Callsigns used"
-      },
-      "table": {
-        "callsign": "Callsign",
-        "logon": "Logon",
-        "logoff": "Logoff",
-        "duration": "Duration"
-      },
-      "live": "Live",
-      "empty": "No flights logged yet.",
-      "byCallsign": "By callsign"
     },
     "route": {
       "departure": "Departure",

@@ -41,7 +41,9 @@ const ALLOW_LIST: Record<string, Allowed> = {
   "pilot/data": { methods: ["GET"], who: "Settings.vue / Dashboard.vue" },
 
   // 飞行日志。
-  "pilot/flights": { methods: ["GET"], who: "Logbook.vue / Dashboard.vue" },
+  // 概览页的统计。飞行日志那一页删掉之后只剩它一个调用方 —— 但接口本身还在
+  // 用，别顺手把这条也删了。
+  "pilot/flights": { methods: ["GET"], who: "Dashboard.vue" },
 
   // 飞行计划：读、提交、撤销。
   "pilot/flightplan": {

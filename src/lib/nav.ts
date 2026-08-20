@@ -52,7 +52,6 @@ const SECTIONS: NavSectionSpec[] = [
     items: [
       { key: "flightplan", href: "/flightplan", icon: "paperAirplane" },
       { key: "route", href: "/route", icon: "map" },
-      { key: "performance", href: "/performance", icon: "scale" },
     ],
   },
   {
@@ -61,13 +60,6 @@ const SECTIONS: NavSectionSpec[] = [
       { key: "charts", href: "/charts", icon: "documentText" },
       { key: "airports", href: "/airports", icon: "buildingOffice" },
       { key: "weather", href: "/weather", icon: "cloud" },
-    ],
-  },
-  {
-    labelKey: "sections.ops",
-    items: [
-      { key: "checklists", href: "/checklists", icon: "clipboardCheck" },
-      { key: "logbook", href: "/logbook", icon: "bookOpen" },
     ],
   },
   {
