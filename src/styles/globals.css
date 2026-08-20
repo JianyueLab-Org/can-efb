@@ -237,3 +237,31 @@
   border-radius: 0.25rem;
   padding: 0.125rem 0.5rem;
 }
+
+/* 航路图层开关。左下角 —— 左上是缩放控件、右上是那条提示、右下是角落坐标，四个
+   角里只剩这一个。 */
+.map-layers {
+  position: absolute;
+  z-index: 2;
+  left: 0.5rem;
+  bottom: 0.5rem;
+  display: flex;
+  padding: 0.125rem;
+  gap: 0.125rem;
+}
+.map-layer-btn {
+  font-size: 0.6875rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.25rem;
+  color: var(--color-muted);
+}
+.map-layer-btn:hover:not(:disabled) {
+  background: var(--surface-overlay);
+}
+.map-layer-btn.is-on {
+  background: var(--surface-overlay);
+  color: var(--color-ink);
+}
+.map-layer-btn:disabled {
+  opacity: 0.5;
+}

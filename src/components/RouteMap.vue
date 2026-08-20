@@ -97,6 +97,14 @@ const props = defineProps<{
   points: Point[];
   markers?: Point[];
   focus?: Point | null;
+  /**
+   * 航路网图层，已经转成线要素（`lib/airways.ts`）。
+   *
+   * 传进来的是**已经画好的形状**而不是原始的图：转换要用 `fixes` 查坐标、要丢掉
+   * 端点缺失的航段，那是关于数据的处理，不是渲染 —— 放在这里会让这个组件同时懂
+   * 两件事。
+   */
+  airways?: FeatureCollection | null;
   label: string;
 }>();
 
@@ -115,6 +123,7 @@ const PALETTE = {
     grid: "#1e2a38",
     route: "#7ab8e0",
     marker: "#cfe4f2",
+    airway: "#4a6b82",
   },
   light: {
     ocean: "#dde5ea",
@@ -123,6 +132,7 @@ const PALETTE = {
     grid: "#cbd5db",
     route: "#2f6f9e",
     marker: "#1d4e70",
+    airway: "#8aa4b5",
   },
 };
 
@@ -243,6 +253,7 @@ function applyPalette() {
   map.setPaintProperty("land", "fill-color", c.land);
   map.setPaintProperty("land-outline", "line-color", c.landLine);
   map.setPaintProperty("grid", "line-color", c.grid);
+  map.setPaintProperty("airways", "line-color", c.airway);
   map.setPaintProperty("route", "line-color", c.route);
   map.setPaintProperty("markers", "circle-color", c.marker);
   map.setPaintProperty("markers", "circle-stroke-color", c.marker);
@@ -255,6 +266,7 @@ function render() {
     styleLoaded: map?.isStyleLoaded(),
     points: props.points?.length ?? 0,
     markers: props.markers?.length ?? 0,
+    airways: props.airways?.features.length ?? 0,
   });
   if (!map || !map.isStyleLoaded()) return;
 
@@ -267,6 +279,9 @@ function render() {
   (map.getSource("markers") as GeoJSONSource | undefined)?.setData(
     pointFeatures([...markers, ...points]),
   );
+  (map.getSource("airways") as GeoJSONSource | undefined)?.setData(
+    props.airways ?? { type: "FeatureCollection", features: [] },
+  );
 
   // 视野：focus 优先 —— 「在一堆点里挑一个看」不该把用户刚才的缩放丢掉。
   if (props.focus) {
@@ -277,6 +292,8 @@ function render() {
     return;
   }
 
+  // **航路网不参与框选**：它是全国的图，把它算进去等于每次都缩到最小。视野
+  // 该跟着你正在看的东西走，而不是跟着背景参考走。
   const all = [...points, ...markers];
   if (!all.length) return;
   const bounds = new LngLatBounds();
@@ -354,6 +371,10 @@ onMounted(() => {
             data: { type: "FeatureCollection", features: [] },
           },
           grid: { type: "geojson", data: graticule() },
+          airways: {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+          },
           route: {
             type: "geojson",
             data: { type: "FeatureCollection", features: [] },
@@ -386,6 +407,17 @@ onMounted(() => {
             type: "line",
             source: "grid",
             paint: { "line-color": c.grid, "line-width": 0.5 },
+          },
+          {
+            // 航路网压在计划航路**之下**：它是背景参考，不该盖住你正在看的那条。
+            id: "airways",
+            type: "line",
+            source: "airways",
+            paint: {
+              "line-color": c.airway,
+              "line-width": 0.7,
+              "line-opacity": 0.75,
+            },
           },
           {
             id: "route",
@@ -458,7 +490,9 @@ onMounted(() => {
   });
 });
 
-watch(() => [props.points, props.markers, props.focus], render, { deep: true });
+watch(() => [props.points, props.markers, props.focus, props.airways], render, {
+  deep: true,
+});
 
 onBeforeUnmount(() => {
   themeObserver?.disconnect();
