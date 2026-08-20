@@ -259,6 +259,7 @@
       "layers": {
         "firs": "情報區",
         "navaids": "導航台",
+        "mora": "MORA",
         "sectors": "扇區",
         "restricted": "限制區"
       }

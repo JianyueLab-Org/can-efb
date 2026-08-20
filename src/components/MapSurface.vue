@@ -43,6 +43,12 @@ import {
   toAirspacePolygons,
   type AirspaceFamily,
 } from "@/lib/aip";
+import {
+  blocksFor,
+  fetchMORABlock,
+  toMORAPoints,
+  type MORACell,
+} from "@/lib/mora";
 import type { FeatureCollection } from "geojson";
 
 const props = defineProps<{
@@ -58,6 +64,7 @@ const props = defineProps<{
   layerLabels: {
     firs: string;
     navaids: string;
+    mora: string;
     sectors: string;
     restricted: string;
   };
@@ -95,6 +102,7 @@ const PREF_KEY = "efb.map.layers";
 interface LayerPrefs {
   airway: AirwayLevel | "off";
   firs: boolean;
+  mora: boolean;
   navaids: boolean;
   airspace: AirspaceFamily | "off";
 }
@@ -107,6 +115,9 @@ interface LayerPrefs {
 const DEFAULT_PREFS: LayerPrefs = {
   airway: "high",
   firs: true,
+  // **默认关。** 它是全图铺满的数字，和航路点、导航台标注抢同一片空白 —— 开着
+  // 好看，但要读航路的时候是噪音。需要它的人（雷达引导、绕飞、备降）自己开。
+  mora: false,
   navaids: true,
   airspace: "off",
 };
@@ -235,6 +246,26 @@ const showFirs = ref(false);
 const firs = ref<FeatureCollection | null>(null);
 let firCache: FeatureCollection | null = null;
 
+/**
+ * Grid MORA。**唯一一个按视野取的图层**，其余几层都是一次拉全国。
+ *
+ * 理由是量级：航路网全国八千段，格子光是覆盖框内就有几千个，而且它只在放大到
+ * 读得出数字时才有用。所以按 10 度分块取、块内整块缓存 —— 平移不重取，因为格
+ * 子本身固定不动。
+ */
+const showMora = ref(false);
+const mora = ref<FeatureCollection | null>(null);
+/** 已取回的格子，跨块累积；键是 `lat,lon`。 */
+const moraCells = new Map<string, MORACell>();
+/** 已经取过（或正在取）的块，键是块的左下角。避免同一块并发重复请求。 */
+const moraBlocks = new Set<string>();
+let lastViewport: {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+} | null = null;
+
 const airspaceFamily = ref<AirspaceFamily | "off">("off");
 const airspaces = ref<FeatureCollection | null>(null);
 
@@ -301,6 +332,74 @@ async function toggleFirs() {
   }
 }
 
+/**
+ * 视野变了：把覆盖它的块补齐。
+ *
+ * 图层关着就什么都不做 —— 地图一直在动，而不看的东西不该产生流量。
+ */
+async function onViewport(v: {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+}) {
+  lastViewport = v;
+  if (!showMora.value || deniedThisSession) return;
+  await loadMoraFor(v);
+}
+
+async function loadMoraFor(v: {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+}) {
+  const wanted = blocksFor(v.south, v.west, v.north, v.east).filter(
+    (b) => !moraBlocks.has(`${b.lat},${b.lon}`),
+  );
+  if (!wanted.length) return;
+  // 先记下来再取：同一块的第二次请求在第一次回来之前就该被挡掉。
+  for (const b of wanted) moraBlocks.add(`${b.lat},${b.lon}`);
+
+  try {
+    const batches = await Promise.all(
+      wanted.map((b) => fetchMORABlock(b.lat, b.lon)),
+    );
+    for (const cells of batches) {
+      for (const c of cells) moraCells.set(`${c.lat},${c.lon}`, c);
+    }
+    mora.value = toMORAPoints([...moraCells.values()]);
+  } catch (error) {
+    if (isDenied(error)) deniedThisSession = true;
+    // 取失败的块要放回去，否则这次会话里再也不会重试它。
+    for (const b of wanted) moraBlocks.delete(`${b.lat},${b.lon}`);
+    console.error("[efb:map] Grid MORA 加载失败:", error);
+  }
+}
+
+async function toggleMora() {
+  prefs.mora = !showMora.value;
+  writePrefs(prefs);
+
+  if (showMora.value) {
+    showMora.value = false;
+    // **缓存留着**：关掉再打开是常见操作，而格子不会变。
+    mora.value = null;
+    return;
+  }
+  showMora.value = true;
+  if (moraCells.size) mora.value = toMORAPoints([...moraCells.values()]);
+  if (deniedThisSession) return;
+
+  layerBusy.value = true;
+  try {
+    // 还没收到过视野就先不取 —— `moveend` 和地图 load 都会送一次过来。
+    if (lastViewport) await loadMoraFor(lastViewport);
+  } finally {
+    layerBusy.value = false;
+  }
+}
+
 async function setAirspaceFamily(family: AirspaceFamily | "off") {
   prefs.airspace = airspaceFamily.value === family ? "off" : family;
   writePrefs(prefs);
@@ -348,6 +447,7 @@ onMounted(() => {
   Object.assign(prefs, saved);
   if (saved.airway !== "off") void setAirwayLevel(saved.airway);
   if (saved.firs) void toggleFirs();
+  if (saved.mora) void toggleMora();
   if (saved.navaids) void toggleNavaids();
   if (saved.airspace !== "off") void setAirspaceFamily(saved.airspace);
   unsubscribe = subscribeToMap((payload) => {
@@ -380,6 +480,8 @@ onBeforeUnmount(() => {
       :airway-fixes="airwayFixes"
       :navaids="navaids"
       :firs="firs"
+      :mora="mora"
+      @viewport="onViewport"
       :airspaces="airspaces"
       :label="label"
       class="h-full"
@@ -431,6 +533,15 @@ onBeforeUnmount(() => {
         @click="toggleNavaids"
       >
         {{ layerLabels.navaids }}
+      </button>
+      <button
+        type="button"
+        class="map-layer-btn"
+        :class="showMora ? 'is-on' : ''"
+        :disabled="layerBusy"
+        @click="toggleMora"
+      >
+        {{ layerLabels.mora }}
       </button>
       <button
         type="button"

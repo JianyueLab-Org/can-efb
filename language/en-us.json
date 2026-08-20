@@ -259,6 +259,7 @@
       "layers": {
         "firs": "FIRs",
         "navaids": "Navaids",
+        "mora": "MORA",
         "sectors": "Sectors",
         "restricted": "Restricted"
       }

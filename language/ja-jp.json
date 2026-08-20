@@ -259,6 +259,7 @@
       "layers": {
         "firs": "FIR",
         "navaids": "航法援助施設",
+        "mora": "MORA",
         "sectors": "セクター",
         "restricted": "制限区域"
       }

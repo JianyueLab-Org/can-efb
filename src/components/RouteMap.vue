@@ -93,6 +93,17 @@ interface Point {
   via?: string;
 }
 
+/** 视野框，给外面按框取数据用。见 emitViewport。 */
+export interface Viewport {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+  zoom: number;
+}
+
+const emit = defineEmits<{ viewport: [Viewport] }>();
+
 const props = defineProps<{
   points: Point[];
   markers?: Point[];
@@ -125,6 +136,13 @@ const props = defineProps<{
    * 相反。
    */
   firs?: FeatureCollection | null;
+  /**
+   * Grid MORA 标注点，属性里带 `thousands` / `hundreds`。
+   *
+   * 千位百位是**两个属性**而不是一个字符串：航图上它们不是一个字号，拼好了就
+   * 没法再分开排版。见 lib/mora.ts。
+   */
+  mora?: FeatureCollection | null;
   label: string;
 }>();
 
@@ -160,6 +178,9 @@ const PALETTE = {
     // 情报区边界是**底子**，不是叠加物：偏灰，压在所有内容之下，只负责说清
     // 这一片归谁管。太亮会和航路抢，而它铺满整张图。
     fir: "#4c6478",
+    // Grid MORA 用绿色，这是航图的惯例 —— 图上没有第二样东西是绿的，所以它
+    // 一眼就和航路、导航台、边界分得开，哪怕挤在一起。
+    mora: "#5fa86a",
   },
   light: {
     ocean: "#dde5ea",
@@ -176,6 +197,7 @@ const PALETTE = {
     sector: "#4a7fa3",
     restricted: "#b45a6d",
     fir: "#93a7b5",
+    mora: "#3d7a48",
   },
 };
 
@@ -312,6 +334,25 @@ function updateCorners() {
 }
 
 /**
+ * 视野变了就说一声，让外面按框去取数据。
+ *
+ * **发在 `moveend` 而不是 `move`**：拖动一次会连发几十个 `move`，每个都触发一轮
+ * 取数就等于把地图变成一台请求发生器。`updateCorners` 走 `move` 是因为它只读本
+ * 地状态、不花钱。
+ */
+function emitViewport() {
+  if (!map) return;
+  const b = map.getBounds();
+  emit("viewport", {
+    south: b.getSouth(),
+    west: b.getWest(),
+    north: b.getNorth(),
+    east: b.getEast(),
+    zoom: map.getZoom(),
+  });
+}
+
+/**
  * 航路点的三角形符号。**运行时用 canvas 画出来注册**，不引 sprite 文件。
  *
  * 一套雪碧图要两个文件（png + json）、一份构建步骤，而这里总共只有几个符号，
@@ -406,6 +447,9 @@ function render() {
   );
   (map.getSource("firs") as GeoJSONSource | undefined)?.setData(
     props.firs ?? { type: "FeatureCollection", features: [] },
+  );
+  (map.getSource("mora") as GeoJSONSource | undefined)?.setData(
+    props.mora ?? { type: "FeatureCollection", features: [] },
   );
 
   // 视野：focus 优先 —— 「在一堆点里挑一个看」不该把用户刚才的缩放丢掉。
@@ -513,6 +557,10 @@ onMounted(() => {
             data: { type: "FeatureCollection", features: [] },
           },
           firs: {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+          },
+          mora: {
             type: "geojson",
             data: { type: "FeatureCollection", features: [] },
           },
@@ -709,6 +757,38 @@ onMounted(() => {
             },
           },
           {
+            // Grid MORA：千位大、百位小，这是航图上的画法。
+            //
+            // `format` 的分段 `font-scale` 是唯一能在一个标注里换字号的办法。
+            // 基线是对齐的，所以小字自然坐在下方 —— 正好是要的下标样子。
+            //
+            // **minzoom 4**：一度格子在更小的比例尺上只有几个像素宽，几万个数
+            // 字挤在一起既读不出也画不动。缩到那个程度它就该消失。
+            id: "mora-labels",
+            type: "symbol",
+            source: "mora",
+            minzoom: 4,
+            layout: {
+              "text-field": [
+                "format",
+                ["get", "thousands"],
+                {},
+                ["get", "hundreds"],
+                { "font-scale": 0.68 },
+              ],
+              "text-font": ["Noto Sans Regular"],
+              "text-size": 11,
+              // 让开航路和导航台：它们是内容，这是背景参考。
+              "text-allow-overlap": false,
+              "text-ignore-placement": false,
+            },
+            paint: {
+              "text-color": c.mora,
+              "text-halo-color": c.ocean,
+              "text-halo-width": 1.4,
+            },
+          },
+          {
             // 情报区名字**沿着边界重复**（symbol-placement: line），而不是落在
             // 多边形中心 —— 情报区大到中心点常常在几百海里之外，那个位置的标注
             // 对着屏幕上的边界说不出话。这也是纸质航图的画法。
@@ -796,9 +876,11 @@ onMounted(() => {
     registerIcons();
     render();
     updateCorners();
+    emitViewport();
     void loadLand();
   });
   map.on("move", updateCorners);
+  map.on("moveend", emitViewport);
 
   resizeObserver = new ResizeObserver(() => map?.resize());
   resizeObserver.observe(container.value);
