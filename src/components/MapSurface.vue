@@ -41,7 +41,8 @@ import {
   toNavaidPoints,
   fetchAirspaces,
   toAirspacePolygons,
-  type AirspaceFamily,
+  onlyParents,
+  type Airspace,
 } from "@/lib/aip";
 import {
   blocksFor,
@@ -82,9 +83,12 @@ const props = defineProps<{
     navaids: string;
     mora: string;
     live: string;
-    sectors: string;
+    ctr: string;
+    app: string;
     restricted: string;
   };
+  /** 「有 n 块边界不完整没画」那句，`{n}` 会被替换。已翻译。 */
+  t: { partial: string };
 }>();
 
 /** 见文件顶上最后一段。`mounted` 之前一律不渲染 RouteMap。 */
@@ -122,7 +126,15 @@ interface LayerPrefs {
   mora: boolean;
   live: boolean;
   navaids: boolean;
-  airspace: AirspaceFamily | "off";
+  /**
+   * 空域从"单选一族"改成**三个独立开关**：区域管制、进近管制、限制区。
+   *
+   * 单选是错的形状：区域和进近是**嵌套**的两层（进近整个套在区域里），而"看巡航
+   * 段归谁管"和"看进离场归谁管"经常要一起看。限制区更是和它们互不相干。
+   */
+  ctr: boolean;
+  app: boolean;
+  restricted: boolean;
 }
 
 /**
@@ -137,7 +149,10 @@ const DEFAULT_PREFS: LayerPrefs = {
   // 好看，但要读航路的时候是噪音。需要它的人（雷达引导、绕飞、备降）自己开。
   mora: false,
   navaids: true,
-  airspace: "off",
+  // 三层都默认关：它们是大片填充，叠在航路上会把线糊掉。要看的人自己开。
+  ctr: false,
+  app: false,
+  restricted: false,
   // **默认开。** 这一层回答的是"现在谁在线、我在哪"，而那正是打开飞行包的人第
   // 一眼想知道的；它也很轻（整张网络的实时数据一次几 KB）。
   live: true,
@@ -175,7 +190,6 @@ function isDenied(error: unknown): boolean {
 }
 
 let navaidCache: FeatureCollection | null = null;
-const airspaceCache = new Map<AirspaceFamily, FeatureCollection>();
 
 const points = ref<MapPoint[]>([]);
 const markers = ref<MapPoint[]>([]);
@@ -395,7 +409,30 @@ async function toggleLive() {
   liveTimer = setInterval(() => void refreshLive(), LIVE_INTERVAL_MS);
 }
 
-const airspaceFamily = ref<AirspaceFamily | "off">("off");
+/**
+ * 空域三层。**同一次请求**（can-db 的 `?family=controlled` 一次给全部 672 块），
+ * 按 `kind` 在本地分成区域和进近 —— 拆成两次请求只是把同一份数据取两遍。
+ *
+ * 只画**父区**（`CTA` / `APP`），不画它们内部的席位划分：29 个区域管制区被切成
+ * 307 个扇区、50 个进近被切成 287 个，全铺开是每个父区一圈外框加几条内部分割
+ * 线，叠成一张网 —— 那是管制席位的图，不是飞行员看的航图。
+ */
+const showCtr = ref(false);
+const showApp = ref(false);
+const showRestricted = ref(false);
+
+/** can-db 那一族的原始清单，取一次就够。 */
+let controlledCache: Airspace[] | null = null;
+let restrictedCache: Airspace[] | null = null;
+
+/**
+ * 因为边界不完整而没画的块数，分层记着。
+ *
+ * **要显示出来。** 汇编对将近一半的区域管制区只发布了边界的一段（其余沿国境线
+ * 走，而国境线不在数据里），照着画会得到一条看起来合理的错边界，所以那些块被跳
+ * 过了 —— 但**静默地少画和静默地画错一样糟**，得让人知道图上缺了几块。
+ */
+const skipped = ref({ ctr: 0, app: 0, restricted: 0 });
 const airspaces = ref<FeatureCollection | null>(null);
 
 const layerBusy = ref(false);
@@ -544,36 +581,82 @@ function locateOwn() {
   focus.value = { ident: at.callsign, lat: at.lat, lon: at.lon, kind: "own" };
 }
 
-async function setAirspaceFamily(family: AirspaceFamily | "off") {
-  prefs.airspace = airspaceFamily.value === family ? "off" : family;
-  writePrefs(prefs);
-  if (family === "off" || airspaceFamily.value === family) {
-    airspaceFamily.value = "off";
-    airspaces.value = null;
-    return;
+async function loadControlled(): Promise<Airspace[]> {
+  if (!controlledCache) controlledCache = await fetchAirspaces("controlled");
+  return controlledCache;
+}
+
+async function loadRestricted(): Promise<Airspace[]> {
+  if (!restrictedCache) restrictedCache = await fetchAirspaces("restricted");
+  return restrictedCache;
+}
+
+/**
+ * 三层合成一个要素集合再交给地图。
+ *
+ * 一个 source 而不是三个：它们的画法只差颜色（靠要素上的 `cls` 分），而三个
+ * source 意味着 RouteMap 里三套图层、三份主题切换 —— 换来的只是能分别控制层序，
+ * 而这三层本来就该在同一层。
+ */
+function composeAirspaces() {
+  const parts: Airspace[] = [];
+  const counts = { ctr: 0, app: 0, restricted: 0 };
+
+  if (showCtr.value && controlledCache) {
+    const list = onlyParents(controlledCache, "CTA");
+    const built = toAirspacePolygons(list);
+    counts.ctr = built.skipped;
+    parts.push(...list);
   }
-  const cached = airspaceCache.get(family);
-  if (cached) {
-    airspaces.value = cached;
-    airspaceFamily.value = family;
+  if (showApp.value && controlledCache) {
+    const list = onlyParents(controlledCache, "APP");
+    counts.app = toAirspacePolygons(list).skipped;
+    parts.push(...list);
+  }
+  if (showRestricted.value && restrictedCache) {
+    counts.restricted = toAirspacePolygons(restrictedCache).skipped;
+    parts.push(...restrictedCache);
+  }
+
+  skipped.value = counts;
+  airspaces.value = parts.length ? toAirspacePolygons(parts).features : null;
+}
+
+/** 一个开关的通用形状：拉数据（带缓存）、翻状态、重新合成。 */
+async function toggleAirspace(which: "ctr" | "app" | "restricted") {
+  const flag =
+    which === "ctr" ? showCtr : which === "app" ? showApp : showRestricted;
+
+  prefs[which] = !flag.value;
+  writePrefs(prefs);
+
+  if (flag.value) {
+    flag.value = false;
+    composeAirspaces();
     return;
   }
   if (deniedThisSession) return;
+
   layerBusy.value = true;
   try {
-    const polygons = toAirspacePolygons(await fetchAirspaces(family));
-    airspaceCache.set(family, polygons);
-    airspaces.value = polygons;
-    airspaceFamily.value = family;
+    if (which === "restricted") await loadRestricted();
+    else await loadControlled();
+    flag.value = true;
+    composeAirspaces();
   } catch (error) {
     if (isDenied(error)) deniedThisSession = true;
     console.error("[efb:map] 空域加载失败:", error);
-    airspaceFamily.value = "off";
-    airspaces.value = null;
+    flag.value = false;
+    composeAirspaces();
   } finally {
     layerBusy.value = false;
   }
 }
+
+/** 三层里一共跳过了多少块，给那条提示用。 */
+const skippedTotal = computed(
+  () => skipped.value.ctr + skipped.value.app + skipped.value.restricted,
+);
 
 let unsubscribe: (() => void) | null = null;
 
@@ -595,7 +678,9 @@ onMounted(() => {
   if (saved.mora) void toggleMora();
   if (saved.live) void toggleLive();
   if (saved.navaids) void toggleNavaids();
-  if (saved.airspace !== "off") void setAirspaceFamily(saved.airspace);
+  if (saved.ctr) void toggleAirspace("ctr");
+  if (saved.app) void toggleAirspace("app");
+  if (saved.restricted) void toggleAirspace("restricted");
   unsubscribe = subscribeToMap((payload) => {
     points.value = payload.points ?? [];
     markers.value = payload.markers ?? [];
@@ -711,22 +796,42 @@ onBeforeUnmount(() => {
       <button
         type="button"
         class="map-layer-btn"
-        :class="airspaceFamily === 'controlled' ? 'is-on' : ''"
+        :class="showCtr ? 'is-on' : ''"
         :disabled="layerBusy"
-        @click="setAirspaceFamily('controlled')"
+        @click="toggleAirspace('ctr')"
       >
-        {{ layerLabels.sectors }}
+        {{ layerLabels.ctr }}
       </button>
       <button
         type="button"
         class="map-layer-btn"
-        :class="airspaceFamily === 'restricted' ? 'is-on' : ''"
+        :class="showApp ? 'is-on' : ''"
         :disabled="layerBusy"
-        @click="setAirspaceFamily('restricted')"
+        @click="toggleAirspace('app')"
+      >
+        {{ layerLabels.app }}
+      </button>
+      <button
+        type="button"
+        class="map-layer-btn"
+        :class="showRestricted ? 'is-on' : ''"
+        :disabled="layerBusy"
+        @click="toggleAirspace('restricted')"
       >
         {{ layerLabels.restricted }}
       </button>
     </div>
+
+    <!--
+      因为边界不完整而没画出来的块数。
+
+      **必须说出来。** 汇编对将近一半的区域管制区只发布了边界的一段（其余沿国境
+      线走，而国境线不在数据里），照着画会得到一条看起来合理的错边界，所以那些块
+      被跳过了 —— 但一张缺了几块而不作声的图，会被当成"这里没有管制区"。
+    -->
+    <p v-if="skippedTotal" class="map-partial card">
+      {{ t.partial.replace("{n}", String(skippedTotal)) }}
+    </p>
 
     <!--
       「定位到我」。**只在自己真的连着线时才出现** —— 一颗按下去没反应的按钮比

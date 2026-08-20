@@ -218,8 +218,11 @@ const PALETTE = {
     airwayOther: "#4a6b82",
     label: "#9db4c4",
     navaid: "#e6f0f7",
-    // 扇区用浅蓝细线，限制区用粉红 —— 照航图的惯例，两者一眼要分得开。
+    // 区域管制用浅蓝、进近用青绿、限制区用粉红 —— 照航图的惯例，几类一眼要分
+    // 得开。区域和进近分成两色是因为它们本来就是两件事：一个管巡航段，一个管进
+    // 离场，而且进近整个套在区域里面，同色的话嵌套处根本读不出边界。
     sector: "#5f93b5",
+    approach: "#6fbfa8",
     restricted: "#d98a9a",
     // 情报区边界是**底子**，不是叠加物：偏灰，压在所有内容之下，只负责说清
     // 这一片归谁管。太亮会和航路抢，而它铺满整张图。
@@ -248,6 +251,7 @@ const PALETTE = {
     label: "#5a6b78",
     navaid: "#1d4e70",
     sector: "#4a7fa3",
+    approach: "#2f8a70",
     restricted: "#b45a6d",
     fir: "#93a7b5",
     mora: "#3d7a48",
@@ -778,11 +782,11 @@ onMounted(() => {
             paint: {
               "fill-color": [
                 "match",
-                ["get", "family"],
+                ["get", "cls"],
                 "restricted",
                 c.restricted,
-                "special",
-                c.restricted,
+                "app",
+                c.approach,
                 c.sector,
               ] as never,
               // 半透明，而且很淡 —— 它是背景，不是内容。
@@ -796,11 +800,11 @@ onMounted(() => {
             paint: {
               "line-color": [
                 "match",
-                ["get", "family"],
+                ["get", "cls"],
                 "restricted",
                 c.restricted,
-                "special",
-                c.restricted,
+                "app",
+                c.approach,
                 c.sector,
               ] as never,
               "line-width": 0.9,

@@ -90,6 +90,17 @@ export interface Airspace {
   /** **米。** 图上标的是英尺，换算见 verticalLabel。 */
   lowerM: number | null;
   upperM: number | null;
+  /**
+   * **这串顶点围不出真正的边界，不要照着画。**
+   *
+   * 汇编对一部分空域只发布了边界的一段：有的从某个「国境点」起沿国境线走，而国境
+   * 线不在数据里；有的含圆弧段，而顶点表只能表达折线。照 seq 闭合成环的结果是一
+   * 条**看起来合理的错边界** —— 它不报错，所以必须靠这个标记挡住。
+   *
+   * 当前周期里 29 个区域管制区有 13 个是 true，全是沿边的那些。判断在 can-db 的
+   * 导入期做（迁移 0023），这边只负责不画。
+   */
+  geometryPartial?: boolean;
   /** "polygon" 或 "circle"。 */
   shape: string;
   centreLat: number | null;
@@ -162,11 +173,54 @@ function circleRing(
  *
  * 顶点不足以成面的（少于 3 个）直接丢掉：画一条线冒充一块空域，比不画糟得多。
  */
-export function toAirspacePolygons(list: Airspace[]): FeatureCollection {
+/**
+ * 管制空域的四个 `kind`。
+ *
+ * `CTA`/`APP` 是**父区**（区域管制区、进近管制区），`*_SECTOR` 是它们内部的席位
+ * 划分。数目差得很远：29 个区域管制区被切成 307 个扇区，50 个进近管制区被切成
+ * 287 个。
+ *
+ * 全画出来是每个父区一圈外框加几条内部分割线，叠成一张网 —— 那是管制席位的图，不
+ * 是飞行员看的航图。can-radar 对 VATSpy 的子扇区也是同一个判断。
+ */
+export type ControlledKind = "CTA" | "APP";
+
+/** 图层分色用的类别。见要素属性里的 `cls`。 */
+function airspaceClass(a: Airspace): string {
+  if (a.family === "restricted" || a.family === "special") return "restricted";
+  if (a.kind === "CTA") return "ctr";
+  if (a.kind === "APP") return "app";
+  return "other";
+}
+
+/** 只留某一类父区。见 ControlledKind。 */
+export function onlyParents(
+  list: Airspace[],
+  kind: ControlledKind,
+): Airspace[] {
+  return list.filter((a) => a.kind === kind);
+}
+
+/**
+ * 空域转成多边形要素。
+ *
+ * **`geometryPartial` 的直接丢掉**，见那个字段的说明：画出来是一条看起来合理的错
+ * 边界，而少画一块是诚实的、画错一块不是。丢掉多少条会被返回，好让界面说出来 ——
+ * 静默地少画和静默地画错一样糟。
+ */
+export function toAirspacePolygons(list: Airspace[]): {
+  features: FeatureCollection;
+  skipped: number;
+} {
   const features: Feature[] = [];
   let dropped = 0;
+  let skipped = 0;
 
   for (const a of list) {
+    if (a.geometryPartial) {
+      skipped++;
+      continue;
+    }
     let ring: Position[] | null = null;
 
     if (
@@ -194,6 +248,10 @@ export function toAirspacePolygons(list: Airspace[]): FeatureCollection {
       type: "Feature",
       properties: {
         family: a.family,
+        // 画图用的分类。`family` 分不出区域和进近 —— 两者都是 controlled，靠
+        // `kind` 才分得开，而图上它们是两种不同的东西（一个是巡航段归谁管，一个
+        // 是进离场归谁管）。
+        cls: airspaceClass(a),
         code: a.code ?? a.name ?? "",
         localType: a.localType ?? "",
         vertical: verticalLabel(a),
@@ -206,5 +264,10 @@ export function toAirspacePolygons(list: Airspace[]): FeatureCollection {
   if (dropped) {
     console.warn(`[efb:map] 空域没有可用几何，丢弃 ${dropped} 块`);
   }
-  return { type: "FeatureCollection", features };
+  if (skipped) {
+    console.warn(
+      `[efb:map] ${skipped} 块空域的边界在汇编里不完整（沿国境线或含圆弧），未绘制`,
+    );
+  }
+  return { features: { type: "FeatureCollection", features }, skipped };
 }

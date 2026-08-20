@@ -279,9 +279,11 @@
         "navaids": "导航台",
         "mora": "MORA",
         "live": "实时",
-        "sectors": "扇区",
+        "ctr": "区域",
+        "app": "进近",
         "restricted": "限制区"
-      }
+      },
+      "partial": "有 {n} 块空域的边界在航行资料里不完整（沿国境线或含圆弧），未绘制。"
     },
     "airports": {
       "search": "搜索 ICAO、机场名或飞行情报区",

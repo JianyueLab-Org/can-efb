@@ -88,12 +88,14 @@ const crossLinks = buildCrossLinks(t);
         low: t("map.airways.low"),
       }}
       cid={user?.id ?? null}
+      t={{ partial: t("map.partial") }}
       layerLabels={{
         firs: t("map.layers.firs"),
         navaids: t("map.layers.navaids"),
         mora: t("map.layers.mora"),
         live: t("map.layers.live"),
-        sectors: t("map.layers.sectors"),
+        ctr: t("map.layers.ctr"),
+        app: t("map.layers.app"),
         restricted: t("map.layers.restricted"),
       }}
       client:load

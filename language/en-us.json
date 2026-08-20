@@ -279,9 +279,11 @@
         "navaids": "Navaids",
         "mora": "MORA",
         "live": "Live",
-        "sectors": "Sectors",
+        "ctr": "CTR",
+        "app": "APP",
         "restricted": "Restricted"
-      }
+      },
+      "partial": "{n} airspaces are not drawn: the AIP publishes only part of their boundary (it follows a national border, or an arc)."
     },
     "airports": {
       "search": "Search by ICAO, name or FIR",
