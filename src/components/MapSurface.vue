@@ -76,6 +76,65 @@ const airwayCache = new Map<
   { lines: FeatureCollection; fixes: FeatureCollection }
 >();
 
+/**
+ * 图层偏好存 localStorage。
+ *
+ * 这块地图跨页面存活，但**刷新一次就回到默认**——而"我要看哪几层"是一个跨会话
+ * 的选择，不是一次浏览的状态。和轨的折叠状态存 `data-rail` 是同一个道理。
+ *
+ * 读写都包在 try 里：锁死的浏览器里 localStorage 会抛，而一个图层偏好不值得让
+ * 整块地图挂掉。
+ */
+const PREF_KEY = "efb.map.layers";
+
+interface LayerPrefs {
+  airway: AirwayLevel | "off";
+  navaids: boolean;
+  airspace: AirspaceFamily | "off";
+}
+
+/**
+ * **默认是打开的。** 这个站的地图是一张航图，不是一块等着被点亮的空底图 ——
+ * 打开就该看到航路、航路点和导航台。扇区默认关着：它是一大片填充，和航路叠在
+ * 一起会把线糊掉，要看的人自己开。
+ */
+const DEFAULT_PREFS: LayerPrefs = {
+  airway: "high",
+  navaids: true,
+  airspace: "off",
+};
+
+function readPrefs(): LayerPrefs {
+  try {
+    const raw = localStorage.getItem(PREF_KEY);
+    if (!raw) return { ...DEFAULT_PREFS };
+    return { ...DEFAULT_PREFS, ...(JSON.parse(raw) as Partial<LayerPrefs>) };
+  } catch {
+    return { ...DEFAULT_PREFS };
+  }
+}
+
+function writePrefs(prefs: LayerPrefs) {
+  try {
+    localStorage.setItem(PREF_KEY, JSON.stringify(prefs));
+  } catch {
+    // 存不下就算了，下次回到默认 —— 不值得为此打扰用户。
+  }
+}
+
+/**
+ * 一旦 can-db 拒绝过，这次会话里就不再尝试。
+ *
+ * 没有 `aipAccess` 的成员每一层都会 401。默认打开之后，如果不记住这件事，他们
+ * 每进一个页面就会撞三次 401 并在控制台刷三行错 —— 那既吵，又会让真正的故障淹
+ * 在噪音里。**记的是"被拒过"，不是"失败过"**：网络抖动应该重试，权限不足不该。
+ */
+let deniedThisSession = false;
+
+function isDenied(error: unknown): boolean {
+  return error instanceof Error && /\b(401|403)\b/.test(error.message);
+}
+
 let navaidCache: FeatureCollection | null = null;
 const airspaceCache = new Map<AirspaceFamily, FeatureCollection>();
 
@@ -100,12 +159,15 @@ const hasPoints = computed(
  * 缓存还在就不必重拉。
  */
 const airwayLevel = ref<AirwayLevel | "off">("off");
+const prefs = { ...DEFAULT_PREFS };
 const airways = ref<FeatureCollection | null>(null);
 const airwayFixes = ref<FeatureCollection | null>(null);
 const airwayBusy = ref(false);
 
 async function setAirwayLevel(level: AirwayLevel | "off") {
   airwayLevel.value = level;
+  prefs.airway = level;
+  writePrefs(prefs);
   if (level === "off") {
     airways.value = null;
     airwayFixes.value = null;
@@ -119,6 +181,7 @@ async function setAirwayLevel(level: AirwayLevel | "off") {
     return;
   }
 
+  if (deniedThisSession) return;
   airwayBusy.value = true;
   try {
     const graph = await fetchAirways(level);
@@ -134,6 +197,7 @@ async function setAirwayLevel(level: AirwayLevel | "off") {
   } catch (error) {
     // 这一层是用户明确打开的，不是装饰性底图 —— 失败要说话，而且要退回"关"，
     // 否则开关停在"高空"上却什么都没画，看起来像这一带没有航路。
+    if (isDenied(error)) deniedThisSession = true;
     console.error("[efb:map] 航路网加载失败:", error);
     airwayLevel.value = "off";
     airways.value = null;
@@ -160,6 +224,8 @@ const airspaces = ref<FeatureCollection | null>(null);
 const layerBusy = ref(false);
 
 async function toggleNavaids() {
+  prefs.navaids = !showNavaids.value;
+  writePrefs(prefs);
   if (showNavaids.value) {
     showNavaids.value = false;
     navaids.value = null;
@@ -170,6 +236,7 @@ async function toggleNavaids() {
     showNavaids.value = true;
     return;
   }
+  if (deniedThisSession) return;
   layerBusy.value = true;
   try {
     navaidCache = toNavaidPoints(await fetchNavaids());
@@ -178,6 +245,7 @@ async function toggleNavaids() {
   } catch (error) {
     // 和航路那层同一条规矩：用户明确打开的图层，失败要说话并退回关，否则开关亮
     // 着却什么都没画，看起来像这一带没有导航台。
+    if (isDenied(error)) deniedThisSession = true;
     console.error("[efb:map] 导航台加载失败:", error);
     showNavaids.value = false;
   } finally {
@@ -186,6 +254,8 @@ async function toggleNavaids() {
 }
 
 async function setAirspaceFamily(family: AirspaceFamily | "off") {
+  prefs.airspace = airspaceFamily.value === family ? "off" : family;
+  writePrefs(prefs);
   if (family === "off" || airspaceFamily.value === family) {
     airspaceFamily.value = "off";
     airspaces.value = null;
@@ -197,6 +267,7 @@ async function setAirspaceFamily(family: AirspaceFamily | "off") {
     airspaceFamily.value = family;
     return;
   }
+  if (deniedThisSession) return;
   layerBusy.value = true;
   try {
     const polygons = toAirspacePolygons(await fetchAirspaces(family));
@@ -204,6 +275,7 @@ async function setAirspaceFamily(family: AirspaceFamily | "off") {
     airspaces.value = polygons;
     airspaceFamily.value = family;
   } catch (error) {
+    if (isDenied(error)) deniedThisSession = true;
     console.error("[efb:map] 空域加载失败:", error);
     airspaceFamily.value = "off";
     airspaces.value = null;
@@ -219,6 +291,16 @@ onMounted(() => {
   // 这一行证明外壳这个岛屿水合了 —— 它是 RouteMap 能不能被渲染的前提。
   console.log("[efb:map] MapSurface mounted");
   mounted.value = true;
+
+  // 按偏好把图层打开。**这是"打开就看到航图"的那一步** —— 没有它，默认值只是
+  // 一个没人读的常量。
+  //
+  // 不 await：地图不该等航路网下载完才出现，底图和航路是两条独立的线。
+  const saved = readPrefs();
+  Object.assign(prefs, saved);
+  if (saved.airway !== "off") void setAirwayLevel(saved.airway);
+  if (saved.navaids) void toggleNavaids();
+  if (saved.airspace !== "off") void setAirspaceFamily(saved.airspace);
   unsubscribe = subscribeToMap((payload) => {
     points.value = payload.points ?? [];
     markers.value = payload.markers ?? [];
