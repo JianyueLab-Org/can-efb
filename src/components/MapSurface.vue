@@ -306,6 +306,14 @@ const atc = ref<FeatureCollection | null>(null);
 const own = ref<FeatureCollection | null>(null);
 /** 在线管制席位数，给按钮上那个角标用。 */
 const atcCount = ref(0);
+/**
+ * 自己那架飞机的当前位置，给「定位到我」用。没连线是 null，那颗按钮也就不出现。
+ *
+ * 单独存一份而不是从 `own` 那个要素集合里挖：挖出来要走
+ * `own.features[0].geometry.coordinates`，而那串下标一旦和构造那边对不上，错法
+ * 是安静地定位到别处。
+ */
+const ownAt = ref<{ lat: number; lon: number; callsign: string } | null>(null);
 
 /**
  * 30 秒一轮。
@@ -325,7 +333,11 @@ async function refreshLive() {
     atc.value = toControllerPoints(controllers);
     atcCount.value = controllers.length;
     traffic.value = toTrafficPoints(feed, props.cid);
-    own.value = toOwnPoint(ownPilot(feed, props.cid));
+    const mine = ownPilot(feed, props.cid);
+    own.value = toOwnPoint(mine);
+    ownAt.value = mine
+      ? { lat: mine.latitude, lon: mine.longitude, callsign: mine.callsign }
+      : null;
   } catch (error) {
     // **不关掉这一层，也不清空已画的东西。** 实时数据每 30 秒重试一次，一次抖动
     // 就把飞机从图上抹掉比让它停在 30 秒前的位置糟得多 —— 后者至少是真的发生过
@@ -349,6 +361,7 @@ async function toggleLive() {
     traffic.value = null;
     atc.value = null;
     own.value = null;
+    ownAt.value = null;
     atcCount.value = 0;
     return;
   }
@@ -497,6 +510,21 @@ async function toggleMora() {
   } finally {
     layerBusy.value = false;
   }
+}
+
+/**
+ * 把视野对到自己那架飞机上。
+ *
+ * 走 `focus` 这个已有的通路，而不是新开一条：RouteMap 里 focus 的语义正是"在一
+ * 堆点里挑一个看，别把缩放丢掉"，和这里要的一模一样。
+ *
+ * **每次都造一个新对象**，因为 render() 现在按引用判断 focus 变没变（否则实时数
+ * 据每 30 秒会把镜头拽回来一次）。连点两次要都生效，就不能复用同一个对象。
+ */
+function locateOwn() {
+  const at = ownAt.value;
+  if (!at) return;
+  focus.value = { ident: at.callsign, lat: at.lat, lon: at.lon, kind: "own" };
 }
 
 async function setAirspaceFamily(family: AirspaceFamily | "off") {
@@ -680,6 +708,21 @@ onBeforeUnmount(() => {
         {{ layerLabels.restricted }}
       </button>
     </div>
+
+    <!--
+      「定位到我」。**只在自己真的连着线时才出现** —— 一颗按下去没反应的按钮比
+      没有这颗按钮更让人怀疑是坏了。呼号写在按钮上，顺带回答"网络认到的是我哪一
+      次连线"。
+    -->
+    <button
+      v-if="ownAt"
+      type="button"
+      class="map-locate card"
+      @click="locateOwn"
+    >
+      <span aria-hidden="true">✈</span>
+      <span class="font-mono">{{ ownAt.callsign }}</span>
+    </button>
 
     <div v-if="!hasPoints" class="map-hint card">
       <p class="font-medium text-ink">{{ emptyTitle }}</p>
