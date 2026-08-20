@@ -121,3 +121,22 @@ export function distinctLocTypes(graph: AirwayGraph): string[] {
   }
   return [...seen].sort();
 }
+
+/**
+ * 航路点：把图的 `fixes` 转成点要素。
+ *
+ * 这是**航路网自己的点集**（`fir IS NULL` 的那一份，约 2,300 个），不是全国所有
+ * 航路点 —— can-db 的注释里专门解释过为什么两者不能混：ident 不唯一，267 个名字
+ * 对应不止一个物理点，用全量去铺会把 21,204 行塌成 10,335 个条目、最后一个赢。
+ */
+export function toAirwayFixes(graph: AirwayGraph): FeatureCollection {
+  return {
+    type: "FeatureCollection",
+    features: Object.entries(graph.fixes).map(([ident, [lat, lon]]) => ({
+      type: "Feature",
+      properties: { ident },
+      // fixes 是 [lat, lon]，GeoJSON 要 [lon, lat]。
+      geometry: { type: "Point", coordinates: [lon, lat] },
+    })),
+  };
+}
