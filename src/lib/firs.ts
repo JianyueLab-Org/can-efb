@@ -26,10 +26,11 @@
 import type { FeatureCollection } from "geojson";
 
 /**
- * **从 `src/` 里 `?url` 引进来，不放 `public/`** —— 理由和陆地那份一样，写在
+ * **从 `src/` 里 `?url` 引进来，不放 `public/`** —— 理由和陆地那份一样，完整写在
  * `RouteMap.vue` 的 `LAND_URL` 上面：`public/` 下的固定名字只能拿到
- * `max-age=0`，边缘不缓存、每次回源；`?url` 之后是内容哈希名字，一年 immutable
- * 且边缘命中。
+ * `max-age=0`，而 `_astro/` 下的哈希名字拿到一年的 immutable，浏览器因此不再重复
+ * 下载。那里也记了两件容易踩的事：量这个头必须用 GET 而不是 `curl -I`，以及边缘
+ * 缓存还需要一条 Cloudflare 的 Cache Rule。
  */
 import FIRS_URL from "@/basemap/firs.json?url";
 

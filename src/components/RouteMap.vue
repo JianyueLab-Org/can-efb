@@ -167,16 +167,23 @@ const props = defineProps<{
  * 陆地多边形。**从 `src/` 里 `?url` 引进来，不放 `public/`**，这是一处实打实的
  * 加载优化而不是搬家：
  *
- * `public/` 下的文件名字是固定的，服务端因此只能给它 `cache-control:
- * public, max-age=0` —— 线上量过，这两个大文件的响应头就是这样，而且
- * `cf-cache-status: DYNAMIC`，也就是**边缘一次都不缓存，每次访问都回源**。
+ * `public/` 下的文件拿到的是 `cache-control: public, max-age=0`，也就是**每次开
+ * 页面都要重新问一遍**。走 `?url` 之后 Vite 给它内容哈希的名字并落进 `_astro/`，
+ * 而 node 适配器对 `/_astro/` 下的一切发
+ * `public, max-age=31536000, immutable`（`@astrojs/node` 的 `serve-static.js`
+ * 里那一行）—— 浏览器因此一年之内根本不再请求这两个文件。名字带哈希，所以"缓存
+ * 一年"和"换了数据立刻生效"不矛盾：换了内容就是另一个名字。
  *
- * 走 `?url` 之后 Vite 给它一个内容哈希的名字，落进 `_astro/`，那里的响应头是
- * `public, max-age=31536000, immutable` 且 `cf-cache-status: HIT`（同样量过）。
- * 名字里带哈希，所以"缓存一年"和"换了数据要立刻生效"不矛盾 —— 换了内容就是另一
- * 个名字。
+ * 这个文件 1.1 MB，边界那个 634 KB。
  *
- * 这个文件 1.1 MB，边界那个 634 KB。以前每开一次页面都要为它们各走一趟东京。
+ * **量这件事要用 GET，不能用 `curl -I`。** 那个头是适配器在 `stream` 事件里设
+ * 的，HEAD 请求不走那条路径 —— 用 HEAD 量会看到 `max-age=0`，从而得出"改动没生
+ * 效"的错误结论。
+ *
+ * **边缘缓存还没解决**：线上量到的仍是 `cf-cache-status: DYNAMIC`。Cloudflare 按
+ * 扩展名决定缓不缓存，`.js`/`.css` 在它的默认清单里而 `.json` 不在，所以这两个文
+ * 件每次都还是回源 —— 只是回源之后浏览器会存一年。要让边缘也存，得在 Cloudflare
+ * 上给 `/_astro/*` 加一条 Cache Rule，那是控制台里的事，不在这个仓库里。
  */
 import LAND_URL from "@/basemap/land-50m.json?url";
 
