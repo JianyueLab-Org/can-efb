@@ -46,6 +46,12 @@
  * `LGMD-*`⊂LGGG）。哪天 VATSpy 换了结构、某块空域只以连字符形式存在，这里会直接报
  * 错而不是安静地少画一块。
  *
+ * ## 输出在 `src/`，不是 `public/`
+ *
+ * 那样 Vite 会给它一个内容哈希的名字，从而拿到一年的 immutable 缓存和边缘命中。
+ * 放 `public/` 的话名字是固定的，只能拿到 `max-age=0` —— 理由写在 `lib/firs.ts`
+ * 上面。所以**改完记得重新构建**，光换文件不会生效。
+ *
  * ## 坐标留四位小数
  *
  * 0.0001° 约 11 m —— 在这张图能放到的任何比例尺上都看不出差别，而它把 786 KB 压到
@@ -55,7 +61,7 @@
  *
  * ```bash
  * bun scripts/build-firs.mjs \
- *   ../can-radar/public/boundaries.geojson public/basemap/firs.json
+ *   ../can-radar/public/boundaries.geojson src/basemap/firs.json
  * ```
  */
 import { readFileSync, writeFileSync } from "node:fs";

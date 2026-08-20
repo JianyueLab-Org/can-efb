@@ -5,4 +5,9 @@ bun.lock
 
 # 底图数据是压缩过的 GeoJSON，不是给人读的。prettier 会把它展开成两倍大
 # （96 KB → 180 KB），而这个文件是随每次访问下载的。
+#
+# 两个大的（陆地、情报区边界）现在在 src/basemap/ 下 —— 放那里是为了让 Vite 给
+# 它们内容哈希的名字，从而拿到一年的 immutable 缓存，理由见 lib/firs.ts。字体还
+# 在 public/ 下，因为 glyphs 的 URL 是个运行时模板，哈希不进去。
 public/basemap/
+src/basemap/

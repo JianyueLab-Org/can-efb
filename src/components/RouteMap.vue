@@ -94,6 +94,14 @@ interface Point {
   lon: number;
   kind: number | string;
   via?: string;
+  /**
+   * 这个点属于**当前这条航路**，而不是背景里那批彼此无关的点。
+   *
+   * 不来自事件载荷 —— `render()` 在把 points 和 markers 并进同一个 source 时打
+   * 上去的。分开是因为标注只该跟着航路走：markers 里可能是全国几百个机场，给它
+   * 们都标上名字就是一团糊。
+   */
+  onRoute?: boolean;
 }
 
 /** 视野框，给外面按框取数据用。见 emitViewport。 */
@@ -155,7 +163,22 @@ const props = defineProps<{
   label: string;
 }>();
 
-const LAND_URL = "/basemap/land-50m.json";
+/**
+ * 陆地多边形。**从 `src/` 里 `?url` 引进来，不放 `public/`**，这是一处实打实的
+ * 加载优化而不是搬家：
+ *
+ * `public/` 下的文件名字是固定的，服务端因此只能给它 `cache-control:
+ * public, max-age=0` —— 线上量过，这两个大文件的响应头就是这样，而且
+ * `cf-cache-status: DYNAMIC`，也就是**边缘一次都不缓存，每次访问都回源**。
+ *
+ * 走 `?url` 之后 Vite 给它一个内容哈希的名字，落进 `_astro/`，那里的响应头是
+ * `public, max-age=31536000, immutable` 且 `cf-cache-status: HIT`（同样量过）。
+ * 名字里带哈希，所以"缓存一年"和"换了数据要立刻生效"不矛盾 —— 换了内容就是另一
+ * 个名字。
+ *
+ * 这个文件 1.1 MB，边界那个 634 KB。以前每开一次页面都要为它们各走一趟东京。
+ */
+import LAND_URL from "@/basemap/land-50m.json?url";
 
 /**
  * 两套配色。深色那套按航路图来：**陆地纯黑、海洋深蓝**，线条压到刚好看得见。
@@ -168,7 +191,14 @@ const PALETTE = {
     land: "#000000",
     landLine: "#1b2836",
     grid: "#1e2a38",
-    route: "#7ab8e0",
+    /* 生成出来的航路。**必须比航路网亮一个量级**：以前它是 #7ab8e0，而航路网
+     * 的高空色是 #6fa8cc —— 同一个色系、亮度也接近，只有一倍宽度差，压在八千段
+     * 网上根本认不出哪条是自己刚算出来的那条。
+     *
+     * 配一条深色的**衬线**（routeCasing）压在下面，这是航图和路网图的通行做法：
+     * 让线自带一圈"沟"，无论它穿过什么都还分得开 —— 光加宽加亮做不到这件事。 */
+    route: "#a8e6ff",
+    routeCasing: "#06131f",
     marker: "#cfe4f2",
     // 航路按**代号首字母**分色，这是航图的通行约定：
     //   V           低空航路
@@ -202,7 +232,8 @@ const PALETTE = {
     land: "#f4f5f3",
     landLine: "#c8d2d8",
     grid: "#cbd5db",
-    route: "#2f6f9e",
+    route: "#0b5f96",
+    routeCasing: "#ffffff",
     marker: "#1d4e70",
     airwayV: "#5c7180",
     airwayHigh: "#2f6f9e",
@@ -314,7 +345,13 @@ function routeLines(points: Point[]): FeatureCollection {
       type: "Feature",
       // 一条腿的样式取自**它到达的那个点**：SID 的第一条腿属于 SID。这条规则和
       // can-radar 一致，改之前先看那边。
-      properties: { procedure: isProcedure(points[i]) ? 1 : 0 },
+      //
+      // `via` 是走这条腿用的航路代号（不在航路上时是 `DCT`），拿来沿线标注 ——
+      // 航图上就是这么读一条计划的：点、航路、点。
+      properties: {
+        procedure: isProcedure(points[i]) ? 1 : 0,
+        via: points[i].via ?? "",
+      },
       geometry: {
         type: "LineString",
         coordinates: arc(from, to).map(([lat, lon]) => [lon, lat]),
@@ -329,7 +366,14 @@ function pointFeatures(points: Point[]): FeatureCollection {
     type: "FeatureCollection",
     features: points.map((p) => ({
       type: "Feature",
-      properties: { ident: p.ident, airport: p.kind === "airport" ? 1 : 0 },
+      properties: {
+        ident: p.ident,
+        airport: p.kind === "airport" ? 1 : 0,
+        // 是不是**这条航路上**的点。markers 这个 source 里同时装着航路的点和
+        // 一批彼此无关的点（比如全国机场），只有前者该被标名字 —— 给几百个机场
+        // 都标上名字就是一团糊。
+        onRoute: p.onRoute ? 1 : 0,
+      },
       geometry: { type: "Point", coordinates: [p.lon, p.lat] },
     })),
   };
@@ -451,7 +495,15 @@ function applyPalette() {
     map.setPaintProperty(id, "text-color", c.label);
     map.setPaintProperty(id, "text-halo-color", c.ocean);
   }
+  // 航路现在是四个图层（衬线 / 航路段 / 程序段 / 沿线航路名），主题一换要一起
+  // 跟上 —— 漏掉哪个，那一层就停在上一套配色里。
   map.setPaintProperty("route", "line-color", c.route);
+  map.setPaintProperty("route-procedure", "line-color", c.route);
+  map.setPaintProperty("route-casing", "line-color", c.routeCasing);
+  map.setPaintProperty("route-airways", "text-color", c.route);
+  map.setPaintProperty("route-airways", "text-halo-color", c.routeCasing);
+  map.setPaintProperty("route-labels", "text-color", c.marker);
+  map.setPaintProperty("route-labels", "text-halo-color", c.routeCasing);
   map.setPaintProperty("markers", "circle-color", c.marker);
   map.setPaintProperty("markers", "circle-stroke-color", c.marker);
 
@@ -494,7 +546,11 @@ function render() {
     routeLines(points),
   );
   (map.getSource("markers") as GeoJSONSource | undefined)?.setData(
-    pointFeatures([...markers, ...points]),
+    // 航路上的点打个标记，好让标注那一层只挑它们，见 pointFeatures。
+    pointFeatures([
+      ...markers,
+      ...points.map((p) => ({ ...p, onRoute: true })),
+    ]),
   );
   (map.getSource("airways") as GeoJSONSource | undefined)?.setData(
     props.airways ?? { type: "FeatureCollection", features: [] },
@@ -949,10 +1005,102 @@ onMounted(() => {
             },
           },
           {
+            /* 衬线：比主线宽，深色，压在它下面。见配色里 routeCasing 那段。 */
+            id: "route-casing",
+            type: "line",
+            source: "route",
+            layout: { "line-cap": "round", "line-join": "round" },
+            paint: {
+              "line-color": c.routeCasing,
+              "line-width": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                3,
+                4,
+                8,
+                6.5,
+              ] as never,
+              "line-opacity": 0.9,
+            },
+          },
+          {
+            /* 航路段和程序段分成**两个图层**，靠 filter 分，而不是用一个
+             * `case` 表达式去喂 `line-dasharray`。
+             *
+             * 表达式那条路在这个版本的规范里其实是允许的（`line-dasharray` 是
+             * `cross-faded-data-driven`，参数含 feature，查过），但"实线"得写成
+             * `[1, 0]` —— 一个零长度的间隔。那是个赌运气的写法：规范没说零间隔
+             * 该怎么画，而画错的样子是整条线变成一串点，还不报错。两个图层没有
+             * 这种含糊。 */
             id: "route",
             type: "line",
             source: "route",
-            paint: { "line-color": c.route, "line-width": 1.4 },
+            filter: ["!=", ["get", "procedure"], 1],
+            layout: { "line-cap": "round", "line-join": "round" },
+            paint: {
+              "line-color": c.route,
+              // 比航路网粗一倍以上，而且随缩放一起长 —— 缩小时它仍然要是图上最
+              // 显眼的那条线，那正是缩小时最难做到的。
+              "line-width": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                3,
+                2,
+                8,
+                3.4,
+              ] as never,
+            },
+          },
+          {
+            /* 程序段（SID/STAR）画虚线：它们是"按图走"的部分，和航路段不是一回
+             * 事，航图上也这么分。 */
+            id: "route-procedure",
+            type: "line",
+            source: "route",
+            filter: ["==", ["get", "procedure"], 1],
+            layout: { "line-cap": "butt", "line-join": "round" },
+            paint: {
+              "line-color": c.route,
+              "line-width": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                3,
+                2,
+                8,
+                3.4,
+              ] as never,
+              "line-dasharray": [2, 1.5],
+            },
+          },
+          {
+            /* 沿着航路标航路代号。航图上读一条计划就是"点—航路—点"，只画线不
+             * 说走哪条，等于把这条航路里一半的信息藏起来了。
+             *
+             * `symbol-placement: line` 让它贴着线走；间距给得大一些，因为一条
+             * 腿往往横跨半个屏幕，重复太密反而吵。 */
+            id: "route-airways",
+            type: "symbol",
+            source: "route",
+            minzoom: 4,
+            filter: ["!=", ["get", "via"], ""],
+            layout: {
+              "symbol-placement": "line",
+              "symbol-spacing": 220,
+              "text-field": ["get", "via"],
+              "text-font": ["Noto Sans Regular"],
+              "text-size": 10,
+              "text-letter-spacing": 0.08,
+              "text-max-angle": 25,
+              "text-offset": [0, -0.9],
+            },
+            paint: {
+              "text-color": c.route,
+              "text-halo-color": c.routeCasing,
+              "text-halo-width": 1.6,
+            },
           },
           {
             // 管制席位。圆点加「呼号 频率」——**频率是飞行员真正要的那一样**，
@@ -1055,6 +1203,31 @@ onMounted(() => {
                 1,
                 0.45,
               ],
+            },
+          },
+          {
+            /* 航路点的名字。**只标这条航路上的点**（filter 见下），理由写在
+             * Point.onRoute 上面。
+             *
+             * 标注不参与避让：这条航路是用户刚刚亲手算出来的东西，它的点名被背景
+             * 里的导航台或航路点标注挤掉，是这张图上最说不通的一种让路。 */
+            id: "route-labels",
+            type: "symbol",
+            source: "markers",
+            filter: ["==", ["get", "onRoute"], 1],
+            layout: {
+              "text-field": ["get", "ident"],
+              "text-font": ["Noto Sans Regular"],
+              "text-size": 10,
+              "text-offset": [0, 0.8],
+              "text-anchor": "top",
+              "text-allow-overlap": true,
+              "text-ignore-placement": true,
+            },
+            paint: {
+              "text-color": c.marker,
+              "text-halo-color": c.routeCasing,
+              "text-halo-width": 1.6,
             },
           },
         ],
