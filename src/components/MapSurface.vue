@@ -47,9 +47,14 @@ const RouteMap = defineAsyncComponent(
 );
 
 const points = ref<MapPoint[]>([]);
+const markers = ref<MapPoint[]>([]);
+const focus = ref<MapPoint | null>(null);
 const label = ref(props.label);
 
-const hasPoints = computed(() => points.value.length > 0);
+/** 有任何一种可画的东西，就不该再显示那条「还没有东西」的提示。 */
+const hasPoints = computed(
+  () => points.value.length > 0 || markers.value.length > 0,
+);
 
 let unsubscribe: (() => void) | null = null;
 
@@ -57,6 +62,8 @@ onMounted(() => {
   mounted.value = true;
   unsubscribe = subscribeToMap((payload) => {
     points.value = payload.points ?? [];
+    markers.value = payload.markers ?? [];
+    focus.value = payload.focus ?? null;
     // 面板可以覆盖角标；没给就沿用外壳传进来的那一份。
     label.value = payload.label ?? props.label;
   });
@@ -74,7 +81,14 @@ onBeforeUnmount(() => {
       `points` 为空也照样渲染：RouteMap 的 render() 里有 `if (!points.length)
       return`，空点集只画底图，不会抛。
     -->
-    <RouteMap v-if="mounted" :points="points" :label="label" class="h-full" />
+    <RouteMap
+      v-if="mounted"
+      :points="points"
+      :markers="markers"
+      :focus="focus"
+      :label="label"
+      class="h-full"
+    />
 
     <!--
       水合之前的占位。不能在这里放 Leaflet（SSR 会抛），但也不能什么都不放 ——

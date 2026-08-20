@@ -7,12 +7,14 @@
  * 给 can-db 开 CORS、或者在本站反代白名单上多开一条 —— 两样都是为一个只读列表
  * 付的结构性代价。搜索是本地过滤，几百个机场不值得一个往返。
  *
- * **点一个机场只推**那一个点给地图，不是整张列表。`RouteMap` 会把连续的点连成
- * 航路线 —— 那是它的用途 —— 所以把一百个机场推过去会连成一团面条。单点走的是
- * `drawLine` 里 `points.length < 2` 那条提前返回，只落一个方块，再由 fitBounds
- * 框住（maxZoom 9 挡住一头扎到街道级）。
+ * **整张列表都推给地图，走 `markers` 而不是 `points`。** 那两个字段的区别不是样
+ * 式：`points` 会被顺次连成一条航路线（那是 RouteMap 的用途），几百个机场塞进去
+ * 就是一团面条。`markers` 只画点。
+ *
+ * 点某一行时**不重推整层**，只多带一个 `focus`：地图把镜头对过去，不重新框住全
+ * 国 —— 否则用户刚才的缩放会被每一次点击丢掉一遍。
  */
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { createTranslator } from "@/lib/i18n";
 import { publishToMap } from "@/lib/mapBus";
 
@@ -48,19 +50,41 @@ const filtered = computed(() => {
   );
 });
 
+/** 机场 → 地图上的一个点。`kind` 决定 RouteMap 把它画成方块而不是小圆点。 */
+function toMarker(airport: Airport) {
+  return {
+    ident: airport.icao,
+    lat: airport.lat,
+    lon: airport.lon,
+    kind: "airport",
+  };
+}
+
+/**
+ * 推给地图的是**全量**，不是筛选后的结果。
+ *
+ * 搜索框是用来在列表里找一行的，不是用来筛地图的 —— 边打字边让地图上的机场一批
+ * 批消失，会让人以为数据在丢。真要做「只看某个 FIR」那种筛选，应该是一个明确的
+ * 图层开关，不是搜索框的副作用。
+ */
+function publishAll(focus?: Airport) {
+  publishToMap({
+    markers: props.airports.map(toMarker),
+    focus: focus ? toMarker(focus) : undefined,
+    label: focus
+      ? focus.name
+        ? `${focus.icao} · ${focus.name}`
+        : focus.icao
+      : t("airports.mapLabel"),
+  });
+}
+
+// 进页面就把机场铺上去，不用等用户点。这一页的主体就是那张图。
+onMounted(() => publishAll());
+
 function show(airport: Airport) {
   selected.value = airport.icao;
-  publishToMap({
-    points: [
-      {
-        ident: airport.icao,
-        lat: airport.lat,
-        lon: airport.lon,
-        kind: "airport",
-      },
-    ],
-    label: airport.name ? `${airport.icao} · ${airport.name}` : airport.icao,
-  });
+  publishAll(airport);
 }
 </script>
 
