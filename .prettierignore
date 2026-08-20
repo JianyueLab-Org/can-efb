@@ -2,3 +2,7 @@ dist/
 .astro/
 node_modules/
 bun.lock
+
+# 底图数据是压缩过的 GeoJSON，不是给人读的。prettier 会把它展开成两倍大
+# （96 KB → 180 KB），而这个文件是随每次访问下载的。
+public/basemap/
