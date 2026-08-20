@@ -16,7 +16,7 @@
  * - **SID/STAR 画虚线**，航路段画实线，而且转折那一段同时属于两条线，所以样式
  *   变化处没有缺口。
  *
- * 底图是 CARTO 的浅色/深色两套，**跟着主题走**。主题在这个站是 `<html>` 上的
+ * 底图是 CARTO 的浅色/深色两套**无注记**版，**跟着主题走**。主题在这个站是 `<html>` 上的
  * `dark` 类，而 `ThemeLangControls` 换主题时不发任何事件 —— 所以这里挂了一个
  * `MutationObserver` 盯 class。没有别的通道：那个组件是从 can-web 同步来的，为
  * 了地图在它里面加一个事件，就等于让四个站的公共文件为一个站的需求分叉。
@@ -36,10 +36,23 @@ interface Point {
 
 const props = defineProps<{ points: Point[]; label: string }>();
 
-/** CARTO 的两套底图。`{r}` 是高清后缀，`{s}` 是子域，两个都要留着。 */
+/**
+ * CARTO 的两套底图，**无注记版**（`_nolabels`）。`{r}` 是高清后缀，`{s}` 是子
+ * 域，两个都要留着。
+ *
+ * 用 `_nolabels` 而不是 `_all`：这块地图是外壳右边的显示面，要的是陆地和海洋的
+ * 分野，不是一张参考地图。地名注记在这里只会和航路点的标签打架 —— 航路点自己
+ * 带 tooltip，而那才是这块地图上唯一该出现的文字。
+ *
+ * `_nolabels` 和 `_all` 是同一套配色的成对变体，所以深浅两套主题、以及
+ * `lineColor()` 挑的那两个蓝色都不用跟着改。
+ *
+ * **这一处刻意和 can-radar 不一样。** 那边的地图是拿来定位飞机的，地名有用；这
+ * 边不是。改之前先想清楚是哪一种用途。
+ */
 const TILES = {
-  dark: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-  light: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+  dark: "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
+  light: "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
 };
 
 /**
@@ -174,7 +187,9 @@ onMounted(() => {
   }).addTo(map);
 
   routeLayer = L.layerGroup().addTo(map);
-  L.control.scale({ imperial: false, position: "bottomleft" }).addTo(map);
+  // 比例尺去掉了：它渲染的是一行文字（「500 km」），而这块底图刻意不带任何
+  // 注记。归属声明**不能**同样处理 —— 那是 OSM 和 CARTO 的授权条件，删掉就是
+  // 违反许可，所以 attributionControl 保持开启。
 
   // 容器尺寸会变（侧栏折叠、窗口缩放、手机转屏），不告诉 Leaflet 就会画出灰
   // 边和错位的瓦片。
