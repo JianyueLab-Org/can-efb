@@ -35,7 +35,21 @@ interface Point {
   via?: string;
 }
 
-const props = defineProps<{ points: Point[]; label: string }>();
+const props = defineProps<{
+  /** 连成线的点 —— 一条航路。 */
+  points: Point[];
+  /**
+   * 只画点、不连线的点 —— 一批彼此无关的位置，比如全国的机场。
+   *
+   * 和 `points` 分开而不是加一个开关：一次渲染里两者可以同时存在（航路画在机场
+   * 底图上）。把机场塞进 `points` 的后果不是样式不对，是**几百个机场被顺次连成
+   * 一条面条**。
+   */
+  markers?: Point[];
+  /** 有就把视野对到它，而不是框住全部。 */
+  focus?: Point | null;
+  label: string;
+}>();
 
 /**
  * **没有瓦片底图。** 这块地图画的是一层陆地多边形，海洋就是容器的底色。
@@ -227,15 +241,37 @@ function render() {
   if (!map || !routeLayer) return;
   routeLayer.clearLayers();
 
-  const points = props.points;
-  if (!points.length) return;
-
+  const points = props.points ?? [];
+  const markers = props.markers ?? [];
   const color = lineColor();
-  drawLine(points, color);
-  drawPoints(points, color);
+
+  // 先画 markers，再画航路：后画的压在上面，航路才不会被一片机场点盖住。
+  if (markers.length) drawPoints(markers, color);
+  if (points.length) {
+    drawLine(points, color);
+    drawPoints(points, color);
+  }
+
+  // **视野有两种取法，focus 优先。**
+  //
+  // 没有 focus 就框住画出来的一切；有 focus 就只把镜头对过去，不重新框 —— 那是
+  // 「在一堆点里挑一个看」的动作（机场列表点一行），此时把全国重新框一遍等于把
+  // 用户刚才的缩放全丢掉。
+  if (props.focus) {
+    // 至少放到 8 级：从全国视野点一个机场，停在原缩放上等于什么都没发生。
+    map.setView(
+      [props.focus.lat, props.focus.lon],
+      Math.max(map.getZoom(), 8),
+      { animate: true },
+    );
+    return;
+  }
+
+  const all = [...points, ...markers];
+  if (!all.length) return;
 
   const bounds = L.latLngBounds(
-    points.map((p) => [p.lat, p.lon] as [number, number]),
+    all.map((p) => [p.lat, p.lon] as [number, number]),
   );
   // maxZoom 挡住只有一个点（或者两点极近）时地图一头扎到街道级的情况。
   map.fitBounds(bounds, { padding: [32, 32], maxZoom: 9 });
@@ -315,7 +351,7 @@ async function loadLand() {
   }
 }
 
-watch(() => props.points, render, { deep: true });
+watch(() => [props.points, props.markers, props.focus], render, { deep: true });
 
 onBeforeUnmount(() => {
   wideQuery?.removeEventListener("change", syncWheelZoom);

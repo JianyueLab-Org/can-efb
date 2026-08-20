@@ -276,7 +276,8 @@
       "error": {
         "title": "Aeronautical data is temporarily unavailable",
         "body": "The aeronautical database did not answer. This is a fault rather than a permissions problem — try again shortly."
-      }
+      },
+      "mapLabel": "All airports"
     }
   }
 }
