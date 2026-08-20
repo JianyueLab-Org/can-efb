@@ -255,6 +255,11 @@
         "off": "No airways",
         "high": "Upper",
         "low": "Lower"
+      },
+      "layers": {
+        "navaids": "Navaids",
+        "sectors": "Sectors",
+        "restricted": "Restricted"
       }
     },
     "airports": {

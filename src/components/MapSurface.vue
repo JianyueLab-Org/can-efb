@@ -36,6 +36,13 @@ import {
   distinctLocTypes,
   type AirwayLevel,
 } from "@/lib/airways";
+import {
+  fetchNavaids,
+  toNavaidPoints,
+  fetchAirspaces,
+  toAirspacePolygons,
+  type AirspaceFamily,
+} from "@/lib/aip";
 import type { FeatureCollection } from "geojson";
 
 const props = defineProps<{
@@ -47,6 +54,8 @@ const props = defineProps<{
   emptyBody: string;
   /** 航路图层开关的三个文案（关 / 高空 / 低空），已翻译。 */
   airwayLabels: { off: string; high: string; low: string };
+  /** 其余图层开关的文案（导航台 / 扇区 / 限制区），已翻译。 */
+  layerLabels: { navaids: string; sectors: string; restricted: string };
 }>();
 
 /** 见文件顶上最后一段。`mounted` 之前一律不渲染 RouteMap。 */
@@ -66,6 +75,9 @@ const airwayCache = new Map<
   AirwayLevel,
   { lines: FeatureCollection; fixes: FeatureCollection }
 >();
+
+let navaidCache: FeatureCollection | null = null;
+const airspaceCache = new Map<AirspaceFamily, FeatureCollection>();
 
 const points = ref<MapPoint[]>([]);
 const markers = ref<MapPoint[]>([]);
@@ -131,6 +143,75 @@ async function setAirwayLevel(level: AirwayLevel | "off") {
   }
 }
 
+/**
+ * 其余三个图层：导航台、扇区、限制区。各自独立开关。
+ *
+ * 独立而不是做成一个「显示全部」：这几层的用途不一样 —— 看扇区归属和看限制区是
+ * 两件事，一次全打开只会把图糊掉。
+ *
+ * 和航路一样按需拉、拉过留着。
+ */
+const showNavaids = ref(false);
+const navaids = ref<FeatureCollection | null>(null);
+
+const airspaceFamily = ref<AirspaceFamily | "off">("off");
+const airspaces = ref<FeatureCollection | null>(null);
+
+const layerBusy = ref(false);
+
+async function toggleNavaids() {
+  if (showNavaids.value) {
+    showNavaids.value = false;
+    navaids.value = null;
+    return;
+  }
+  if (navaidCache) {
+    navaids.value = navaidCache;
+    showNavaids.value = true;
+    return;
+  }
+  layerBusy.value = true;
+  try {
+    navaidCache = toNavaidPoints(await fetchNavaids());
+    navaids.value = navaidCache;
+    showNavaids.value = true;
+  } catch (error) {
+    // 和航路那层同一条规矩：用户明确打开的图层，失败要说话并退回关，否则开关亮
+    // 着却什么都没画，看起来像这一带没有导航台。
+    console.error("[efb:map] 导航台加载失败:", error);
+    showNavaids.value = false;
+  } finally {
+    layerBusy.value = false;
+  }
+}
+
+async function setAirspaceFamily(family: AirspaceFamily | "off") {
+  if (family === "off" || airspaceFamily.value === family) {
+    airspaceFamily.value = "off";
+    airspaces.value = null;
+    return;
+  }
+  const cached = airspaceCache.get(family);
+  if (cached) {
+    airspaces.value = cached;
+    airspaceFamily.value = family;
+    return;
+  }
+  layerBusy.value = true;
+  try {
+    const polygons = toAirspacePolygons(await fetchAirspaces(family));
+    airspaceCache.set(family, polygons);
+    airspaces.value = polygons;
+    airspaceFamily.value = family;
+  } catch (error) {
+    console.error("[efb:map] 空域加载失败:", error);
+    airspaceFamily.value = "off";
+    airspaces.value = null;
+  } finally {
+    layerBusy.value = false;
+  }
+}
+
 let unsubscribe: (() => void) | null = null;
 
 onMounted(() => {
@@ -166,6 +247,8 @@ onBeforeUnmount(() => {
       :focus="focus"
       :airways="airways"
       :airway-fixes="airwayFixes"
+      :navaids="navaids"
+      :airspaces="airspaces"
       :label="label"
       class="h-full"
     />
@@ -195,6 +278,36 @@ onBeforeUnmount(() => {
         @click="setAirwayLevel(opt)"
       >
         {{ airwayLabels[opt] }}
+      </button>
+    </div>
+
+    <div class="map-layers map-layers-2 card">
+      <button
+        type="button"
+        class="map-layer-btn"
+        :class="showNavaids ? 'is-on' : ''"
+        :disabled="layerBusy"
+        @click="toggleNavaids"
+      >
+        {{ layerLabels.navaids }}
+      </button>
+      <button
+        type="button"
+        class="map-layer-btn"
+        :class="airspaceFamily === 'controlled' ? 'is-on' : ''"
+        :disabled="layerBusy"
+        @click="setAirspaceFamily('controlled')"
+      >
+        {{ layerLabels.sectors }}
+      </button>
+      <button
+        type="button"
+        class="map-layer-btn"
+        :class="airspaceFamily === 'restricted' ? 'is-on' : ''"
+        :disabled="layerBusy"
+        @click="setAirspaceFamily('restricted')"
+      >
+        {{ layerLabels.restricted }}
       </button>
     </div>
 

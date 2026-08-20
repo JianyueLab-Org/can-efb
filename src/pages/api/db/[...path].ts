@@ -40,6 +40,10 @@ const ALLOW_LIST: Record<string, Allowed> = {
   // 航路生成。规划逻辑在 can-db（internal/aip/route.go）—— 这一条只是把它开给
   // 浏览器，EFB 一行规划代码都没有。
   "aip/route": { methods: ["GET"], who: "RouteGenerator.vue" },
+  // 导航台与空域图层。空域按 `?family=` 分批取 —— 扇区（controlled）和限制区
+  // （restricted）画法不同，也各自开关，没必要一次全拉。
+  "aip/navaids": { methods: ["GET"], who: "RouteMap.vue 的导航台图层" },
+  "aip/airspaces": { methods: ["GET"], who: "RouteMap.vue 的空域图层" },
 };
 
 const PASS_THROUGH = ["content-type", "cache-control"];
