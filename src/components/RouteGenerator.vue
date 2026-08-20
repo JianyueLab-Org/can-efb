@@ -25,6 +25,7 @@
 import { ref } from "vue";
 import { createTranslator } from "@/lib/i18n";
 import { publishToMap } from "@/lib/mapBus";
+import { saveDraft } from "@/lib/planDraft";
 import {
   planRoute,
   planToMapPoints,
@@ -75,6 +76,28 @@ async function generate() {
   } finally {
     busy.value = false;
   }
+}
+
+/**
+ * 把这条航路交给飞行计划页。
+ *
+ * **只交机场和航路串，不交巡航高度。** 上面那个高度框是喂给规划器的**输入**
+ * （「按这个高度选航路」），而计划里那一栏要的是 `FL350` 这种写法 —— 35000 和
+ * FL350 是两种写法，而过渡高度以下根本不该写成 FL。猜错会填出一个**格式合法但
+ * 意思不对**的高度，那种错误 422 拦不住，因为它没错。
+ *
+ * 交接是一次性的，见 lib/planDraft.ts。
+ */
+function toFlightPlan() {
+  if (!plan.value) return;
+  const ok = saveDraft({
+    departure: plan.value.from,
+    arrival: plan.value.to,
+    route: plan.value.route,
+    source: plan.value.source,
+  });
+  // 存不下就别跳 —— 跳过去什么都没填才是真的莫名其妙。
+  if (ok) window.location.href = "/flightplan";
 }
 </script>
 
@@ -141,6 +164,14 @@ async function generate() {
       <p class="card break-all p-3 font-mono text-sm text-ink">
         {{ plan.route }}
       </p>
+
+      <button
+        type="button"
+        class="btn btn-secondary self-start"
+        @click="toFlightPlan"
+      >
+        {{ t("route.generate.toFlightPlan") }}
+      </button>
 
       <div class="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted">
         <span>
