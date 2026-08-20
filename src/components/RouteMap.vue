@@ -35,9 +35,12 @@ import {
   Map as MapLibreMap,
   NavigationControl,
   LngLatBounds,
+  setWorkerUrl,
   type GeoJSONSource,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+// eslint-disable-next-line import/no-unresolved -- Vite 的 worker 后缀，不是真实路径
+import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import type { Feature, FeatureCollection } from "geojson";
 import { arc, type LatLon } from "@/lib/geo";
 
@@ -56,6 +59,31 @@ function trace(step: string, detail?: unknown) {
 }
 
 trace("module evaluated");
+
+/**
+ * **告诉 MapLibre 它的 worker 在哪，否则整块地图是死的。**
+ *
+ * MapLibre 6 把 worker 拆成了独立文件（`maplibre-gl-worker.mjs`，它自己还 import
+ * 一份 `maplibre-gl-shared.mjs`）。不指定时它会把 worker 内联成一个 blob 再
+ * `new Worker(blobURL, {type:"module"})` —— 而那个 blob 里的相对 import 解析不
+ * 到，worker 于是**起得来但永远不回话**。
+ *
+ * 后果非常难查，因为它不报错：GeoJSON source 的瓦片是在 worker 里处理的，worker
+ * 不回话 → source 永远不就绪 → `map.on("load")` **永不触发** → 所有矢量图层都不
+ * 画。而 `background` 图层不经过 worker，照画不误。屏幕上就是一块纯色，控制台一
+ * 个字都没有。这正是上线后「右边一片蓝、什么都没有」的全部原因。
+ *
+ * `?worker&url` 是 Vite 的写法：它把 worker **打成一个独立文件**（把 shared 那
+ * 份一起打进去，于是没有相对 import 要解析），并返回它的 URL。
+ *
+ * **验证方式是可见的**：修好之后构建产物 `dist/client/_astro/` 里会多出一个
+ * worker 文件；修之前一个都没有。这条比任何截图都可靠。
+ *
+ * 放在模块顶层而不是 onMounted：它必须在**任何** Map 构造之前生效，而这个模块被
+ * 异步 import，顶层就是最早的时机。
+ */
+setWorkerUrl(workerUrl);
+trace("worker url set", workerUrl);
 
 interface Point {
   ident: string;
