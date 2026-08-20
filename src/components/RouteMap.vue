@@ -36,6 +36,7 @@ import {
   Map as MapLibreMap,
   AttributionControl,
   NavigationControl,
+  ScaleControl,
   LngLatBounds,
   setWorkerUrl,
   type GeoJSONSource,
@@ -472,6 +473,9 @@ function applyPalette() {
   map.setPaintProperty("mora-labels", "text-halo-color", c.ocean);
 }
 
+/** 上一次真正对过焦的那个点，见 render() 里的说明。 */
+let lastFocus: unknown = null;
+
 /** 把当前 props 灌进 source。source 已经在，只换数据 —— 不重建图层。 */
 function render() {
   trace("render", {
@@ -520,14 +524,22 @@ function render() {
     props.own ?? { type: "FeatureCollection", features: [] },
   );
 
-  // 视野：focus 优先 —— 「在一堆点里挑一个看」不该把用户刚才的缩放丢掉。
+  /* 视野：focus 优先 —— 「在一堆点里挑一个看」不该把用户刚才的缩放丢掉。
+   *
+   * **只在 focus 真的换了的时候动视野。** render() 现在会被实时数据每 30 秒触发
+   * 一次，而 focus 是会一直留着的：不比一下的话，每半分钟就把镜头拽回上一次对焦
+   * 的那个点 —— 正在平移的人会以为地图坏了。 */
   if (props.focus) {
-    map.easeTo({
-      center: [props.focus.lon, props.focus.lat],
-      zoom: Math.max(map.getZoom(), 7),
-    });
+    if (props.focus !== lastFocus) {
+      lastFocus = props.focus;
+      map.easeTo({
+        center: [props.focus.lon, props.focus.lat],
+        zoom: Math.max(map.getZoom(), 7),
+      });
+    }
     return;
   }
+  lastFocus = null;
 
   // **航路网不参与框选**：它是全国的图，把它算进去等于每次都缩到最小。视野
   // 该跟着你正在看的东西走，而不是跟着背景参考走。
@@ -763,8 +775,35 @@ onMounted(() => {
             source: "airways",
             paint: {
               "line-color": airwayColor(c) as never,
-              "line-width": 0.7,
-              "line-opacity": 0.8,
+              /* **随缩放变粗变实**，不是一个定值。
+               *
+               * 覆盖框内是八千多个航段。在开图那个视野（z3，全国）上，八千条
+               * 0.7px 的线彼此间距只有几个像素 —— 画出来不是一张航路网，是一片
+               * 灰雾，底下的海岸线和边界全被它盖住。
+               *
+               * 但也不该在低缩放直接藏掉：「这一带有航路网」本身就是信息，而且
+               * 藏了之后放大时会突然长出一张网。所以让它淡下去而不是消失，到
+               * z6（一度约 91px）恢复成正常的航图线宽。 */
+              "line-width": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                3,
+                0.4,
+                6,
+                0.7,
+                9,
+                1.1,
+              ] as never,
+              "line-opacity": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                3,
+                0.35,
+                6,
+                0.8,
+              ] as never,
             },
           },
           {
@@ -794,6 +833,12 @@ onMounted(() => {
           {
             // 航路点。三角形图标是运行时用 canvas 画出来注册的（见 addImage），
             // 不引 sprite —— 为四五个符号挂一套雪碧图不划算。
+            /* 名字比三角形**晚一档**出现（见下面的 text-opacity）。
+             *
+             * 航路网自己的点集有五千多个。z5 上一度是 45px，五个字母的代号大约
+             * 40px 宽 —— 挨着的两个点必然打架，于是避让会丢掉大部分名字，屏幕上
+             * 剩下一批看起来随机的标注。三角形本身很小，那一档先画出来说明「这
+             * 里有一个航路点」，名字等放到读得出的比例尺再出现。 */
             id: "airway-fixes",
             type: "symbol",
             source: "airwayFixes",
@@ -812,6 +857,8 @@ onMounted(() => {
               "text-color": c.label,
               "text-halo-color": c.ocean,
               "text-halo-width": 1.2,
+              // 名字在 z6 才出现，三角形从 z5 就在。见上面那段注释。
+              "text-opacity": ["step", ["zoom"], 0, 6, 1] as never,
             },
           },
           {
@@ -842,12 +889,19 @@ onMounted(() => {
             // `format` 的分段 `font-scale` 是唯一能在一个标注里换字号的办法。
             // 基线是对齐的，所以小字自然坐在下方 —— 正好是要的下标样子。
             //
-            // **minzoom 4**：一度格子在更小的比例尺上只有几个像素宽，几万个数
-            // 字挤在一起既读不出也画不动。缩到那个程度它就该消失。
+            /* **minzoom 5.5**，不是 4。
+             *
+             * 一度格子的像素宽是 `360 / (512 · 2^z)` 的倒数：z4 是 22.8px，z5 是
+             * 45.5px，z5.5 是 64px。而一个「31¹」样式的标注在 11px 字号下大约
+             * 20px 宽，还要留出不贴着邻格的余量。
+             *
+             * z4 上放不下的后果不是"挤"，是**避让会丢掉大部分格子** —— 而一张只
+             * 填了一部分的 MORA 网格比不画更糟：读图的人会把空格当成"这里没有数
+             * 据"，而不是"这里的数字被挤掉了"。要么整片都在，要么整片都不在。 */
             id: "mora-labels",
             type: "symbol",
             source: "mora",
-            minzoom: 4,
+            minzoom: 5.5,
             layout: {
               "text-field": [
                 "format",
@@ -1041,6 +1095,10 @@ onMounted(() => {
 
   // 署名。CC BY-SA 4.0 要求的，不是装饰 —— can-radar 用同一份数据，署得也是同
   // 一行。陆地那份（Natural Earth）属公有领域，一并列出是礼貌不是义务。
+  //
+  // **放右上角，不是默认的右下角**：右下角是 `.map-corner-se` 那个坐标读数，两
+  // 个都是绝对定位、都贴着同一个角，叠在一起谁也读不清。这不是审美取舍 —— 署名
+  // 被盖住就等于没署。
   map.addControl(
     new AttributionControl({
       compact: true,
@@ -1049,6 +1107,18 @@ onMounted(() => {
         'target="_blank" rel="noreferrer">VATSpy</a> (CC BY-SA 4.0) · ' +
         "陆地 Natural Earth",
     }),
+    "top-right",
+  );
+
+  /* 比例尺。航图上判断距离靠它，而这张图没有任何别的尺度参照 —— 网格线是整度
+   * 的，纬度上一度约 60 海里，经度上随纬度收窄，用它读距离会错。
+   *
+   * 公制单位：这张网络的高度用英尺、距离用海里，但比例尺是给"这一段大概多远"用
+   * 的目测参照，而 MapLibre 的 `nautical` 单位在小比例尺下会给出 0.5 海里这种刻
+   * 度。米/公里的刻度更好读，也不会被误当成航图上的精确距离。 */
+  map.addControl(
+    new ScaleControl({ maxWidth: 90, unit: "metric" }),
+    "bottom-right",
   );
 
   map.on("styledata", () => trace("styledata"));
@@ -1073,9 +1143,39 @@ onMounted(() => {
   });
 });
 
-watch(() => [props.points, props.markers, props.focus, props.airways], render, {
-  deep: true,
-});
+/* **每一个喂 source 的 prop 都必须在这里。**
+ *
+ * 之前这个 watch 只列了 points / markers / focus / airways 四个，而 `render()`
+ * 会把**所有** source 一起写一遍 —— 于是其余图层只在"恰好有一次 airways 变化跟
+ * 在它后面"时才画得出来。
+ *
+ * 静态图层因此一直是碰运气：情报区、MORA、导航台都是挂载时异步取的，能不能显示
+ * 取决于它和航路网谁先回来。而实时那三层是**必然不显示**的 —— 它们每 30 秒换一
+ * 次数据，之后再没有任何 airways 变化，所以飞机永远停在第一帧、管制永远不出现。
+ *
+ * 分成两个 watch，不是一个：
+ *
+ * - 上面那组小而且可能被就地修改（航路点来自事件载荷），深比是划算的。
+ * - 下面那组是**每次整体替换**的要素集合。对它们深比意味着每一次实时刷新都要遍
+ *   历几万个要素（光 MORA 一层就有六万多格），而它们的引用一变就说明内容变了 ——
+ *   按引用比既正确又便宜。
+ */
+watch(() => [props.points, props.markers, props.focus], render, { deep: true });
+
+watch(
+  () => [
+    props.airways,
+    props.airwayFixes,
+    props.navaids,
+    props.firs,
+    props.mora,
+    props.airspaces,
+    props.traffic,
+    props.atc,
+    props.own,
+  ],
+  render,
+);
 
 onBeforeUnmount(() => {
   themeObserver?.disconnect();
