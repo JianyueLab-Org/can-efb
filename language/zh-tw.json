@@ -147,7 +147,18 @@
         "remarksLength": "備註太長。",
         "structural": "不能包含冒號或換行 —— 那會把 FSD 的封包拆開。"
       },
-      "confirmDelete": "確定撤銷目前的飛行計畫嗎？"
+      "confirmDelete": "確定撤銷目前的飛行計畫嗎？",
+      "draft": {
+        "filled": "已從航路生成填入：",
+        "kept": "表單裡已有內容，沒有覆蓋。",
+        "published": "這條航路是彙編發布的走法。",
+        "computed": "這條航路是按航路網算出來的最短路徑，不是彙編發布的走法。",
+        "fields": {
+          "route": "航路",
+          "departure": "起飛機場",
+          "arrival": "落地機場"
+        }
+      }
     },
     "weather": {
       "placeholder": "輸入 ICAO 代碼",
@@ -197,7 +208,8 @@
         "airspaces": "穿越的特殊空域",
         "noRoute": "這兩個機場之間沒有可用的走法（換個巡航高度也許可以）。",
         "badInput": "機場代碼不對，要四位 ICAO。",
-        "failed": "產生失敗，請稍後再試。"
+        "failed": "產生失敗，請稍後再試。",
+        "toFlightPlan": "填入飛行計劃"
       },
       "expand": {
         "title": "展開航路字串"

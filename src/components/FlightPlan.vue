@@ -19,6 +19,7 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { api } from "@/lib/canApi";
 import { createTranslator } from "@/lib/i18n";
+import { takeDraft } from "@/lib/planDraft";
 import { Icon } from "@jianyuelab-org/can-ui";
 
 const props = defineProps<{ messages: Record<string, unknown> }>();
@@ -108,6 +109,59 @@ async function load() {
   }
   stored.value = result.data ?? null;
   if (result.data) fill(result.data);
+
+  applyDraft();
+}
+
+/**
+ * 航路生成页交过来的那条航路。
+ *
+ * **只填空着的字段**，这是整件事的关键。跑在 `load()` **之后**，所以此时表单里
+ * 已经是这名成员现有的计划 —— 一条从别的页面带过来的航路串静默覆盖掉已经交上去
+ * 的计划，是这里唯一真正危险的失败方式：它没有报错，而人要到起飞前才发现航路不
+ * 是自己填的那条。
+ *
+ * 锁定态（管制员占着标牌）也不填。**注意这道判断在这里其实还不成立** —— 锁只有
+ * 在写入撞上 409 时才知道，读取时看不出来。留着是因为它是对的，而不是因为它此刻
+ * 拦得住什么：真正的防线是提交时那个 409。
+ *
+ * 填了什么、以及那条航路是**汇编发布的还是算出来的**，都在横幅里说出来 —— 进了
+ * 输入框之后这个区别就再也看不出来了。
+ */
+function applyDraft() {
+  const draft = takeDraft();
+  if (!draft || lockedBy.value) return;
+
+  const filled: string[] = [];
+  if (!form.route.trim()) {
+    form.route = draft.route;
+    filled.push(t("flightplan.draft.fields.route"));
+  }
+  if (!form.departure.trim() && draft.departure) {
+    form.departure = draft.departure;
+    filled.push(t("flightplan.draft.fields.departure"));
+  }
+  if (!form.arrival.trim() && draft.arrival) {
+    form.arrival = draft.arrival;
+    filled.push(t("flightplan.draft.fields.arrival"));
+  }
+
+  // 什么都没填时不要再跟一句「这条航路是……」—— 那时并没有一条航路被填进来，
+  // 说它的来历只会让人以为表单里的内容变了。
+  if (!filled.length) {
+    notice.value = { kind: "ok", text: t("flightplan.draft.kept") };
+    return;
+  }
+
+  const origin =
+    draft.source === "published"
+      ? t("flightplan.draft.published")
+      : t("flightplan.draft.computed");
+
+  notice.value = {
+    kind: "ok",
+    text: `${t("flightplan.draft.filled")}${filled.join("、")}。${origin}`,
+  };
 }
 
 async function file() {

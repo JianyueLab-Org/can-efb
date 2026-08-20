@@ -147,7 +147,18 @@
         "remarksLength": "Remarks are too long.",
         "structural": "No colons or newlines — they would split the FSD packet apart."
       },
-      "confirmDelete": "Withdraw the current flight plan?"
+      "confirmDelete": "Withdraw the current flight plan?",
+      "draft": {
+        "filled": "Filled from the route generator: ",
+        "kept": "The form already had content; nothing was overwritten.",
+        "published": "This routing is the one the AIP publishes.",
+        "computed": "This routing is a shortest path computed over the airway network, not a published one.",
+        "fields": {
+          "route": "route",
+          "departure": "departure",
+          "arrival": "arrival"
+        }
+      }
     },
     "weather": {
       "placeholder": "ICAO code",
@@ -197,7 +208,8 @@
         "airspaces": "Special airspace crossed",
         "noRoute": "No routing between these two airports (another cruise level may work).",
         "badInput": "Airport codes must be four-letter ICAO.",
-        "failed": "Could not generate a route — try again shortly."
+        "failed": "Could not generate a route — try again shortly.",
+        "toFlightPlan": "Fill into flight plan"
       },
       "expand": {
         "title": "Expand a route string"
