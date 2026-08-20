@@ -14,6 +14,7 @@
 import "@/styles/globals.css";
 import ThemeScript from "@jianyuelab-org/can-ui/components/ThemeScript.astro";
 import RailScript from "@/components/RailScript.astro";
+import PersistHtmlState from "@/components/PersistHtmlState.astro";
 import { ClientRouter } from "astro:transitions";
 import { getLocale, useTranslations } from "@/lib/i18n";
 
@@ -59,6 +60,13 @@ const fullTitle = title ? `${title} · ${t("siteName")}` : t("siteName");
       写法，所以这一步是安全的。
     */
     }
+    {
+      /*
+      必须和 ClientRouter 成对存在：那个东西会连 <html> 上的属性一起换掉，
+      而主题和轨的折叠状态正好写在那里。理由写在组件里。
+    */
+    }
+    <PersistHtmlState />
     <ClientRouter />
   </head>
   <body class="min-h-dvh bg-surface">
