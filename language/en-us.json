@@ -213,6 +213,29 @@
       },
       "map": {
         "label": "Route map: the resolved waypoints joined as a great-circle track"
+      },
+      "generate": {
+        "title": "Generate a route",
+        "from": "Departure",
+        "to": "Destination",
+        "level": "Cruise level (ft, optional)",
+        "action": "Generate",
+        "working": "Working…",
+        "published": "Published routing",
+        "computed": "Computed over the airway network",
+        "alternatives": "other routings",
+        "distance": "Route distance",
+        "direct": "Great circle",
+        "minSafe": "Min safe altitude",
+        "belowMtca": "**Cruise level is below the route's minimum terrain clearance**",
+        "restrictions": "Restrictions en route (verbatim)",
+        "airspaces": "Special airspace crossed",
+        "noRoute": "No routing between these two airports (another cruise level may work).",
+        "badInput": "Airport codes must be four-letter ICAO.",
+        "failed": "Could not generate a route — try again shortly."
+      },
+      "expand": {
+        "title": "Expand a route string"
       }
     },
     "dashboard": {

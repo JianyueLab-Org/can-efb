@@ -213,6 +213,29 @@
       },
       "map": {
         "label": "航路地图：解出的航路点连成的大圆航迹"
+      },
+      "generate": {
+        "title": "生成航路",
+        "from": "起飞机场",
+        "to": "落地机场",
+        "level": "巡航高度（英尺，可留空）",
+        "action": "生成",
+        "working": "生成中…",
+        "published": "汇编发布的走法",
+        "computed": "在航路网上算出来的",
+        "alternatives": "另有走法",
+        "distance": "航路距离",
+        "direct": "大圆距离",
+        "minSafe": "最低安全高度",
+        "belowMtca": "**巡航高度低于全程最低超障高度**",
+        "restrictions": "沿途限制（原文）",
+        "airspaces": "穿越的特殊空域",
+        "noRoute": "这两个机场之间没有可用的走法（换个巡航高度也许可以）。",
+        "badInput": "机场代码不对，要四位 ICAO。",
+        "failed": "生成失败，请稍后再试。"
+      },
+      "expand": {
+        "title": "展开航路字符串"
       }
     },
     "dashboard": {
