@@ -25,19 +25,15 @@
     },
     "sections": {
       "flight": "飛行",
-      "briefing": "資料",
-      "ops": "運行"
+      "briefing": "資料"
     },
     "nav": {
       "dashboard": "總覽",
       "flightplan": "飛行計畫",
       "route": "航路",
-      "performance": "性能與配載",
       "charts": "航圖",
       "airports": "機場",
       "weather": "氣象",
-      "checklists": "檢查表",
-      "logbook": "飛行日誌",
       "settings": "設定"
     },
     "links": {
@@ -59,10 +55,6 @@
         "title": "航路",
         "description": "航路規劃與檢核。"
       },
-      "performance": {
-        "title": "性能與配載",
-        "description": "起飛與落地性能，重量與平衡。"
-      },
       "charts": {
         "title": "航圖",
         "description": "機場圖、離到場與進場程序。"
@@ -75,14 +67,6 @@
         "title": "氣象",
         "description": "METAR、TAF 與顯著天氣。"
       },
-      "checklists": {
-        "title": "檢查表",
-        "description": "依機型整理的正常與非正常檢查表。"
-      },
-      "logbook": {
-        "title": "飛行日誌",
-        "description": "已完成航班的紀錄與統計。"
-      },
       "settings": {
         "title": "設定",
         "description": "單位、主題、語言與帳戶。"
@@ -92,9 +76,7 @@
       "title": "這一頁還沒有內容",
       "body": "先落地的是框架：外殼、導覽、主題與多語系已經就位。頁面內容要等接上 can-api 之後再填。",
       "reasons": {
-        "charts": "航圖是有版權的資料，網路裡現在沒有任何一處提供它 —— 這一頁要等有了圖源（自建或者授權）之後才能做。",
-        "performance": "起降性能和重量平衡要機型手冊的資料，那既不在 can-api 裡，也不該由這個站憑空編。",
-        "checklists": "檢查表要按機型逐條輸入。資料本身還不存在，介面也就無從談起。"
+        "charts": "航圖是有版權的資料，網路裡現在沒有任何一處提供它 —— 這一頁要等有了圖源（自建或者授權）之後才能做。"
       }
     },
     "common": {
@@ -175,23 +157,6 @@
       "empty": "還沒有新增機場。輸入一個四字母 ICAO 代碼開始。",
       "noReport": "這個機場目前沒有 METAR 報文。",
       "invalidIcao": "要一個四字母 ICAO 代碼。"
-    },
-    "logbook": {
-      "stats": {
-        "flights": "航班數",
-        "total": "總時長",
-        "longest": "最長一段",
-        "callsigns": "使用過的呼號"
-      },
-      "table": {
-        "callsign": "呼號",
-        "logon": "連線",
-        "logoff": "離線",
-        "duration": "時長"
-      },
-      "live": "線上",
-      "empty": "還沒有飛行紀錄。",
-      "byCallsign": "按呼號統計"
     },
     "route": {
       "departure": "起飛機場",

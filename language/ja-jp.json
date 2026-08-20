@@ -25,19 +25,15 @@
     },
     "sections": {
       "flight": "フライト",
-      "briefing": "ブリーフィング",
-      "ops": "運航"
+      "briefing": "ブリーフィング"
     },
     "nav": {
       "dashboard": "概要",
       "flightplan": "フライトプラン",
       "route": "ルート",
-      "performance": "性能・重量配分",
       "charts": "チャート",
       "airports": "空港",
       "weather": "気象",
-      "checklists": "チェックリスト",
-      "logbook": "ログブック",
       "settings": "設定"
     },
     "links": {
@@ -59,10 +55,6 @@
         "title": "ルート",
         "description": "ルートの計画と検証。"
       },
-      "performance": {
-        "title": "性能・重量配分",
-        "description": "離着陸性能、重量とバランス。"
-      },
       "charts": {
         "title": "チャート",
         "description": "空港図、SID、STAR、進入方式。"
@@ -75,14 +67,6 @@
         "title": "気象",
         "description": "METAR、TAF、悪天情報。"
       },
-      "checklists": {
-        "title": "チェックリスト",
-        "description": "機種別のノーマル／非ノーマルチェックリスト。"
-      },
-      "logbook": {
-        "title": "ログブック",
-        "description": "完了したフライトの記録と統計。"
-      },
       "settings": {
         "title": "設定",
         "description": "単位、テーマ、言語、アカウント。"
@@ -92,9 +76,7 @@
       "title": "このページはまだ空です",
       "body": "先に組み上げたのは枠組みです — シェル、ナビゲーション、テーマ、多言語。中身は can-api に接続してから入ります。",
       "reasons": {
-        "charts": "チャートは著作権のあるデータで、ネットワーク内のどこも提供していません。ライセンスか自作の図源が用意できてからのページです。",
-        "performance": "離着陸性能と重量配分には機体マニュアルのデータが必要です。can-api にはなく、このサイトが勝手に作るものでもありません。",
-        "checklists": "チェックリストは機種ごとに入力が要ります。データ自体がまだ存在せず、エンドポイントも同様です。"
+        "charts": "チャートは著作権のあるデータで、ネットワーク内のどこも提供していません。ライセンスか自作の図源が用意できてからのページです。"
       }
     },
     "common": {
@@ -175,23 +157,6 @@
       "empty": "空港がまだありません。4 文字の ICAO コードを入力してください。",
       "noReport": "この空港の METAR はありません。",
       "invalidIcao": "4 文字の ICAO コードが必要です。"
-    },
-    "logbook": {
-      "stats": {
-        "flights": "フライト数",
-        "total": "合計時間",
-        "longest": "最長",
-        "callsigns": "使用コールサイン"
-      },
-      "table": {
-        "callsign": "コールサイン",
-        "logon": "接続",
-        "logoff": "切断",
-        "duration": "時間"
-      },
-      "live": "飛行中",
-      "empty": "まだ記録がありません。",
-      "byCallsign": "コールサイン別"
     },
     "route": {
       "departure": "出発空港",
