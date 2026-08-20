@@ -124,3 +124,65 @@
 .route-map-tip::before {
   display: none;
 }
+
+/* ---------------------------------------------------------------------------
+   三栏外壳：轨 | 面板 | 地图。
+
+   为什么写在 CSS 而不是 Tailwind 类里：面板和地图要一起响应轨的折叠，而轨是个
+   Vue 岛屿、正文是 Astro 渲染的静态 HTML —— 和 `--rail-current` 那一段是同一个
+   理由，通道在 CSS 里，岛屿只改 <html> 上的 data-rail。
+   --------------------------------------------------------------------------- */
+
+:root {
+  /* 面板固定宽度。地图那一侧越大越有用，而面板装的是表单和列表，更宽只会让每
+     行文字更难读。固定宽度还让地图的尺寸在页面之间不跳 —— Leaflet 每次尺寸变
+     化都要 invalidateSize()，能不变就不变。 */
+  --panel-width: 30rem;
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+/* 面板：自己滚动，不带着地图一起滚。 */
+.app-panel {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 地图：窄屏在上、给它一块固定高度；宽屏才变成右边整条。
+   窄屏把地图放在前面是因为这一版外壳的主张就是「地图负责显示」——
+   在手机上先看到一块 40dvh 的地图，比先看到表单更符合那个主张。 */
+.app-map {
+  order: -1;
+  height: 40dvh;
+  min-height: 16rem;
+  position: relative;
+  overflow: hidden;
+}
+
+@media (min-width: 1024px) {
+  .app-shell {
+    flex-direction: row;
+    height: 100dvh;
+    padding-left: var(--rail-current);
+    transition: padding-left 200ms ease;
+  }
+
+  .app-panel {
+    flex: 0 0 var(--panel-width);
+    height: 100dvh;
+    overflow-y: auto;
+    /* 面板和地图之间要有一条界线，否则两块深色面在暗色主题下糊成一片。 */
+    border-right: 1px solid var(--color-border-subtle, rgb(0 0 0 / 0.08));
+  }
+
+  .app-map {
+    order: 0;
+    flex: 1 1 auto;
+    height: 100dvh;
+    min-height: 0;
+  }
+}

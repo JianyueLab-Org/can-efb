@@ -14,6 +14,7 @@
 import "@/styles/globals.css";
 import ThemeScript from "@jianyuelab-org/can-ui/components/ThemeScript.astro";
 import RailScript from "@/components/RailScript.astro";
+import { ClientRouter } from "astro:transitions";
 import { getLocale, useTranslations } from "@/lib/i18n";
 
 interface Props {
@@ -50,6 +51,15 @@ const fullTitle = title ? `${title} · ${t("siteName")}` : t("siteName");
     <meta name="robots" content="noindex" />
     <ThemeScript />
     <RailScript />
+    {
+      /*
+      只为一件事而来：`transition:persist` 要靠它才生效，而地图必须跨页面
+      存活（AppLayout 里写了为什么）。副作用是导航变成客户端接管的 —— 两个
+      首屏脚本因此要经得起重复执行，ThemeScript 和 RailScript 都是幂等的
+      写法，所以这一步是安全的。
+    */
+    }
+    <ClientRouter />
   </head>
   <body class="min-h-dvh bg-surface">
     <slot />
