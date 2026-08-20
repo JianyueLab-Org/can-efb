@@ -56,14 +56,27 @@ export function origin(): string {
 /**
  * 登录去哪儿。
  *
- * **不带 callbackUrl。** can-web 的 `/signin` 只接受站内绝对路径
- * （`/^\/(?!\/)/`），那是一道防开放重定向的检查，把
- * `https://efb.ceruleanavi.net/...` 传过去只会被丢掉、回落到 `/pilots`。要让成员
- * 登录完回到 EFB，得先在 can-web 那边显式放行这个域 —— 那是一处对钓鱼很敏感
- * 的改动，属于 can-web 的评审范围，不该在这里偷偷绕过去。
+ * **带 callbackUrl。** 这里以前写着「不带」，理由是 can-web 的 `/signin` 会把跨
+ * 站地址丢掉、回落到 `/pilots` —— 于是成员登录完停在主站，还得自己走回 EFB。
  *
- * 所以现在的行为是：跳到主站登录，登录完落在 /pilots，成员自己回来。
+ * 那个前提已经不成立：can-web 有一份**显式白名单**
+ * （`src/lib/callbackUrl.ts` 的 `ALLOWED_CALLBACK_ORIGINS`），而
+ * `https://efb.ceruleanavi.net` 在名单上。同域的 can-controller 一直这么跳，线上
+ * 的 302 就带着 callbackUrl，这条路是走通了的。
+ *
+ * **白名单是精确匹配 origin，不是前缀或包含。** 那份文件里写了为什么：
+ * `https://efb.ceruleanavi.net.evil.com` 能骗过任何「以我们的域名开头」的检查。
+ * 所以这里传过去的必须是一个正规化过的 origin，不能是拼出来的字符串。
  */
-export function signInUrl(): string {
-  return `${CAN_WEB_ORIGIN}/signin`;
+export function signInUrl(returnTo?: URL): string {
+  const base = `${CAN_WEB_ORIGIN}/signin`;
+  if (!returnTo) return base;
+
+  // 用 origin() 而不是 returnTo.origin：这个站跑在 TLS 终止的反代后面，请求 URL
+  // 推出来的 origin 是 `http://`。那既配不上白名单里的 `https://`（于是被拒、回
+  // 落 /pilots，白做一场），也会把成员从 https 降到 http。
+  //
+  // 片段（`#...`）不带：它本来就不会发到服务端，这里也无从得知。
+  const target = `${origin()}${returnTo.pathname}${returnTo.search}`;
+  return `${base}?callbackUrl=${encodeURIComponent(target)}`;
 }

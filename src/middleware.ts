@@ -15,7 +15,8 @@ import { signInUrl } from "@/lib/config";
  *
  * 重定向去的是 **can-web 的登录页**：EFB 自己没有登录页，也不该有。会话由
  * can-api 在父域上签发，主站上登录过的成员到这里本来就带着 cookie。
- * `signInUrl()` 上写着为什么不带 callbackUrl。
+ * `signInUrl()` 会把当前地址当 callbackUrl 带上，成员登录完直接回到他本来要去
+ * 的那一页 —— can-web 那边有一份显式白名单接住它，这个域在名单上。
  */
 /**
  * 不问会话、也不重定向的两条路径。
@@ -39,7 +40,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   context.locals.user = user;
 
   if (!user) {
-    return withSecurityHeaders(context.redirect(signInUrl()));
+    return withSecurityHeaders(context.redirect(signInUrl(context.url)));
   }
 
   return withSecurityHeaders(await next());
