@@ -1,0 +1,48 @@
+---
+/**
+ * 客户端导航时保住 `<html>` 上的状态。
+ *
+ * **这个文件的存在完全是 `ClientRouter` 带来的。** 那东西是为了让右边那块地图跨
+ * 页面存活（`transition:persist`）才引入的，代价是导航不再是整页重载：Astro 会
+ * 用服务端返回的新文档去换掉当前文档，**包括 `<html>` 上的属性**。
+ *
+ * 而这个站有三样东西正好写在 `<html>` 上，且全部由首屏的 `is:inline` 脚本在绘
+ * 制前写好：
+ *
+ * - `class="dark"` 和 `style="color-scheme:…"` —— `ThemeScript`（来自 can-ui）
+ * - `data-rail` —— `RailScript`
+ *
+ * 服务端不知道这三样的值（主题存在 cookie/localStorage、折叠状态存在
+ * localStorage），所以新文档上它们是空的。换过去之后，主题被抹回浅色、轨弹回展
+ * 开态 —— 每换一页闪一次。Astro 的文档专门点了这个坑。
+ *
+ * **做法是「把当前状态抄到新文档上」，不是「重新推导一遍」。** 后者要把
+ * ThemeScript 那段 cookie / localStorage / prefers-color-scheme 的判断复制过
+ * 来，而那个文件是 can-ui 的、四个站共用；复制一份的结果一定是某天两边不一致，
+ * 而且不一致的表现是「只有 EFB 的主题不对」这种最难查的样子。抄属性没有这个问
+ * 题：真值仍然只有一处产生。
+ *
+ * 用 `astro:before-swap` 而不是 `after-swap`：前者拿得到 `event.newDocument`，
+ * 可以在它被放到屏幕上**之前**改好，于是一帧都不闪。after-swap 也能改，但那时
+ * 文档已经在页面上了，等于把闪烁从「一定发生」降级成「可能发生」。
+ *
+ * `is:inline` 是必须的，和另外两个脚本同一个理由 —— 它不能被打包、被 defer。
+ */
+---
+
+<script is:inline>
+  document.addEventListener("astro:before-swap", (event) => {
+    const current = document.documentElement;
+    const incoming = event.newDocument.documentElement;
+
+    // 主题：class 和 color-scheme 是一对，少抄一个会让浏览器自绘的那部分
+    // （表单控件、滚动条、导航之间的画布底色）和页面对不上。
+    incoming.classList.toggle("dark", current.classList.contains("dark"));
+    incoming.style.colorScheme = current.style.colorScheme;
+
+    // 轨的折叠状态。抹掉它的表现是正文横向平移 12rem，比主题闪烁更晃眼。
+    if (current.dataset.rail) {
+      incoming.dataset.rail = current.dataset.rail;
+    }
+  });
+</script>
