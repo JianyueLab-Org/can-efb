@@ -1,15 +1,72 @@
 ---
+/**
+ * 机场。数据来自 **can-db**（航行资料库），在服务端取好传进岛屿。
+ *
+ * 这一页曾经是占位页，理由写着「没有一份带跑道、频率、滑行道的机场库可读」——
+ * 那句话在 can-db 上线之后就不成立了。
+ *
+ * **权限不在这里判，只在这里显示。** can-db 的门是 `aipAccess >= 1 || rating >=
+ * 8`（教员），而 `aipAccess` 默认 0、由 ADM 逐人授予 —— 也就是说**大多数飞行员
+ * 会拿到 401/403**。那是预期状态而不是故障：这一页把它当成一种正常结果说清楚，
+ * 而不是弹一个像坏掉了的错误。在这里抄一份权限判断只会有两份可能不一致的答案。
+ *
+ * 三种结果各有各的说法，不要合并成一句「加载失败」：
+ *   401/403  → 你的账号没有这项数据的权限（谁能给、去找谁）
+ *   其他失败 → 资料库暂时取不到（是故障，稍后重试）
+ *   成功     → 列表
+ */
 import AppLayout from "@/layouts/AppLayout.astro";
 import PageHeader from "@/components/PageHeader.astro";
-import Placeholder from "@/components/Placeholder.astro";
-import { getLocale, useTranslations } from "@/lib/i18n";
+import Airports from "@/components/Airports.vue";
+import { getLocale, getMessages, useTranslations } from "@/lib/i18n";
+import { listAirports } from "@/server/canDb";
 
-const t = useTranslations(getLocale(Astro.cookies), "efb");
+const locale = getLocale(Astro.cookies);
+const t = useTranslations(locale, "efb");
 const title = t("pages.airports.title");
 const description = t("pages.airports.description");
+
+const result = await listAirports(Astro);
+const denied = result.status === 401 || result.status === 403;
+const airports = result.data ?? [];
 ---
 
 <AppLayout title={title} description={description}>
   <PageHeader title={title} description={description} />
-  <Placeholder reason="airports" />
+
+  {
+    denied && (
+      <div class="surface-grid rounded-card border border-dashed border-subtle px-6 py-12 text-center">
+        <p class="text-sm font-semibold text-ink">
+          {t("airports.denied.title")}
+        </p>
+        <p class="mx-auto mt-2 max-w-md text-sm text-muted">
+          {t("airports.denied.body")}
+        </p>
+      </div>
+    )
+  }
+
+  {
+    !denied && !result.ok && (
+      <div class="surface-grid rounded-card border border-dashed border-subtle px-6 py-12 text-center">
+        <p class="text-sm font-semibold text-ink">
+          {t("airports.error.title")}
+        </p>
+        <p class="mx-auto mt-2 max-w-md text-sm text-muted">
+          {t("airports.error.body")}
+        </p>
+      </div>
+    )
+  }
+
+  {
+    result.ok && (
+      <Airports
+        airports={airports}
+        messages={getMessages(locale, "efb")}
+        client:load
+      />
+    )
+  }
 </AppLayout>

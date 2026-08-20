@@ -93,7 +93,6 @@
       "body": "The frame lands first: shell, navigation, theme and languages are in place. The content waits on can-api being wired up.",
       "reasons": {
         "charts": "Charts are copyrighted data and nothing on the network serves them today. This page waits on a source — licensed or our own.",
-        "airports": "There is no airport database with runways, frequencies and taxiways to read. Sector/ and Ground/ hold some of it, but in EuroScope's formats; something has to serve it first.",
         "performance": "Takeoff and landing performance needs manufacturer data. It is not in can-api, and this app should not invent it.",
         "checklists": "Checklists have to be entered per aircraft type. The data does not exist yet, so neither does an endpoint for it."
       }
@@ -263,6 +262,20 @@
       "empty": {
         "title": "Nothing on the map yet",
         "body": "Resolve a route and it will be drawn here. Routes are the only geographic data this network has today — weather is raw METAR text, live traffic lives on the radar site, and charts are licensed data."
+      }
+    },
+    "airports": {
+      "search": "Search by ICAO, name or FIR",
+      "none": "No matching airports.",
+      "elev": "Elev",
+      "stands": "Stands",
+      "denied": {
+        "title": "Your account cannot read the aeronautical database yet",
+        "body": "Airport data comes from the aeronautical database. Read access is granted per member by an administrator; instructors (rating 8 and above) have it automatically. This is not a fault — ask an administrator if you need it."
+      },
+      "error": {
+        "title": "Aeronautical data is temporarily unavailable",
+        "body": "The aeronautical database did not answer. This is a fault rather than a permissions problem — try again shortly."
       }
     }
   }

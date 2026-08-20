@@ -39,6 +39,21 @@ export const CAN_WEB_ORIGIN =
   "https://ceruleanavi.net";
 
 /**
+ * can-db（航行资料库）的 origin。机场、跑道、航路点这类航行资料来自它。
+ *
+ * **只有服务端用得到**：岛屿拿的是 SSR 渲染好的 props，不从浏览器直连 —— 那样
+ * 既不用给 can-db 开 CORS，也不用在本站的反代白名单上多开一条。哪天真有页面要
+ * 在浏览器里查它，再按 `pages/api/v1/[...path].ts` 那套白名单加，别开通配。
+ *
+ * 兜底成生产地址而不是空串，理由和上面 CAN_API_ORIGIN 那条一样：空串在服务端是
+ * `ERR_INVALID_URL`，而且每一个请求都失败，日志看起来像是 can-db 挂了。
+ */
+export const CAN_DB_ORIGIN =
+  clean(process.env.CAN_DB_ORIGIN) ||
+  clean(import.meta.env.PUBLIC_CAN_DB_ORIGIN) ||
+  "https://api-db.ceruleanavi.net";
+
+/**
  * 本站自己的 origin，写操作的 Origin 头要和它比对。
  *
  * 必须是**显式配置**的值，不能从 `Host` 头推：这个站跑在 TLS 终止的反代后面，
