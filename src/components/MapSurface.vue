@@ -54,8 +54,13 @@ const props = defineProps<{
   emptyBody: string;
   /** 航路图层开关的三个文案（关 / 高空 / 低空），已翻译。 */
   airwayLabels: { off: string; high: string; low: string };
-  /** 其余图层开关的文案（导航台 / 扇区 / 限制区），已翻译。 */
-  layerLabels: { navaids: string; sectors: string; restricted: string };
+  /** 其余图层开关的文案（情报区 / 导航台 / 扇区 / 限制区），已翻译。 */
+  layerLabels: {
+    firs: string;
+    navaids: string;
+    sectors: string;
+    restricted: string;
+  };
 }>();
 
 /** 见文件顶上最后一段。`mounted` 之前一律不渲染 RouteMap。 */
@@ -89,6 +94,7 @@ const PREF_KEY = "efb.map.layers";
 
 interface LayerPrefs {
   airway: AirwayLevel | "off";
+  firs: boolean;
   navaids: boolean;
   airspace: AirspaceFamily | "off";
 }
@@ -100,6 +106,7 @@ interface LayerPrefs {
  */
 const DEFAULT_PREFS: LayerPrefs = {
   airway: "high",
+  firs: true,
   navaids: true,
   airspace: "off",
 };
@@ -218,6 +225,16 @@ async function setAirwayLevel(level: AirwayLevel | "off") {
 const showNavaids = ref(false);
 const navaids = ref<FeatureCollection | null>(null);
 
+/**
+ * 情报区边界。**独立开关，默认开** —— 它是航图的底子，不是叠加物。
+ *
+ * 单独一个 ref 而不是并进 airspaceFamily 那个单选，理由见 RouteMap 里 firs
+ * 这个 prop 的注释：并进去就意味着打开限制区会让边界消失。
+ */
+const showFirs = ref(false);
+const firs = ref<FeatureCollection | null>(null);
+let firCache: FeatureCollection | null = null;
+
 const airspaceFamily = ref<AirspaceFamily | "off">("off");
 const airspaces = ref<FeatureCollection | null>(null);
 
@@ -248,6 +265,37 @@ async function toggleNavaids() {
     if (isDenied(error)) deniedThisSession = true;
     console.error("[efb:map] 导航台加载失败:", error);
     showNavaids.value = false;
+  } finally {
+    layerBusy.value = false;
+  }
+}
+
+async function toggleFirs() {
+  prefs.firs = !showFirs.value;
+  writePrefs(prefs);
+
+  if (showFirs.value) {
+    showFirs.value = false;
+    firs.value = null;
+    return;
+  }
+  if (firCache) {
+    firs.value = firCache;
+    showFirs.value = true;
+    return;
+  }
+  if (deniedThisSession) return;
+
+  layerBusy.value = true;
+  try {
+    firCache = toAirspacePolygons(await fetchAirspaces("fir"));
+    firs.value = firCache;
+    showFirs.value = true;
+  } catch (error) {
+    if (isDenied(error)) deniedThisSession = true;
+    console.error("[efb:map] 情报区加载失败:", error);
+    showFirs.value = false;
+    firs.value = null;
   } finally {
     layerBusy.value = false;
   }
@@ -299,6 +347,7 @@ onMounted(() => {
   const saved = readPrefs();
   Object.assign(prefs, saved);
   if (saved.airway !== "off") void setAirwayLevel(saved.airway);
+  if (saved.firs) void toggleFirs();
   if (saved.navaids) void toggleNavaids();
   if (saved.airspace !== "off") void setAirspaceFamily(saved.airspace);
   unsubscribe = subscribeToMap((payload) => {
@@ -330,6 +379,7 @@ onBeforeUnmount(() => {
       :airways="airways"
       :airway-fixes="airwayFixes"
       :navaids="navaids"
+      :firs="firs"
       :airspaces="airspaces"
       :label="label"
       class="h-full"
@@ -364,6 +414,15 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="map-layers map-layers-2 card">
+      <button
+        type="button"
+        class="map-layer-btn"
+        :class="showFirs ? 'is-on' : ''"
+        :disabled="layerBusy"
+        @click="toggleFirs"
+      >
+        {{ layerLabels.firs }}
+      </button>
       <button
         type="button"
         class="map-layer-btn"

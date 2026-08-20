@@ -257,6 +257,7 @@
         "low": "低空"
       },
       "layers": {
+        "firs": "FIR",
         "navaids": "航法援助施設",
         "sectors": "セクター",
         "restricted": "制限区域"

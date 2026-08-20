@@ -111,6 +111,20 @@ const props = defineProps<{
   navaids?: FeatureCollection | null;
   /** 空域多边形（扇区与限制区，按 family 分色）。 */
   airspaces?: FeatureCollection | null;
+  /**
+   * 飞行情报区边界。
+   *
+   * **和 airspaces 分开一条源，不是并进去。** 两个理由，都不是洁癖：
+   *
+   * 一，情报区**铺满**整个区域，而 airspaces 那层带 7% 的填充 —— 铺满的东西再
+   * 叠一层半透明，整张图会均匀地蒙上一层灰，越是重叠的地方越脏。情报区只画边
+   * 界，一点填充都不要。
+   *
+   * 二，扇区和限制区是单选的叠加物（看这个就看不到那个），而情报区是常开的底
+   * 子。挤进同一个单选组就意味着打开限制区会让边界消失，那正好和它该有的行为
+   * 相反。
+   */
+  firs?: FeatureCollection | null;
   label: string;
 }>();
 
@@ -143,6 +157,9 @@ const PALETTE = {
     // 扇区用浅蓝细线，限制区用粉红 —— 照航图的惯例，两者一眼要分得开。
     sector: "#5f93b5",
     restricted: "#d98a9a",
+    // 情报区边界是**底子**，不是叠加物：偏灰，压在所有内容之下，只负责说清
+    // 这一片归谁管。太亮会和航路抢，而它铺满整张图。
+    fir: "#4c6478",
   },
   light: {
     ocean: "#dde5ea",
@@ -158,6 +175,7 @@ const PALETTE = {
     navaid: "#1d4e70",
     sector: "#4a7fa3",
     restricted: "#b45a6d",
+    fir: "#93a7b5",
   },
 };
 
@@ -386,6 +404,9 @@ function render() {
   (map.getSource("airspaces") as GeoJSONSource | undefined)?.setData(
     props.airspaces ?? { type: "FeatureCollection", features: [] },
   );
+  (map.getSource("firs") as GeoJSONSource | undefined)?.setData(
+    props.firs ?? { type: "FeatureCollection", features: [] },
+  );
 
   // 视野：focus 优先 —— 「在一堆点里挑一个看」不该把用户刚才的缩放丢掉。
   if (props.focus) {
@@ -491,6 +512,10 @@ onMounted(() => {
             type: "geojson",
             data: { type: "FeatureCollection", features: [] },
           },
+          firs: {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+          },
           route: {
             type: "geojson",
             data: { type: "FeatureCollection", features: [] },
@@ -526,6 +551,21 @@ onMounted(() => {
             type: "line",
             source: "grid",
             paint: { "line-color": c.grid, "line-width": 0.5 },
+          },
+          {
+            // 情报区边界紧贴网格之上、所有内容之下 —— 它是底子。
+            //
+            // **虚线是航图的惯例**，不是装饰：实线在这张图上已经归航路和海岸
+            // 线了，边界再用实线，三者在缩小时会混成一片。
+            id: "fir-line",
+            type: "line",
+            source: "firs",
+            paint: {
+              "line-color": c.fir,
+              "line-width": 1.1,
+              "line-dasharray": [5, 3],
+              "line-opacity": 0.75,
+            },
           },
           {
             // 空域在最底层：它是一大片填充，压在任何线之上都会把线糊掉。
@@ -666,6 +706,32 @@ onMounted(() => {
               "text-color": c.navaid,
               "text-halo-color": c.ocean,
               "text-halo-width": 1.2,
+            },
+          },
+          {
+            // 情报区名字**沿着边界重复**（symbol-placement: line），而不是落在
+            // 多边形中心 —— 情报区大到中心点常常在几百海里之外，那个位置的标注
+            // 对着屏幕上的边界说不出话。这也是纸质航图的画法。
+            //
+            // 排在导航台**之后**：MapLibre 的符号避让按图层顺序定优先级，靠前
+            // 的赢。边界名是背景信息，撞上导航台时该让它。
+            id: "fir-labels",
+            type: "symbol",
+            source: "firs",
+            minzoom: 4,
+            layout: {
+              "symbol-placement": "line",
+              "symbol-spacing": 400,
+              "text-field": ["get", "code"],
+              "text-font": ["Noto Sans Regular"],
+              "text-size": 10,
+              "text-letter-spacing": 0.12,
+              "text-max-angle": 30,
+            },
+            paint: {
+              "text-color": c.fir,
+              "text-halo-color": c.ocean,
+              "text-halo-width": 1.4,
             },
           },
           {
