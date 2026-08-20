@@ -42,9 +42,14 @@ const props = defineProps<{
 /** 见文件顶上最后一段。`mounted` 之前一律不渲染 RouteMap。 */
 const mounted = ref(false);
 
-const RouteMap = defineAsyncComponent(
-  () => import("@/components/RouteMap.vue"),
-);
+const RouteMap = defineAsyncComponent({
+  loader: () => import("@/components/RouteMap.vue"),
+  // chunk 拉不下来时说话。默认行为是安静地什么都不渲染 —— 那和「地图是空的」在
+  // 屏幕上长得一模一样。
+  onError(error) {
+    console.error("[efb] 地图组件加载失败:", error);
+  },
+});
 
 const points = ref<MapPoint[]>([]);
 const markers = ref<MapPoint[]>([]);

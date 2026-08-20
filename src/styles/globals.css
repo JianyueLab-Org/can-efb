@@ -220,3 +220,20 @@
   font-size: 0.8125rem;
   line-height: 1.55;
 }
+
+/* 地图起不来时的那行字。压在容器上，等宽字体 —— 它显示的是一个诊断标识，不是给
+   成员读的文案，所以刻意不翻译：它要能被原样搜进代码里。 */
+.map-failure {
+  position: absolute;
+  z-index: 3;
+  top: 0.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.6875rem;
+  color: var(--color-ink);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.25rem;
+  padding: 0.125rem 0.5rem;
+}

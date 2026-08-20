@@ -85,6 +85,19 @@ const PALETTE = {
 const container = ref<HTMLDivElement | null>(null);
 const corners = ref({ nw: "", se: "" });
 
+/**
+ * 起不来时说出来，而不是留一块沉默的色块。
+ *
+ * 这个 ref 是补上来的：上一版地图起不来时，屏幕上是 `.route-map` 的容器底色，
+ * 控制台一个字都没有 —— 因为 MapLibre 的错误走的是 `map.on('error')`（没接），
+ * 而底图拉取失败走的是一个静默的 catch。两条路都不说话，结果是一个**看不出**
+ * **原因**的故障，只能靠翻 DOM 找 canvas 在不在来定位。
+ *
+ * 正常运行时仍然不为装饰性底图弹提示 —— 那条判断没变。变的是「彻底起不来」和
+ * 「底图这一层没拿到」现在会各自说一句话。
+ */
+const failure = ref<string | null>(null);
+
 let map: MapLibreMap | null = null;
 let themeObserver: MutationObserver | null = null;
 let resizeObserver: ResizeObserver | null = null;
@@ -230,89 +243,117 @@ async function loadLand() {
     (map.getSource("land") as GeoJSONSource | undefined)?.setData(
       landCache as FeatureCollection,
     );
-  } catch {
-    // 静默降级成一片海：航路线、点、缩放全都还在。为一张底图弹错误提示，是把噪
-    // 音摆在比信息更显眼的位置。
+  } catch (error) {
+    // 界面上仍然静默降级成一片海 —— 为一张装饰性底图弹提示，是把噪音摆在比信息
+    // 更显眼的位置，这条判断没变。
+    //
+    // 但**日志里必须留下一行**。上一版这里是一个空的 catch，于是「底图没画出来」
+    // 成了一个完全没有线索的故障。不弹提示和不留记录是两件事。
+    console.error("[efb] 底图数据加载失败:", error);
   }
 }
 
 onMounted(() => {
-  if (!container.value) return;
+  // 这一条以前是静默 return，而它正是「有容器、没 canvas」那个现象的唯一出口 ——
+  // MapLibre 的 canvas 在构造函数里同步创建，所以没有 canvas 就意味着构造没执行。
+  if (!container.value) {
+    failure.value = "map-container-missing";
+    console.error("[efb] 地图容器没有挂上，MapLibre 没有初始化");
+    return;
+  }
   const c = palette();
 
-  map = new MapLibreMap({
-    container: container.value,
-    // 手写 style，不指向任何瓦片服务 —— 见文件顶上。
-    style: {
-      version: 8,
-      sources: {
-        land: {
-          type: "geojson",
-          data: { type: "FeatureCollection", features: [] },
-        },
-        grid: { type: "geojson", data: graticule() },
-        route: {
-          type: "geojson",
-          data: { type: "FeatureCollection", features: [] },
-        },
-        markers: {
-          type: "geojson",
-          data: { type: "FeatureCollection", features: [] },
-        },
-      },
-      layers: [
-        {
-          id: "ocean",
-          type: "background",
-          paint: { "background-color": c.ocean },
-        },
-        {
-          id: "land",
-          type: "fill",
-          source: "land",
-          paint: { "fill-color": c.land },
-        },
-        {
-          id: "land-outline",
-          type: "line",
-          source: "land",
-          paint: { "line-color": c.landLine, "line-width": 0.6 },
-        },
-        {
-          id: "grid",
-          type: "line",
-          source: "grid",
-          paint: { "line-color": c.grid, "line-width": 0.5 },
-        },
-        {
-          id: "route",
-          type: "line",
-          source: "route",
-          paint: { "line-color": c.route, "line-width": 1.4 },
-        },
-        {
-          id: "markers",
-          type: "circle",
-          source: "markers",
-          paint: {
-            "circle-color": c.marker,
-            "circle-radius": ["case", ["==", ["get", "airport"], 1], 4, 2.5],
-            "circle-stroke-color": c.marker,
-            "circle-stroke-width": 0.8,
-            "circle-opacity": ["case", ["==", ["get", "airport"], 1], 1, 0.45],
+  try {
+    map = new MapLibreMap({
+      container: container.value,
+      // 手写 style，不指向任何瓦片服务 —— 见文件顶上。
+      style: {
+        version: 8,
+        sources: {
+          land: {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+          },
+          grid: { type: "geojson", data: graticule() },
+          route: {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+          },
+          markers: {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
           },
         },
-      ],
-    },
-    center: [110, 34],
-    zoom: 3,
-    attributionControl: false,
-    // 滚轮缩放：宽屏开、窄屏关，和上一版同一条规矩 —— 窄屏下页面会滚，滚轮停在
-    // 地图上会把它卡住。
-    scrollZoom: window.matchMedia("(min-width: 1024px)").matches,
-  });
+        layers: [
+          {
+            id: "ocean",
+            type: "background",
+            paint: { "background-color": c.ocean },
+          },
+          {
+            id: "land",
+            type: "fill",
+            source: "land",
+            paint: { "fill-color": c.land },
+          },
+          {
+            id: "land-outline",
+            type: "line",
+            source: "land",
+            paint: { "line-color": c.landLine, "line-width": 0.6 },
+          },
+          {
+            id: "grid",
+            type: "line",
+            source: "grid",
+            paint: { "line-color": c.grid, "line-width": 0.5 },
+          },
+          {
+            id: "route",
+            type: "line",
+            source: "route",
+            paint: { "line-color": c.route, "line-width": 1.4 },
+          },
+          {
+            id: "markers",
+            type: "circle",
+            source: "markers",
+            paint: {
+              "circle-color": c.marker,
+              "circle-radius": ["case", ["==", ["get", "airport"], 1], 4, 2.5],
+              "circle-stroke-color": c.marker,
+              "circle-stroke-width": 0.8,
+              "circle-opacity": [
+                "case",
+                ["==", ["get", "airport"], 1],
+                1,
+                0.45,
+              ],
+            },
+          },
+        ],
+      },
+      center: [110, 34],
+      zoom: 3,
+      attributionControl: false,
+      // 滚轮缩放：宽屏开、窄屏关，和上一版同一条规矩 —— 窄屏下页面会滚，滚轮停在
+      // 地图上会把它卡住。
+      scrollZoom: window.matchMedia("(min-width: 1024px)").matches,
+    });
 
-  map.addControl(new NavigationControl({ showCompass: false }), "top-left");
+    map.addControl(new NavigationControl({ showCompass: false }), "top-left");
+  } catch (error) {
+    // WebGL 不可用、构造参数不合法都会走到这里。以前它会作为一个未捕获异常冒到
+    // Vue 的生命周期里 —— 而那条路径在生产构建下未必留下任何可读的东西。
+    failure.value = "map-init-failed";
+    console.error("[efb] MapLibre 初始化失败:", error);
+    return;
+  }
+
+  // MapLibre 的样式、瓦片、数据错误**全部**从这个事件出来，不接就等于看不见。
+  map.on("error", (event) => {
+    console.error("[efb] 地图错误:", event.error ?? event);
+  });
 
   map.on("load", () => {
     render();
@@ -344,6 +385,12 @@ onBeforeUnmount(() => {
 <template>
   <div class="route-map-wrap">
     <div ref="container" class="route-map" role="img" :aria-label="label"></div>
+    <!--
+      起不来时说出来。一块沉默的色块会被当成「地图是空的」，而它其实是「地图没
+      起来」—— 这两件事该长得不一样。
+    -->
+    <p v-if="failure" class="map-failure">{{ failure }}</p>
+
     <!-- 角落坐标标注：航路图上用来读当前视野范围的那两个数。 -->
     <span class="map-corner map-corner-nw">{{ corners.nw }}</span>
     <span class="map-corner map-corner-se">{{ corners.se }}</span>
