@@ -258,6 +258,12 @@
         "railHint": "Shrinks the rail to a column of icons and gives the width back to the page.",
         "themeHint": "Theme and language are at the foot of the sidebar."
       }
+    },
+    "map": {
+      "empty": {
+        "title": "Nothing on the map yet",
+        "body": "Resolve a route and it will be drawn here. Routes are the only geographic data this network has today — weather is raw METAR text, live traffic lives on the radar site, and charts are licensed data."
+      }
     }
   }
 }

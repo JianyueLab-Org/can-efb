@@ -3,40 +3,28 @@
  * 航路展开。把飞行计划里那一串航路字符串解析成航路点序列。
  *
  * can-api 的 `/api/v1/route` 返回的是坐标点（`ident`/`lat`/`lon`/`kind`/`via`），
- * 它本来是给雷达画线用的。这里两种用法都要：**上面一张图，下面一张航段表**。
- * 图回答「这条航路长什么样、绕不绕」，表回答「每段多远、一共多远」—— 那是填计
- * 划时真正想知道的两件事，缺一个都要自己在脑子里补。
+ * 它本来是给雷达画线用的。这里要的是**航段表**。
+ * 表回答「每段多远、一共多远」；「这条航路长什么样、绕不绕」由外壳右边那块常
+ * 驻地图回答 —— 两件事仍然都要，只是图不再画在这个组件里了。
  *
  * 距离在前端算而不是找后端要：那边根本没有这个字段，而大圆距离是一个封闭的公
  * 式，不依赖任何数据。**它不是航程计算** —— 没有风、没有 SID/STAR 的实际展开
  * 长度，所以标签写的是「大圆」，不要在别处把它当计划燃油的依据。
  *
- * 地图是**异步组件**，而且只在解出航路之后才渲染：Leaflet 有一百多 KB，没解航
- * 路的人不该为它付流量。理由和实现都在 `RouteMap.vue` 顶上。
+ * 解出来的航段会**发布**给外壳里那块常驻地图（`lib/mapBus.ts`），而不是在这里
+ * 渲染一个 `<RouteMap>`。Leaflet 那一百多 KB 的加载时机没有变松：仍然要等真的
+ * 有点可画，只是守门的地方从这个组件搬到了 `MapSurface.vue`。
  *
  * `503 navDataUnavailable` 是常态而不是故障：导航数据是 AIRAC 商业数据，按仓库
  * 的规矩不进公开镜像，某个环境上没挂它完全正常。所以这一支单独给一句人话，而
  * 不是塌进通用错误。
  */
-import { defineAsyncComponent, onMounted, ref } from "vue";
+import { ref, watch } from "vue";
 import { api } from "@/lib/canApi";
 import { createTranslator } from "@/lib/i18n";
 import { Icon } from "@jianyuelab-org/can-ui";
 import { distanceNm } from "@/lib/geo";
-
-/**
- * Leaflet 摸 `window`，静态 import 会让这个岛屿的 SSR 直接抛。异步引它，等于把
- * 整个依赖挪到浏览器那一侧，顺带拆成一个独立 chunk。
- */
-const RouteMap = defineAsyncComponent(
-  () => import("@/components/RouteMap.vue"),
-);
-
-/** SSR 那一遍不能碰地图，所以等挂载之后再允许它出现。 */
-const mounted = ref(false);
-onMounted(() => {
-  mounted.value = true;
-});
+import { publishToMap } from "@/lib/mapBus";
 
 const props = defineProps<{ messages: Record<string, unknown> }>();
 const t = createTranslator(props.messages);
@@ -60,6 +48,17 @@ const arrival = ref("");
 const route = ref("");
 
 const legs = ref<Leg[]>([]);
+
+/**
+ * 航段一变就交给外壳右边那块常驻地图。
+ *
+ * 离开这一页时**不清空**：地图是常驻的显示面，切到气象或日志时上一条航路仍然
+ * 摆在那儿 —— 那正是这一版外壳想要的效果，而不是遗留状态。真要清空，应该有一
+ * 个明确的入口（比如「新建航路」），而不是靠组件卸载顺手做掉。
+ */
+watch(legs, (value) => {
+  publishToMap({ points: value, label: t("route.map.label") });
+});
 const total = ref(0);
 const loading = ref(false);
 const error = ref("");
@@ -205,8 +204,6 @@ async function resolve() {
       </p>
 
       <template v-else>
-        <RouteMap v-if="mounted" :points="legs" :label="t('route.map.label')" />
-
         <div class="card flex items-baseline justify-between gap-3 p-4">
           <span class="text-sm text-muted">{{ t("route.total") }}</span>
           <span class="font-mono text-2xl font-semibold text-ink">

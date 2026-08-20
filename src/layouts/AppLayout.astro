@@ -1,9 +1,18 @@
 ---
 /**
- * 轨 + 正文。**没有站头，也不要加回来** —— 为什么见 AppRail.vue 顶上的注释。
+ * 三栏外壳：**轨 | 面板 | 地图**。**没有站头，也不要加回来** —— 为什么见
+ * AppRail.vue 顶上的注释。
  *
- * 每个页面都用这一层，所以导航、快速跳转、账户、主题只有一份实现；can-web 上
- * 那几十个各自拼一遍外壳的页面是历史，不是值得抄的东西。
+ * 这是这个站的第二版外壳。第一版是「轨 + 一列正文」，正文居中、最大宽度
+ * 6xl，地图只是 `/route` 页面里的一个组件。现在地图是**常驻的显示面**：
+ *
+ * - 最左是轨（菜单），可折叠成一列图标；
+ * - 中间是面板，装当前菜单项的内容和输入，宽度固定、自己滚动；
+ * - 右边整块是地图，跨页面存活，只负责显示。
+ *
+ * 为什么面板宽度是固定的而不是自适应：地图那一侧越大越有用，而面板装的是表单
+ * 和列表，超过一定宽度只会让每行文字更难读。固定宽度也让地图的尺寸在页面之间
+ * 不跳 —— Leaflet 每次尺寸变化都要 `invalidateSize()`，能不变就不变。
  *
  * `client:load` 而不是 `client:idle`：轨是这个站唯一的导航，在它水合之前手机
  * 上那颗抽屉按钮按下去没有反应 —— 一个看得见、按得动、却不动作的按钮比晚一点
@@ -15,6 +24,7 @@
  */
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import AppRail from "@/components/AppRail.vue";
+import MapSurface from "@/components/MapSurface.vue";
 import { getLocale, getMessages, useTranslations } from "@/lib/i18n";
 import { buildCrossLinks, buildNav } from "@/lib/nav";
 import { toEfbUser } from "@/lib/session";
@@ -23,13 +33,9 @@ import { signInUrl } from "@/lib/config";
 interface Props {
   title?: string;
   description?: string;
-  /**
-   * 正文容器的宽度。航图和地图那类页面要整幅，`full` 去掉最大宽度限制。
-   */
-  width?: "default" | "full";
 }
 
-const { title, description, width = "default" } = Astro.props;
+const { title, description } = Astro.props;
 
 const locale = getLocale(Astro.cookies);
 const t = useTranslations(locale, "efb");
@@ -40,7 +46,6 @@ const user = toEfbUser(Astro.locals.user);
 
 const sections = buildNav(t);
 const crossLinks = buildCrossLinks(t);
-const mainWidth = width === "full" ? "max-w-none" : "max-w-6xl";
 ---
 
 <BaseLayout title={title} description={description}>
@@ -55,13 +60,30 @@ const mainWidth = width === "full" ? "max-w-none" : "max-w-6xl";
     client:load
   />
 
-  <div class="app-main-offset min-h-dvh">
-    <main
-      id="main-content"
-      tabindex="-1"
-      class={`mx-auto w-full px-4 py-8 sm:px-6 lg:px-8 lg:py-10 ${mainWidth}`}
-    >
-      <slot />
+  <div class="app-shell">
+    <main id="main-content" tabindex="-1" class="app-panel">
+      <div class="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6 lg:py-10">
+        <slot />
+      </div>
     </main>
+
+    {
+      /*
+      地图跨页面存活：`transition:persist` 让 Astro 在导航时保留这个岛屿的实
+      例，而不是卸载再建一个。没有它，每换一页 Leaflet 都要重新初始化、底图重
+      新下载一遍 —— 在平板上那是一次肉眼可见的白闪，而地图恰恰是这一版外壳里
+      唯一从不改变的东西。
+
+      `client:load` 是必要的：这块面积上没有任何服务端渲染的内容能先顶着（空
+      状态也在组件里），晚一步水合就是晚一步出现。
+    */
+    }
+    <MapSurface
+      label={t("route.map.label")}
+      emptyTitle={t("map.empty.title")}
+      emptyBody={t("map.empty.body")}
+      client:load
+      transition:persist
+    />
   </div>
 </BaseLayout>
