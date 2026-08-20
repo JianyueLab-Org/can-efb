@@ -5,7 +5,12 @@ dist/
 .astro/
 
 # dependencies
-node_modules/
+#
+# **不带斜杠。** `node_modules/` 只匹配目录，而把仓库当 worktree 用时这里常常是一
+# 条指向主检出的**符号链接** —— 那种写法匹配不到它，于是 `git add -A` 会把链接本身
+# 提交上去。提交之后在 CI 上它指向一个不存在的路径，`bun install` 直接 ENOENT，而
+# 本地一切正常。
+node_modules
 
 # logs
 npm-debug.log*
