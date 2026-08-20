@@ -49,6 +49,7 @@ import {
   toMORAPoints,
   type MORACell,
 } from "@/lib/mora";
+import { fetchFIRs } from "@/lib/firs";
 import type { FeatureCollection } from "geojson";
 
 const props = defineProps<{
@@ -241,6 +242,10 @@ const navaids = ref<FeatureCollection | null>(null);
  *
  * 单独一个 ref 而不是并进 airspaceFamily 那个单选，理由见 RouteMap 里 firs
  * 这个 prop 的注释：并进去就意味着打开限制区会让边界消失。
+ *
+ * **数据不来自 can-db**，来自随站点发的静态文件（VATSpy，见 lib/firs.ts）：汇编
+ * 没有发布完整的边界，沿国境线的那一段不在数据里，闭合成环会切一条直线横穿过
+ * 去。由此这一层也不受 aipAccess 影响，没有登录门槛之外的权限要求。
  */
 const showFirs = ref(false);
 const firs = ref<FeatureCollection | null>(null);
@@ -315,15 +320,15 @@ async function toggleFirs() {
     showFirs.value = true;
     return;
   }
-  if (deniedThisSession) return;
 
   layerBusy.value = true;
   try {
-    firCache = toAirspacePolygons(await fetchAirspaces("fir"));
+    firCache = await fetchFIRs();
     firs.value = firCache;
     showFirs.value = true;
   } catch (error) {
-    if (isDenied(error)) deniedThisSession = true;
+    // 这里不记 deniedThisSession：静态文件不会返回 401，而把一次网络抖动记成
+    // 「被拒过」会让这一层在整个会话里再也不重试。
     console.error("[efb:map] 情报区加载失败:", error);
     showFirs.value = false;
     firs.value = null;

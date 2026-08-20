@@ -16,8 +16,9 @@
  * 了，是那些数据根本不在这张图里。数据是 Natural Earth 1:50m 陆地多边形，公有领
  * 域，在 `public/basemap/` 下。
  *
- * 由此也不需要归属声明，`attributionControl` 关着。**这一条和「不用瓦片」绑在一
- * 起**：哪天加回任何一个瓦片源，那行字必须一起回来，否则就是违反许可。
+ * 陆地这一份是公有领域，本身不要求署名。但**署名是开着的**，因为情报区边界用的是
+ * VATSpy 的数据，CC BY-SA 4.0 —— 许可要求那行字出现在展示它的地方。加任何一个新数
+ * 据源之前先看它的许可，别默认沿用上一条的结论。
  *
  * ## 绝不服务端渲染
  *
@@ -33,6 +34,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
   Map as MapLibreMap,
+  AttributionControl,
   NavigationControl,
   LngLatBounds,
   setWorkerUrl,
@@ -841,6 +843,9 @@ onMounted(() => {
       },
       center: [110, 34],
       zoom: 3,
+      // 内建的那个关掉，换成下面手动加的一个 —— 要的是自己那行字（VATSpy 的
+      // CC BY-SA 署名），而内建控件只会列出各 source 的 attribution 字段。
+      // **署名本身不是可选的**，见文件头。
       attributionControl: false,
       // 汉字用本机字体画，不请求 glyphs —— 全套 CJK 切片是几十 MB，为几个
       // 地名背这个体积不值得。
@@ -869,6 +874,18 @@ onMounted(() => {
   map.on("error", (event) => {
     console.error("[efb] 地图错误:", event.error ?? event);
   });
+
+  // 署名。CC BY-SA 4.0 要求的，不是装饰 —— can-radar 用同一份数据，署得也是同
+  // 一行。陆地那份（Natural Earth）属公有领域，一并列出是礼貌不是义务。
+  map.addControl(
+    new AttributionControl({
+      compact: true,
+      customAttribution:
+        '情报区 <a href="https://github.com/vatsimnetwork/vatspy-data-project" ' +
+        'target="_blank" rel="noreferrer">VATSpy</a> (CC BY-SA 4.0) · ' +
+        "陆地 Natural Earth",
+    }),
+  );
 
   map.on("styledata", () => trace("styledata"));
   map.on("load", () => {
