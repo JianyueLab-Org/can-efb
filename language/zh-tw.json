@@ -255,6 +255,11 @@
         "off": "無航路",
         "high": "高空",
         "low": "低空"
+      },
+      "layers": {
+        "navaids": "導航台",
+        "sectors": "扇區",
+        "restricted": "限制區"
       }
     },
     "airports": {

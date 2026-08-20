@@ -107,6 +107,10 @@ const props = defineProps<{
   airways?: FeatureCollection | null;
   /** 航路点（航路网自己的点集），和 airways 一起来一起走。 */
   airwayFixes?: FeatureCollection | null;
+  /** 导航台。 */
+  navaids?: FeatureCollection | null;
+  /** 空域多边形（扇区与限制区，按 family 分色）。 */
+  airspaces?: FeatureCollection | null;
   label: string;
 }>();
 
@@ -135,6 +139,10 @@ const PALETTE = {
     airwayHigh: "#6fa8cc",
     airwayOther: "#4a6b82",
     label: "#9db4c4",
+    navaid: "#e6f0f7",
+    // 扇区用浅蓝细线，限制区用粉红 —— 照航图的惯例，两者一眼要分得开。
+    sector: "#5f93b5",
+    restricted: "#d98a9a",
   },
   light: {
     ocean: "#dde5ea",
@@ -147,6 +155,9 @@ const PALETTE = {
     airwayHigh: "#2f6f9e",
     airwayOther: "#8aa4b5",
     label: "#5a6b78",
+    navaid: "#1d4e70",
+    sector: "#4a7fa3",
+    restricted: "#b45a6d",
   },
 };
 
@@ -308,6 +319,22 @@ function registerIcons() {
   map.addImage("fix-triangle", ctx.getImageData(0, 0, size, size), {
     pixelRatio: 2,
   });
+
+  // VOR/DME：圆圈套方框。航图上这个组合表示同址的 VOR 和 DME，两个符号分开画
+  // 会占两倍面积，而它们本来就是一个台。
+  const box = document.createElement("canvas");
+  box.width = box.height = size;
+  const bx = box.getContext("2d");
+  if (!bx) return;
+  bx.strokeStyle = "#ffffff";
+  bx.lineWidth = 1.4;
+  bx.strokeRect(2.5, 2.5, size - 5, size - 5);
+  bx.beginPath();
+  bx.arc(size / 2, size / 2, size / 2 - 4.5, 0, Math.PI * 2);
+  bx.stroke();
+  map.addImage("navaid-vordme", bx.getImageData(0, 0, size, size), {
+    pixelRatio: 2,
+  });
 }
 
 function applyPalette() {
@@ -352,6 +379,12 @@ function render() {
   );
   (map.getSource("airwayFixes") as GeoJSONSource | undefined)?.setData(
     props.airwayFixes ?? { type: "FeatureCollection", features: [] },
+  );
+  (map.getSource("navaids") as GeoJSONSource | undefined)?.setData(
+    props.navaids ?? { type: "FeatureCollection", features: [] },
+  );
+  (map.getSource("airspaces") as GeoJSONSource | undefined)?.setData(
+    props.airspaces ?? { type: "FeatureCollection", features: [] },
   );
 
   // 视野：focus 优先 —— 「在一堆点里挑一个看」不该把用户刚才的缩放丢掉。
@@ -450,6 +483,14 @@ onMounted(() => {
             type: "geojson",
             data: { type: "FeatureCollection", features: [] },
           },
+          navaids: {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+          },
+          airspaces: {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+          },
           route: {
             type: "geojson",
             data: { type: "FeatureCollection", features: [] },
@@ -485,6 +526,67 @@ onMounted(() => {
             type: "line",
             source: "grid",
             paint: { "line-color": c.grid, "line-width": 0.5 },
+          },
+          {
+            // 空域在最底层：它是一大片填充，压在任何线之上都会把线糊掉。
+            id: "airspace-fill",
+            type: "fill",
+            source: "airspaces",
+            paint: {
+              "fill-color": [
+                "match",
+                ["get", "family"],
+                "restricted",
+                c.restricted,
+                "special",
+                c.restricted,
+                c.sector,
+              ] as never,
+              // 半透明，而且很淡 —— 它是背景，不是内容。
+              "fill-opacity": 0.07,
+            },
+          },
+          {
+            id: "airspace-line",
+            type: "line",
+            source: "airspaces",
+            paint: {
+              "line-color": [
+                "match",
+                ["get", "family"],
+                "restricted",
+                c.restricted,
+                "special",
+                c.restricted,
+                c.sector,
+              ] as never,
+              "line-width": 0.9,
+              "line-opacity": 0.85,
+            },
+          },
+          {
+            // 代号 + 垂直范围，落在多边形的中心。symbol 图层遇到面要素会自己取
+            // 中心点，不必预先算。
+            id: "airspace-labels",
+            type: "symbol",
+            source: "airspaces",
+            minzoom: 5,
+            layout: {
+              "text-field": [
+                "concat",
+                ["get", "code"],
+                "\n",
+                ["get", "vertical"],
+              ],
+              "text-font": ["Noto Sans Regular"],
+              "text-size": 9,
+              "text-line-height": 1.1,
+            },
+            paint: {
+              "text-color": c.label,
+              "text-halo-color": c.ocean,
+              "text-halo-width": 1.2,
+            },
           },
           {
             // 航路网压在计划航路**之下**：它是背景参考，不该盖住你正在看的那条。
@@ -540,6 +642,28 @@ onMounted(() => {
             },
             paint: {
               "text-color": c.label,
+              "text-halo-color": c.ocean,
+              "text-halo-width": 1.2,
+            },
+          },
+          {
+            // 导航台。圆圈套方框是航图上 VOR/DME 的画法，符号同样是运行时画的。
+            id: "navaids",
+            type: "symbol",
+            source: "navaids",
+            minzoom: 5,
+            layout: {
+              "icon-image": "navaid-vordme",
+              "icon-size": 1,
+              "icon-allow-overlap": true,
+              "text-field": ["get", "label"],
+              "text-font": ["Noto Sans Regular"],
+              "text-size": 9,
+              "text-offset": [0, 1.1],
+              "text-anchor": "top",
+            },
+            paint: {
+              "text-color": c.navaid,
               "text-halo-color": c.ocean,
               "text-halo-width": 1.2,
             },

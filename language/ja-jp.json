@@ -255,6 +255,11 @@
         "off": "航空路なし",
         "high": "上空",
         "low": "低空"
+      },
+      "layers": {
+        "navaids": "航法援助施設",
+        "sectors": "セクター",
+        "restricted": "制限区域"
       }
     },
     "airports": {
