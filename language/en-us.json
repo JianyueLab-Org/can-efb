@@ -229,6 +229,12 @@
       },
       "weather": {
         "none": "No report"
+      },
+      "atc": {
+        "title": "Online ATC",
+        "count": "{count} online",
+        "loading": "Loading…",
+        "none": "No controllers are online."
       }
     },
     "settings": {
@@ -272,6 +278,7 @@
         "firs": "FIRs",
         "navaids": "Navaids",
         "mora": "MORA",
+        "live": "Live",
         "sectors": "Sectors",
         "restricted": "Restricted"
       }

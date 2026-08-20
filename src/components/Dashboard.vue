@@ -13,6 +13,12 @@
 import { onMounted, ref } from "vue";
 import { api } from "@/lib/canApi";
 import { createTranslator } from "@/lib/i18n";
+import {
+  facilityLabel,
+  fetchDatafeed,
+  onlineControllers,
+  type DatafeedController,
+} from "@/lib/datafeed";
 import { Icon } from "@jianyuelab-org/can-ui";
 
 const props = defineProps<{
@@ -68,9 +74,36 @@ async function loadSummary() {
   if (result.ok) summary.value = result.data.summary;
 }
 
+/**
+ * 在线管制。
+ *
+ * **这里放的是列表而不是地图上那些点，因为飞行员要的是频率。** 「谁在线、我该
+ * 呼叫哪个频率」是一句话能答完的问题，去图上找一个点、再读它旁边的小字是绕远。
+ * 地图那一层管的是"在哪"，这一层管的是"呼谁"。
+ *
+ * 不轮询：仪表盘是打开时看一眼的页面，而地图那块常驻组件已经在每 30 秒刷新。
+ * 这里再起一个定时器，等于同一份数据在同一个标签页里被取两遍。
+ */
+const controllers = ref<DatafeedController[]>([]);
+const atcLoading = ref(true);
+
+async function loadControllers() {
+  try {
+    controllers.value = onlineControllers(await fetchDatafeed());
+  } catch (error) {
+    // 静默退回空列表：一个连不上实时数据源的仪表盘不该在飞行计划上面压一条
+    // 红条 —— 它和这一页的其余部分完全无关。
+    console.error("[efb] 在线管制加载失败:", error);
+    controllers.value = [];
+  } finally {
+    atcLoading.value = false;
+  }
+}
+
 onMounted(() => {
   void loadPlan();
   void loadSummary();
+  void loadControllers();
 });
 </script>
 
@@ -158,6 +191,42 @@ onMounted(() => {
           {{ t("dashboard.weather.none") }}
         </p>
       </div>
+    </section>
+
+    <!-- 在线管制。频率是这一段存在的理由，见 loadControllers 上面的注释。 -->
+    <section class="card p-5">
+      <div class="mb-3 flex items-baseline justify-between">
+        <h2 class="text-sm font-semibold text-ink">
+          {{ t("dashboard.atc.title") }}
+        </h2>
+        <span v-if="!atcLoading" class="text-xs text-muted">{{
+          t("dashboard.atc.count", { count: String(controllers.length) })
+        }}</span>
+      </div>
+
+      <p v-if="atcLoading" class="text-sm text-muted">
+        {{ t("dashboard.atc.loading") }}
+      </p>
+      <p v-else-if="!controllers.length" class="text-sm text-muted">
+        {{ t("dashboard.atc.none") }}
+      </p>
+      <ul v-else class="divide-y divide-subtle">
+        <li
+          v-for="c in controllers"
+          :key="c.callsign"
+          class="flex items-baseline justify-between gap-3 py-2"
+        >
+          <span class="min-w-0">
+            <span class="font-mono text-sm text-ink">{{ c.callsign }}</span>
+            <span class="ml-2 text-xs text-muted">{{
+              facilityLabel(c.facility)
+            }}</span>
+          </span>
+          <span class="font-mono text-sm tabular-nums text-ink">{{
+            c.frequency
+          }}</span>
+        </li>
+      </ul>
     </section>
 
     <!-- 统计 -->

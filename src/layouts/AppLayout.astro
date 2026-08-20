@@ -87,10 +87,12 @@ const crossLinks = buildCrossLinks(t);
         high: t("map.airways.high"),
         low: t("map.airways.low"),
       }}
+      cid={user?.id ?? null}
       layerLabels={{
         firs: t("map.layers.firs"),
         navaids: t("map.layers.navaids"),
         mora: t("map.layers.mora"),
+        live: t("map.layers.live"),
         sectors: t("map.layers.sectors"),
         restricted: t("map.layers.restricted"),
       }}
