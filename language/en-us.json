@@ -257,6 +257,7 @@
         "low": "Lower"
       },
       "layers": {
+        "firs": "FIRs",
         "navaids": "Navaids",
         "sectors": "Sectors",
         "restricted": "Restricted"

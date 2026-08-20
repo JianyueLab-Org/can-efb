@@ -257,6 +257,7 @@
         "low": "低空"
       },
       "layers": {
+        "firs": "情报区",
         "navaids": "导航台",
         "sectors": "扇区",
         "restricted": "限制区"
