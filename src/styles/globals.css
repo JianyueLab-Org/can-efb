@@ -262,6 +262,19 @@
   background: var(--surface-overlay);
   color: var(--color-ink);
 }
+/* 在线管制席位数，贴在「实时」那颗按钮上。
+   数字本身就是信息 —— 「现在有没有人管」是飞行员开图第一眼要的答案之一，
+   让它出现在按钮上比藏进图里省一次寻找。 */
+.map-layer-count {
+  margin-left: 0.35rem;
+  padding: 0 0.3rem;
+  border-radius: 0.5rem;
+  background: var(--color-can, #4a7fa3);
+  color: #fff;
+  font-size: 0.65rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .map-layer-btn:disabled {
   opacity: 0.5;
 }

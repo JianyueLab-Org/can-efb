@@ -229,6 +229,12 @@
       },
       "weather": {
         "none": "暂无报文"
+      },
+      "atc": {
+        "title": "在线管制",
+        "count": "{count} 个席位",
+        "loading": "读取中…",
+        "none": "当前没有管制员在线。"
       }
     },
     "settings": {
@@ -272,6 +278,7 @@
         "firs": "情报区",
         "navaids": "导航台",
         "mora": "MORA",
+        "live": "实时",
         "sectors": "扇区",
         "restricted": "限制区"
       }

@@ -145,6 +145,12 @@ const props = defineProps<{
    * 没法再分开排版。见 lib/mora.ts。
    */
   mora?: FeatureCollection | null;
+  /** 其余在线航班。自己那架**不在**这里，见 own。 */
+  traffic?: FeatureCollection | null;
+  /** 在线管制席位，属性里带 `callsign` 和 `frequency`。 */
+  atc?: FeatureCollection | null;
+  /** 自己那架飞机，至多一个要素。 */
+  own?: FeatureCollection | null;
   label: string;
 }>();
 
@@ -183,6 +189,12 @@ const PALETTE = {
     // Grid MORA 用绿色，这是航图的惯例 —— 图上没有第二样东西是绿的，所以它
     // 一眼就和航路、导航台、边界分得开，哪怕挤在一起。
     mora: "#5fa86a",
+    // 实时那三层。**自己那架最亮**，这是整层的重点：一眼能在满屏静态数据里找
+    // 到自己。其余航班压到刚好看得见，管制席位用琥珀色 —— 图上另一个没被占用
+    // 的色相。
+    own: "#ffd166",
+    traffic: "#8fa6b8",
+    atc: "#e8934a",
   },
   light: {
     ocean: "#dde5ea",
@@ -200,6 +212,9 @@ const PALETTE = {
     restricted: "#b45a6d",
     fir: "#93a7b5",
     mora: "#3d7a48",
+    own: "#b8860b",
+    traffic: "#6b8395",
+    atc: "#b8622a",
   },
 };
 
@@ -396,6 +411,31 @@ function registerIcons() {
   map.addImage("navaid-vordme", bx.getImageData(0, 0, size, size), {
     pixelRatio: 2,
   });
+
+  /* 飞机。**必须按 SDF 注册**，因为这是站里唯一两个用 `icon-color` 的图层（自己
+   * 那架和其余航班共用这一个图标，只有颜色和大小不同）。非 SDF 的图标 MapLibre
+   * 会原样贴上去，`icon-color` 被**静默忽略** —— 结果是两层都画成白色，而且不
+   * 报错。
+   *
+   * 机头朝上（航向 0），`icon-rotate` 直接吃 datafeed 的 `heading`，不用换算。
+   * 画成实心是有意的：其余静态符号都是空心线画，实心让它一眼从图上跳出来。 */
+  const air = document.createElement("canvas");
+  const asize = 22;
+  air.width = air.height = asize;
+  const ax = air.getContext("2d");
+  if (!ax) return;
+  ax.fillStyle = "#ffffff";
+  ax.beginPath();
+  ax.moveTo(asize / 2, 1); // 机头
+  ax.lineTo(asize - 3, asize - 4); // 右翼尖
+  ax.lineTo(asize / 2, asize - 8); // 机腹缺口
+  ax.lineTo(3, asize - 4); // 左翼尖
+  ax.closePath();
+  ax.fill();
+  map.addImage("aircraft", ax.getImageData(0, 0, asize, asize), {
+    pixelRatio: 2,
+    sdf: true,
+  });
 }
 
 function applyPalette() {
@@ -413,6 +453,23 @@ function applyPalette() {
   map.setPaintProperty("route", "line-color", c.route);
   map.setPaintProperty("markers", "circle-color", c.marker);
   map.setPaintProperty("markers", "circle-stroke-color", c.marker);
+
+  // 实时那三层也要跟着换主题，否则深浅色一切换它们就留在上一套配色里。
+  map.setPaintProperty("atc", "circle-color", c.atc);
+  map.setPaintProperty("atc", "circle-stroke-color", c.ocean);
+  map.setPaintProperty("atc-labels", "text-color", c.atc);
+  map.setPaintProperty("atc-labels", "text-halo-color", c.ocean);
+  map.setPaintProperty("traffic", "icon-color", c.traffic);
+  map.setPaintProperty("own", "icon-color", c.own);
+  map.setPaintProperty("own", "text-color", c.own);
+  map.setPaintProperty("own", "text-halo-color", c.ocean);
+
+  // 上面几层的颜色也一并跟上 —— 之前漏了，深浅切换后它们停在旧配色上。
+  map.setPaintProperty("fir-line", "line-color", c.fir);
+  map.setPaintProperty("fir-labels", "text-color", c.fir);
+  map.setPaintProperty("fir-labels", "text-halo-color", c.ocean);
+  map.setPaintProperty("mora-labels", "text-color", c.mora);
+  map.setPaintProperty("mora-labels", "text-halo-color", c.ocean);
 }
 
 /** 把当前 props 灌进 source。source 已经在，只换数据 —— 不重建图层。 */
@@ -452,6 +509,15 @@ function render() {
   );
   (map.getSource("mora") as GeoJSONSource | undefined)?.setData(
     props.mora ?? { type: "FeatureCollection", features: [] },
+  );
+  (map.getSource("traffic") as GeoJSONSource | undefined)?.setData(
+    props.traffic ?? { type: "FeatureCollection", features: [] },
+  );
+  (map.getSource("atc") as GeoJSONSource | undefined)?.setData(
+    props.atc ?? { type: "FeatureCollection", features: [] },
+  );
+  (map.getSource("own") as GeoJSONSource | undefined)?.setData(
+    props.own ?? { type: "FeatureCollection", features: [] },
   );
 
   // 视野：focus 优先 —— 「在一堆点里挑一个看」不该把用户刚才的缩放丢掉。
@@ -563,6 +629,18 @@ onMounted(() => {
             data: { type: "FeatureCollection", features: [] },
           },
           mora: {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+          },
+          traffic: {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+          },
+          atc: {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+          },
+          own: {
             type: "geojson",
             data: { type: "FeatureCollection", features: [] },
           },
@@ -821,6 +899,92 @@ onMounted(() => {
             type: "line",
             source: "route",
             paint: { "line-color": c.route, "line-width": 1.4 },
+          },
+          {
+            // 管制席位。圆点加「呼号 频率」——**频率是飞行员真正要的那一样**，
+            // 所以它和呼号一起进标注，而不是等人去点。
+            id: "atc",
+            type: "circle",
+            source: "atc",
+            paint: {
+              "circle-radius": 4,
+              "circle-color": c.atc,
+              "circle-stroke-width": 1,
+              "circle-stroke-color": c.ocean,
+            },
+          },
+          {
+            id: "atc-labels",
+            type: "symbol",
+            source: "atc",
+            layout: {
+              "text-field": [
+                "concat",
+                ["get", "callsign"],
+                "  ",
+                ["get", "frequency"],
+              ],
+              "text-font": ["Noto Sans Regular"],
+              "text-size": 10,
+              "text-offset": [0, 1.1],
+              "text-anchor": "top",
+            },
+            paint: {
+              "text-color": c.atc,
+              "text-halo-color": c.ocean,
+              "text-halo-width": 1.4,
+            },
+          },
+          {
+            // 其余在线航班：小三角，按航向转。**没有标注** —— 满屏呼号会把航图
+            // 盖掉，而"别人在哪"这件事看点就够了。
+            id: "traffic",
+            type: "symbol",
+            source: "traffic",
+            layout: {
+              "icon-image": "aircraft",
+              "icon-size": 0.6,
+              "icon-rotate": ["get", "heading"],
+              "icon-rotation-alignment": "map",
+              "icon-allow-overlap": true,
+            },
+            paint: { "icon-color": c.traffic },
+          },
+          {
+            // 自己那架。大一号、最亮、**永远画在最上面**，而且带呼号高度地速。
+            id: "own",
+            type: "symbol",
+            source: "own",
+            layout: {
+              "icon-image": "aircraft",
+              "icon-size": 1,
+              "icon-rotate": ["get", "heading"],
+              "icon-rotation-alignment": "map",
+              "icon-allow-overlap": true,
+              "text-field": [
+                "concat",
+                ["get", "callsign"],
+                "\n",
+                ["to-string", ["get", "altitude"]],
+                "ft  ",
+                ["to-string", ["get", "groundspeed"]],
+                "kt",
+              ],
+              "text-font": ["Noto Sans Regular"],
+              "text-size": 11,
+              "text-offset": [0, 1.4],
+              "text-anchor": "top",
+              "text-line-height": 1.1,
+              // 自己那架的标注**不参与避让**：它被别的标注挤掉就等于这一层白做了。
+              "text-allow-overlap": true,
+              "text-ignore-placement": true,
+            },
+            paint: {
+              "icon-color": c.own,
+              "text-color": c.own,
+              "text-halo-color": c.ocean,
+              "text-halo-width": 1.6,
+            },
           },
           {
             id: "markers",

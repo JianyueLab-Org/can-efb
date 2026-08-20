@@ -229,6 +229,12 @@
       },
       "weather": {
         "none": "暫無報文"
+      },
+      "atc": {
+        "title": "線上管制",
+        "count": "{count} 個席位",
+        "loading": "讀取中…",
+        "none": "目前沒有管制員在線。"
       }
     },
     "settings": {
@@ -272,6 +278,7 @@
         "firs": "情報區",
         "navaids": "導航台",
         "mora": "MORA",
+        "live": "即時",
         "sectors": "扇區",
         "restricted": "限制區"
       }

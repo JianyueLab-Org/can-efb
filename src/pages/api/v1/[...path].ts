@@ -64,8 +64,13 @@ const ALLOW_LIST: Record<string, Allowed> = {
   // METAR（can-api 的 handleATIS 调的也是 metar.Fetch），对这个站没有任何增量。
   // 它的消费者是 EuroScope 的宏。
   //
-  // `/api/v1/track` 也不在：EFB 没有地图，在线航班列表是 can-radar 的活。等真
-  // 有页面要用再加，别先摆着。
+  // `/api/v1/track` 也不在，但**理由已经不是原来那条了**。原来写的是「EFB 没有
+  // 地图」—— 这个站现在有一张常驻地图，那句话不再成立。
+  //
+  // 真正的理由是：`track` 是 can-api 里**某个 CID 的历史航迹**，而图上要的实时
+  // 位置来自 can-fsd 的 datafeed（公开、无鉴权、带 `ACAO: *`，岛屿直连，见
+  // `lib/datafeed.ts`）。两者不是一回事，datafeed 到位并不意味着需要这一条。
+  // 哪天真要画"这架飞机刚才飞过哪里"再加。
   metar: { methods: ["GET"], who: "Weather.vue / Dashboard.vue" },
   route: { methods: ["GET"], who: "RoutePlanner.vue" },
 };

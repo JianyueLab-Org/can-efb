@@ -50,6 +50,14 @@ import {
   type MORACell,
 } from "@/lib/mora";
 import { fetchFIRs } from "@/lib/firs";
+import {
+  fetchDatafeed,
+  onlineControllers,
+  ownPilot,
+  toControllerPoints,
+  toOwnPoint,
+  toTrafficPoints,
+} from "@/lib/datafeed";
 import type { FeatureCollection } from "geojson";
 
 const props = defineProps<{
@@ -61,11 +69,19 @@ const props = defineProps<{
   emptyBody: string;
   /** 航路图层开关的三个文案（关 / 高空 / 低空），已翻译。 */
   airwayLabels: { off: string; high: string; low: string };
-  /** 其余图层开关的文案（情报区 / 导航台 / 扇区 / 限制区），已翻译。 */
+  /**
+   * 自己的 CAN ID。没登录是 null。
+   *
+   * **用来在 datafeed 里认出自己那架飞机**，按 CID 而不是呼号 —— 呼号是每次连线
+   * 自己填的，两个人可以填成一样，而认错的后果是把别人的飞机标成"你"。
+   */
+  cid: string | null;
+  /** 其余图层开关的文案，已翻译。 */
   layerLabels: {
     firs: string;
     navaids: string;
     mora: string;
+    live: string;
     sectors: string;
     restricted: string;
   };
@@ -104,6 +120,7 @@ interface LayerPrefs {
   airway: AirwayLevel | "off";
   firs: boolean;
   mora: boolean;
+  live: boolean;
   navaids: boolean;
   airspace: AirspaceFamily | "off";
 }
@@ -121,6 +138,9 @@ const DEFAULT_PREFS: LayerPrefs = {
   mora: false,
   navaids: true,
   airspace: "off",
+  // **默认开。** 这一层回答的是"现在谁在线、我在哪"，而那正是打开飞行包的人第
+  // 一眼想知道的；它也很轻（整张网络的实时数据一次几 KB）。
+  live: true,
 };
 
 function readPrefs(): LayerPrefs {
@@ -270,6 +290,80 @@ let lastViewport: {
   north: number;
   east: number;
 } | null = null;
+
+/**
+ * 实时：在线管制、其余在线航班、自己那架飞机。
+ *
+ * 一个开关管三层，因为它们是**同一份数据的三个部分** —— 拆成三个开关，关掉其中
+ * 一个也省不下任何请求，只是多两颗按钮。
+ *
+ * 直接打 can-fsd 的 datafeed，不走本站反代（它公开、无鉴权、带 `ACAO: *`），理
+ * 由见 lib/datafeed.ts。
+ */
+const showLive = ref(false);
+const traffic = ref<FeatureCollection | null>(null);
+const atc = ref<FeatureCollection | null>(null);
+const own = ref<FeatureCollection | null>(null);
+/** 在线管制席位数，给按钮上那个角标用。 */
+const atcCount = ref(0);
+
+/**
+ * 30 秒一轮。
+ *
+ * 不是秒级：这是飞行前后看的图，而 datafeed 本身也是每秒重算一次快照，取得再密
+ * 也只是拿到同一批数字。can-fsd 还有 `/v1/events` 增量流，管制端该用那个。
+ */
+const LIVE_INTERVAL_MS = 30_000;
+let liveTimer: ReturnType<typeof setInterval> | null = null;
+/** 首次取数期间挡住再次点击，见 toggleLive。 */
+let liveInFlight = false;
+
+async function refreshLive() {
+  try {
+    const feed = await fetchDatafeed();
+    const controllers = onlineControllers(feed);
+    atc.value = toControllerPoints(controllers);
+    atcCount.value = controllers.length;
+    traffic.value = toTrafficPoints(feed, props.cid);
+    own.value = toOwnPoint(ownPilot(feed, props.cid));
+  } catch (error) {
+    // **不关掉这一层，也不清空已画的东西。** 实时数据每 30 秒重试一次，一次抖动
+    // 就把飞机从图上抹掉比让它停在 30 秒前的位置糟得多 —— 后者至少是真的发生过
+    // 的位置。
+    console.error("[efb:map] 实时数据加载失败:", error);
+  }
+}
+
+async function toggleLive() {
+  // **先翻状态再取数**，而不是取完再翻。中间那一段 await 是可以被再点一次的：
+  // 「开」还在等第一份数据时又点了「关」，若状态留到 await 之后才写，关的那次
+  // 会被开的那次覆盖 —— 界面显示关着，定时器却活着，而且没有任何办法再关掉它。
+  if (liveInFlight) return;
+  prefs.live = !showLive.value;
+  writePrefs(prefs);
+
+  if (showLive.value) {
+    showLive.value = false;
+    if (liveTimer) clearInterval(liveTimer);
+    liveTimer = null;
+    traffic.value = null;
+    atc.value = null;
+    own.value = null;
+    atcCount.value = 0;
+    return;
+  }
+
+  showLive.value = true;
+  liveInFlight = true;
+  try {
+    await refreshLive();
+  } finally {
+    liveInFlight = false;
+  }
+  // 定时器在开关打开之后才建，关掉时清掉 —— 否则关着的图层还在每 30 秒发请求。
+  if (liveTimer) clearInterval(liveTimer);
+  liveTimer = setInterval(() => void refreshLive(), LIVE_INTERVAL_MS);
+}
 
 const airspaceFamily = ref<AirspaceFamily | "off">("off");
 const airspaces = ref<FeatureCollection | null>(null);
@@ -453,6 +547,7 @@ onMounted(() => {
   if (saved.airway !== "off") void setAirwayLevel(saved.airway);
   if (saved.firs) void toggleFirs();
   if (saved.mora) void toggleMora();
+  if (saved.live) void toggleLive();
   if (saved.navaids) void toggleNavaids();
   if (saved.airspace !== "off") void setAirspaceFamily(saved.airspace);
   unsubscribe = subscribeToMap((payload) => {
@@ -467,6 +562,10 @@ onMounted(() => {
 onBeforeUnmount(() => {
   unsubscribe?.();
   unsubscribe = null;
+  // 定时器必须停。这块地图是 `transition:persist` 的，一般不会走到这里 —— 但真
+  // 走到了而定时器还活着，就是一个每 30 秒发一次请求、谁也看不见的泄漏。
+  if (liveTimer) clearInterval(liveTimer);
+  liveTimer = null;
 });
 </script>
 
@@ -486,6 +585,9 @@ onBeforeUnmount(() => {
       :navaids="navaids"
       :firs="firs"
       :mora="mora"
+      :traffic="traffic"
+      :atc="atc"
+      :own="own"
       @viewport="onViewport"
       :airspaces="airspaces"
       :label="label"
@@ -547,6 +649,17 @@ onBeforeUnmount(() => {
         @click="toggleMora"
       >
         {{ layerLabels.mora }}
+      </button>
+      <button
+        type="button"
+        class="map-layer-btn"
+        :class="showLive ? 'is-on' : ''"
+        @click="toggleLive"
+      >
+        {{ layerLabels.live
+        }}<span v-if="showLive && atcCount" class="map-layer-count">{{
+          atcCount
+        }}</span>
       </button>
       <button
         type="button"
