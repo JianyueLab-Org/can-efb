@@ -206,7 +206,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="card overflow-hidden">
-    <div ref="container" class="route-map" role="img" :aria-label="label"></div>
-  </div>
+  <!--
+    没有 card 外壳：这块地图现在是外壳里那一整列显示面（`MapSurface.vue`），
+    不再是航段表上面的一张插图。圆角和边框在一块通栏的显示面上只会切掉地图的
+    四个角，而且和左边面板之间已经有一条分隔线了。
+  -->
+  <div ref="container" class="route-map" role="img" :aria-label="label"></div>
 </template>
