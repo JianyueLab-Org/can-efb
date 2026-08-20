@@ -17,7 +17,7 @@ import type { Feature, FeatureCollection, Position } from "geojson";
  * 法在 `Array.isArray` 收窄之后就访问不到 `.data` 了，编译器是对的，是类型写错
  * 了。
  */
-function unwrapList<T>(body: unknown): T[] {
+export function unwrapList<T>(body: unknown): T[] {
   if (Array.isArray(body)) return body as T[];
   const data = (body as { data?: unknown })?.data;
   return Array.isArray(data) ? (data as T[]) : [];

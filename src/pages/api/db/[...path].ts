@@ -44,6 +44,9 @@ const ALLOW_LIST: Record<string, Allowed> = {
   // （restricted）画法不同，也各自开关，没必要一次全拉。
   "aip/navaids": { methods: ["GET"], who: "RouteMap.vue 的导航台图层" },
   "aip/airspaces": { methods: ["GET"], who: "RouteMap.vue 的空域图层" },
+  // 格子最低超障高度。**必须带 `?bbox=`**，can-db 那边没有「取全世界」的形式 ——
+  // 这一层是画在图上的标注，而一张显示 180 度纬度的图没地方画它们。
+  "aip/mora": { methods: ["GET"], who: "MapSurface.vue 的 Grid MORA 图层" },
 };
 
 const PASS_THROUGH = ["content-type", "cache-control"];
