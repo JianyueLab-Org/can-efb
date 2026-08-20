@@ -41,6 +41,22 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import type { Feature, FeatureCollection } from "geojson";
 import { arc, type LatLon } from "@/lib/geo";
 
+/**
+ * 排查用的调用轨迹。**这一批日志是临时的**，等「一片蓝、没有 canvas」定位完就该
+ * 删掉 —— 它们不是产品行为，是一次故障留下的脚手架。
+ *
+ * 前缀统一成 `[efb:map]`，一是好在控制台里过滤，二是删的时候一搜就全在。
+ *
+ * 打在模块顶层的那一行有独立价值：它证明这个异步 chunk **真的被执行了**。在它之
+ * 前，我们连「组件加载了没有」都只能靠翻 DOM 猜。
+ */
+function trace(step: string, detail?: unknown) {
+  if (detail === undefined) console.log(`[efb:map] ${step}`);
+  else console.log(`[efb:map] ${step}`, detail);
+}
+
+trace("module evaluated");
+
 interface Point {
   ident: string;
   lat: number;
@@ -97,6 +113,8 @@ const corners = ref({ nw: "", se: "" });
  * 「底图这一层没拿到」现在会各自说一句话。
  */
 const failure = ref<string | null>(null);
+
+trace("setup");
 
 let map: MapLibreMap | null = null;
 let themeObserver: MutationObserver | null = null;
@@ -204,6 +222,12 @@ function applyPalette() {
 
 /** 把当前 props 灌进 source。source 已经在，只换数据 —— 不重建图层。 */
 function render() {
+  trace("render", {
+    hasMap: !!map,
+    styleLoaded: map?.isStyleLoaded(),
+    points: props.points?.length ?? 0,
+    markers: props.markers?.length ?? 0,
+  });
   if (!map || !map.isStyleLoaded()) return;
 
   const points = props.points ?? [];
@@ -235,14 +259,19 @@ function render() {
 async function loadLand() {
   try {
     if (!landCache) {
+      trace("land fetch start", LAND_URL);
       const response = await fetch(LAND_URL);
+      trace("land fetch done", response.status);
       if (!response.ok) return;
       landCache = await response.json();
+      trace("land parsed", {
+        features: (landCache as { features?: unknown[] })?.features?.length,
+      });
     }
     if (!map) return;
-    (map.getSource("land") as GeoJSONSource | undefined)?.setData(
-      landCache as FeatureCollection,
-    );
+    const source = map.getSource("land") as GeoJSONSource | undefined;
+    trace("land setData", { hasSource: !!source });
+    source?.setData(landCache as FeatureCollection);
   } catch (error) {
     // 界面上仍然静默降级成一片海 —— 为一张装饰性底图弹提示，是把噪音摆在比信息
     // 更显眼的位置，这条判断没变。
@@ -254,6 +283,8 @@ async function loadLand() {
 }
 
 onMounted(() => {
+  trace("onMounted", { hasContainer: !!container.value });
+
   // 这一条以前是静默 return，而它正是「有容器、没 canvas」那个现象的唯一出口 ——
   // MapLibre 的 canvas 在构造函数里同步创建，所以没有 canvas 就意味着构造没执行。
   if (!container.value) {
@@ -261,9 +292,29 @@ onMounted(() => {
     console.error("[efb] 地图容器没有挂上，MapLibre 没有初始化");
     return;
   }
+
+  // 容器尺寸。为 0 的话 MapLibre 仍然会建 canvas，但什么都看不见 —— 这两种故障
+  // 长得很像，所以把数字打出来分开。
+  const rect = container.value.getBoundingClientRect();
+  trace("container rect", { width: rect.width, height: rect.height });
+
+  // **WebGL 能不能拿到。** MapLibre 5 以后拿不到上下文会直接抛，而那正是「有容
+  // 器、没 canvas」最像的原因。这里单独探一次，不依赖 MapLibre 自己的报错。
+  try {
+    const probe = document.createElement("canvas");
+    const gl =
+      probe.getContext("webgl2") ||
+      probe.getContext("webgl") ||
+      probe.getContext("experimental-webgl");
+    trace("webgl probe", gl ? "available" : "**unavailable**");
+  } catch (error) {
+    trace("webgl probe threw", error);
+  }
+
   const c = palette();
 
   try {
+    trace("constructing MapLibre");
     map = new MapLibreMap({
       container: container.value,
       // 手写 style，不指向任何瓦片服务 —— 见文件顶上。
@@ -341,6 +392,11 @@ onMounted(() => {
       scrollZoom: window.matchMedia("(min-width: 1024px)").matches,
     });
 
+    trace("constructed", {
+      canvas: !!map.getCanvas(),
+      width: map.getCanvas()?.width,
+      height: map.getCanvas()?.height,
+    });
     map.addControl(new NavigationControl({ showCompass: false }), "top-left");
   } catch (error) {
     // WebGL 不可用、构造参数不合法都会走到这里。以前它会作为一个未捕获异常冒到
@@ -355,7 +411,9 @@ onMounted(() => {
     console.error("[efb] 地图错误:", event.error ?? event);
   });
 
+  map.on("styledata", () => trace("styledata"));
   map.on("load", () => {
+    trace("load");
     render();
     updateCorners();
     void loadLand();
