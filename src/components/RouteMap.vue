@@ -90,6 +90,32 @@ function isDark(): boolean {
   return document.documentElement.classList.contains("dark");
 }
 
+/**
+ * 滚轮缩放**只在宽屏开**，断点和 CSS 里的 `.app-shell` 用同一个 1024px。
+ *
+ * 这个值以前是写死的 `false`，注释写着「滚轮缩放会抢走页面滚动」。那在旧布局里
+ * 是对的 —— 那时地图是航路页中的一张插图，外面是一整页可滚的正文。
+ *
+ * 现在分成两种情况，而且**只有一种**还成立：
+ *
+ * - **宽屏（≥1024px）**：`.app-shell` 是 `height: 100dvh`，面板自己滚，地图那一
+ *   列根本不滚。滚轮没有东西可抢，关着反而让这块主显示面缩放不了 —— 开。
+ * - **窄屏**：布局变成竖排，页面是真的会滚，而地图占顶上 40dvh。滚轮停在地图上
+ *   就会把页面卡住，那是最招人烦的一类交互 —— 继续关。触摸的双指缩放不受影响
+ *   （Leaflet 的 touchZoom 默认开着），所以窄屏上真正要缩放的人并没有被挡住。
+ *
+ * 用 matchMedia 而不是读一次窗口宽度：窗口可以被拖动、平板可以转屏，读一次的话
+ * 从窄拖到宽之后滚轮仍然是死的。
+ */
+const WIDE = "(min-width: 1024px)";
+let wideQuery: MediaQueryList | null = null;
+
+function syncWheelZoom() {
+  if (!map || !wideQuery) return;
+  if (wideQuery.matches) map.scrollWheelZoom.enable();
+  else map.scrollWheelZoom.disable();
+}
+
 function palette() {
   return isDark() ? PALETTE.dark : PALETTE.light;
 }
@@ -207,7 +233,8 @@ onMounted(() => {
     // 不再需要归属声明：底图是公有领域的 Natural Earth，见 LAND_URL 上面那段。
     // **这一行和「不用瓦片」是绑在一起的**，别单独改。
     attributionControl: false,
-    // 航路图是拿来看形状的，不是拿来漫游的；滚轮缩放会抢走页面滚动。
+    // 初始关掉，随后由 syncWheelZoom() 按断点决定 —— 见那个函数上面的注释。
+    // 不在这里直接给 true：窄屏下那样会把页面滚动卡死。
     scrollWheelZoom: false,
     worldCopyJump: true,
   }).setView([34, 110], 4);
@@ -230,6 +257,10 @@ onMounted(() => {
     attributes: true,
     attributeFilter: ["class"],
   });
+
+  wideQuery = window.matchMedia(WIDE);
+  wideQuery.addEventListener("change", syncWheelZoom);
+  syncWheelZoom();
 
   render();
   void loadLand();
@@ -268,6 +299,8 @@ async function loadLand() {
 watch(() => props.points, render, { deep: true });
 
 onBeforeUnmount(() => {
+  wideQuery?.removeEventListener("change", syncWheelZoom);
+  wideQuery = null;
   themeObserver?.disconnect();
   resizeObserver?.disconnect();
   map?.remove();
