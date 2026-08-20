@@ -272,6 +272,23 @@
   background: var(--surface-overlay);
   color: var(--color-ink);
 }
+/* 「有 n 块边界不完整没画」那条提示。
+   贴在地图上沿、居中：它说的是**整张图缺了东西**，不属于左下角那排图层开关，
+   也不该挤在角落里被当成装饰。窄，因为它只有一句话。 */
+.map-partial {
+  position: absolute;
+  z-index: 2;
+  top: 0.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(28rem, calc(100% - 8rem));
+  padding: 0.25rem 0.6rem;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  color: var(--color-muted);
+  text-align: center;
+}
+
 /* 「定位到我」。
    放左上角缩放控件的**下面**：它是一个改变视野的动作，和 +/- 是同一类，凑在
    一起比混进右下角那排图层开关讲得通。缩放控件两颗按钮加内边距约 4.6rem 高，

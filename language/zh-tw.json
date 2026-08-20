@@ -279,9 +279,11 @@
         "navaids": "導航台",
         "mora": "MORA",
         "live": "即時",
-        "sectors": "扇區",
+        "ctr": "區域",
+        "app": "進近",
         "restricted": "限制區"
-      }
+      },
+      "partial": "有 {n} 塊空域的邊界在航行資料裡不完整（沿國境線或含圓弧），未繪製。"
     },
     "airports": {
       "search": "搜尋 ICAO、機場名或飛航情報區",

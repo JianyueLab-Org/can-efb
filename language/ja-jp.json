@@ -279,9 +279,11 @@
         "navaids": "航法援助施設",
         "mora": "MORA",
         "live": "リアルタイム",
-        "sectors": "セクター",
+        "ctr": "管制区",
+        "app": "進入",
         "restricted": "制限区域"
-      }
+      },
+      "partial": "{n} 件の空域は境界データが不完全なため描画していません（国境線に沿う区間、または円弧）。"
     },
     "airports": {
       "search": "ICAO・空港名・FIR で検索",
