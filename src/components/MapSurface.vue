@@ -326,7 +326,24 @@ let liveTimer: ReturnType<typeof setInterval> | null = null;
 /** 首次取数期间挡住再次点击，见 toggleLive。 */
 let liveInFlight = false;
 
+/**
+ * 从别的标签页切回来时立刻补一次。
+ *
+ * 没有这一下，藏起来期间跳过的那些轮次会让画面停在最多 30 秒前 —— 而"切回来第一
+ * 眼看到的是旧位置"正是这一层最不该有的样子。
+ */
+function onVisible() {
+  if (!document.hidden && showLive.value) void refreshLive();
+}
+
 async function refreshLive() {
+  // **标签页看不见就不取。** 这一层每 30 秒一次、只要开着就永远在跑 —— 而飞行包
+  // 常常是开着一整晚的第二块屏。看不见的时候取回来的数据没有任何人读，却照样占
+  // 着流量和 can-fsd 的一次请求。
+  //
+  // 不用停掉定时器：`visibilitychange` 回来时会立刻补一次（见下面），而让定时器
+  // 继续空转比"停掉再重建"少一处状态。
+  if (typeof document !== "undefined" && document.hidden) return;
   try {
     const feed = await fetchDatafeed();
     const controllers = onlineControllers(feed);
@@ -565,6 +582,7 @@ onMounted(() => {
   // 这一行证明外壳这个岛屿水合了 —— 它是 RouteMap 能不能被渲染的前提。
   console.log("[efb:map] MapSurface mounted");
   mounted.value = true;
+  document.addEventListener("visibilitychange", onVisible);
 
   // 按偏好把图层打开。**这是"打开就看到航图"的那一步** —— 没有它，默认值只是
   // 一个没人读的常量。
@@ -594,6 +612,7 @@ onBeforeUnmount(() => {
   // 走到了而定时器还活着，就是一个每 30 秒发一次请求、谁也看不见的泄漏。
   if (liveTimer) clearInterval(liveTimer);
   liveTimer = null;
+  document.removeEventListener("visibilitychange", onVisible);
 });
 </script>
 

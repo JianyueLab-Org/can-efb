@@ -25,7 +25,13 @@
  */
 import type { FeatureCollection } from "geojson";
 
-const FIRS_URL = "/basemap/firs.json";
+/**
+ * **从 `src/` 里 `?url` 引进来，不放 `public/`** —— 理由和陆地那份一样，写在
+ * `RouteMap.vue` 的 `LAND_URL` 上面：`public/` 下的固定名字只能拿到
+ * `max-age=0`，边缘不缓存、每次回源；`?url` 之后是内容哈希名字，一年 immutable
+ * 且边缘命中。
+ */
+import FIRS_URL from "@/basemap/firs.json?url";
 
 /** 取过就不再取：这份文件是静态的，一个周期内不会变。 */
 let cache: FeatureCollection | null = null;
