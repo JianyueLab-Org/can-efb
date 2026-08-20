@@ -32,6 +32,7 @@ import { subscribeToMap, type MapPoint } from "@/lib/mapBus";
 import {
   fetchAirways,
   toAirwayLines,
+  toAirwayFixes,
   distinctLocTypes,
   type AirwayLevel,
 } from "@/lib/airways";
@@ -61,7 +62,10 @@ const RouteMap = defineAsyncComponent({
 });
 
 /** 见 setAirwayLevel 上面的注释：跨组件重建保留。 */
-const airwayCache = new Map<AirwayLevel, FeatureCollection>();
+const airwayCache = new Map<
+  AirwayLevel,
+  { lines: FeatureCollection; fixes: FeatureCollection }
+>();
 
 const points = ref<MapPoint[]>([]);
 const markers = ref<MapPoint[]>([]);
@@ -85,18 +89,21 @@ const hasPoints = computed(
  */
 const airwayLevel = ref<AirwayLevel | "off">("off");
 const airways = ref<FeatureCollection | null>(null);
+const airwayFixes = ref<FeatureCollection | null>(null);
 const airwayBusy = ref(false);
 
 async function setAirwayLevel(level: AirwayLevel | "off") {
   airwayLevel.value = level;
   if (level === "off") {
     airways.value = null;
+    airwayFixes.value = null;
     return;
   }
 
   const cached = airwayCache.get(level);
   if (cached) {
-    airways.value = cached;
+    airways.value = cached.lines;
+    airwayFixes.value = cached.fixes;
     return;
   }
 
@@ -107,14 +114,18 @@ async function setAirwayLevel(level: AirwayLevel | "off") {
     // 先把它们打出来。见 lib/airways.ts 里 distinctLocTypes 的注释。
     console.log("[efb:map] airway locTypes", distinctLocTypes(graph));
     const lines = toAirwayLines(graph);
-    airwayCache.set(level, lines);
+    // 航路点和线一起来一起走：它们是同一份图的两个面，分开缓存迟早不同步。
+    const fixes = toAirwayFixes(graph);
+    airwayCache.set(level, { lines, fixes });
     airways.value = lines;
+    airwayFixes.value = fixes;
   } catch (error) {
     // 这一层是用户明确打开的，不是装饰性底图 —— 失败要说话，而且要退回"关"，
     // 否则开关停在"高空"上却什么都没画，看起来像这一带没有航路。
     console.error("[efb:map] 航路网加载失败:", error);
     airwayLevel.value = "off";
     airways.value = null;
+    airwayFixes.value = null;
   } finally {
     airwayBusy.value = false;
   }
@@ -154,6 +165,7 @@ onBeforeUnmount(() => {
       :markers="markers"
       :focus="focus"
       :airways="airways"
+      :airway-fixes="airwayFixes"
       :label="label"
       class="h-full"
     />

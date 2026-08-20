@@ -105,6 +105,8 @@ const props = defineProps<{
    * 两件事。
    */
   airways?: FeatureCollection | null;
+  /** 航路点（航路网自己的点集），和 airways 一起来一起走。 */
+  airwayFixes?: FeatureCollection | null;
   label: string;
 }>();
 
@@ -123,7 +125,16 @@ const PALETTE = {
     grid: "#1e2a38",
     route: "#7ab8e0",
     marker: "#cfe4f2",
-    airway: "#4a6b82",
+    // 航路按**代号首字母**分色，这是航图的通行约定：
+    //   V           低空航路
+    //   A / B / G   高空与国际航路
+    //   其余        J / P / R / W 等
+    // 类别就在代号里，不需要等 can-db 的 locType —— 那一列是汇编给的中文
+    // 分类（「国内对外开放航路」之类），和这里的字母分类是两回事。
+    airwayV: "#d8e6ef",
+    airwayHigh: "#6fa8cc",
+    airwayOther: "#4a6b82",
+    label: "#9db4c4",
   },
   light: {
     ocean: "#dde5ea",
@@ -132,9 +143,34 @@ const PALETTE = {
     grid: "#cbd5db",
     route: "#2f6f9e",
     marker: "#1d4e70",
-    airway: "#8aa4b5",
+    airwayV: "#5c7180",
+    airwayHigh: "#2f6f9e",
+    airwayOther: "#8aa4b5",
+    label: "#5a6b78",
   },
 };
+
+/**
+ * 按代号首字母挑颜色。`slice` 取第一个字母，`match` 分三档。
+ *
+ * 表达式而不是在 JS 里预先算好写进 properties：颜色跟主题走，主题一变只要换这
+ * 个表达式里的三个色值，不必把几千条要素重新生成一遍。
+ */
+function airwayColor(c: {
+  airwayV: string;
+  airwayHigh: string;
+  airwayOther: string;
+}) {
+  return [
+    "match",
+    ["slice", ["get", "airway"], 0, 1],
+    "V",
+    c.airwayV,
+    ["A", "B", "G"],
+    c.airwayHigh,
+    c.airwayOther,
+  ];
+}
 
 const container = ref<HTMLDivElement | null>(null);
 const corners = ref({ nw: "", se: "" });
@@ -246,6 +282,34 @@ function updateCorners() {
   };
 }
 
+/**
+ * 航路点的三角形符号。**运行时用 canvas 画出来注册**，不引 sprite 文件。
+ *
+ * 一套雪碧图要两个文件（png + json）、一份构建步骤，而这里总共只有几个符号，
+ * 画出来比维护那套流程便宜。`pixelRatio: 2` 让它在高分屏上不糊。
+ */
+function registerIcons() {
+  if (!map || map.hasImage("fix-triangle")) return;
+  const size = 16;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  ctx.beginPath();
+  ctx.moveTo(size / 2, 2);
+  ctx.lineTo(size - 2, size - 3);
+  ctx.lineTo(2, size - 3);
+  ctx.closePath();
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 1.6;
+  ctx.stroke();
+
+  map.addImage("fix-triangle", ctx.getImageData(0, 0, size, size), {
+    pixelRatio: 2,
+  });
+}
+
 function applyPalette() {
   if (!map || !map.isStyleLoaded()) return;
   const c = palette();
@@ -253,7 +317,11 @@ function applyPalette() {
   map.setPaintProperty("land", "fill-color", c.land);
   map.setPaintProperty("land-outline", "line-color", c.landLine);
   map.setPaintProperty("grid", "line-color", c.grid);
-  map.setPaintProperty("airways", "line-color", c.airway);
+  map.setPaintProperty("airways", "line-color", airwayColor(c) as never);
+  for (const id of ["airway-labels", "airway-fixes"]) {
+    map.setPaintProperty(id, "text-color", c.label);
+    map.setPaintProperty(id, "text-halo-color", c.ocean);
+  }
   map.setPaintProperty("route", "line-color", c.route);
   map.setPaintProperty("markers", "circle-color", c.marker);
   map.setPaintProperty("markers", "circle-stroke-color", c.marker);
@@ -281,6 +349,9 @@ function render() {
   );
   (map.getSource("airways") as GeoJSONSource | undefined)?.setData(
     props.airways ?? { type: "FeatureCollection", features: [] },
+  );
+  (map.getSource("airwayFixes") as GeoJSONSource | undefined)?.setData(
+    props.airwayFixes ?? { type: "FeatureCollection", features: [] },
   );
 
   // 视野：focus 优先 —— 「在一堆点里挑一个看」不该把用户刚才的缩放丢掉。
@@ -375,6 +446,10 @@ onMounted(() => {
             type: "geojson",
             data: { type: "FeatureCollection", features: [] },
           },
+          airwayFixes: {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+          },
           route: {
             type: "geojson",
             data: { type: "FeatureCollection", features: [] },
@@ -384,6 +459,9 @@ onMounted(() => {
             data: { type: "FeatureCollection", features: [] },
           },
         },
+        // 文字要字体源，否则带 text-field 的图层**一个字都不画，而且不报错**。
+        // 自备在 public/basemap/fonts/ 下，理由和许可见那里的 README。
+        glyphs: "/basemap/fonts/{fontstack}/{range}.pbf",
         layers: [
           {
             id: "ocean",
@@ -414,9 +492,56 @@ onMounted(() => {
             type: "line",
             source: "airways",
             paint: {
-              "line-color": c.airway,
+              "line-color": airwayColor(c) as never,
               "line-width": 0.7,
-              "line-opacity": 0.75,
+              "line-opacity": 0.8,
+            },
+          },
+          {
+            // 航路代号，贴着线走。`symbol-placement: line` 让它跟随走向，而
+            // MapLibre 的标签避让会自动把挤在一起的那些藏掉 —— 这正是当初从
+            // Leaflet 换过来的理由。
+            id: "airway-labels",
+            type: "symbol",
+            source: "airways",
+            minzoom: 5,
+            layout: {
+              "symbol-placement": "line",
+              "text-field": ["get", "airway"],
+              "text-font": ["Noto Sans Regular"],
+              "text-size": 9,
+              "text-letter-spacing": 0.05,
+              "symbol-spacing": 300,
+            },
+            paint: {
+              "text-color": c.label,
+              // 描边不是装饰：白字压在浅色陆地上会糊，这一圈底色让它在两种主题
+              // 下都读得出来。
+              "text-halo-color": c.ocean,
+              "text-halo-width": 1.2,
+            },
+          },
+          {
+            // 航路点。三角形图标是运行时用 canvas 画出来注册的（见 addImage），
+            // 不引 sprite —— 为四五个符号挂一套雪碧图不划算。
+            id: "airway-fixes",
+            type: "symbol",
+            source: "airwayFixes",
+            minzoom: 5,
+            layout: {
+              "icon-image": "fix-triangle",
+              "icon-size": 1,
+              "icon-allow-overlap": true,
+              "text-field": ["get", "ident"],
+              "text-font": ["Noto Sans Regular"],
+              "text-size": 9,
+              "text-offset": [0, 0.9],
+              "text-anchor": "top",
+            },
+            paint: {
+              "text-color": c.label,
+              "text-halo-color": c.ocean,
+              "text-halo-width": 1.2,
             },
           },
           {
@@ -447,6 +572,10 @@ onMounted(() => {
       center: [110, 34],
       zoom: 3,
       attributionControl: false,
+      // 汉字用本机字体画，不请求 glyphs —— 全套 CJK 切片是几十 MB，为几个
+      // 地名背这个体积不值得。
+      localIdeographFontFamily:
+        'system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif',
       // 滚轮缩放：宽屏开、窄屏关，和上一版同一条规矩 —— 窄屏下页面会滚，滚轮停在
       // 地图上会把它卡住。
       scrollZoom: window.matchMedia("(min-width: 1024px)").matches,
@@ -474,6 +603,7 @@ onMounted(() => {
   map.on("styledata", () => trace("styledata"));
   map.on("load", () => {
     trace("load");
+    registerIcons();
     render();
     updateCorners();
     void loadLand();
