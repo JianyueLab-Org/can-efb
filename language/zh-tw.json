@@ -213,6 +213,29 @@
       },
       "map": {
         "label": "航路地圖：解出的航路點連成的大圓航跡"
+      },
+      "generate": {
+        "title": "產生航路",
+        "from": "起飛機場",
+        "to": "落地機場",
+        "level": "巡航高度（英尺，可留空）",
+        "action": "產生",
+        "working": "產生中…",
+        "published": "彙編發布的走法",
+        "computed": "在航路網上算出來的",
+        "alternatives": "另有走法",
+        "distance": "航路距離",
+        "direct": "大圓距離",
+        "minSafe": "最低安全高度",
+        "belowMtca": "**巡航高度低於全程最低超障高度**",
+        "restrictions": "沿途限制（原文）",
+        "airspaces": "穿越的特殊空域",
+        "noRoute": "這兩個機場之間沒有可用的走法（換個巡航高度也許可以）。",
+        "badInput": "機場代碼不對，要四位 ICAO。",
+        "failed": "產生失敗，請稍後再試。"
+      },
+      "expand": {
+        "title": "展開航路字串"
       }
     },
     "dashboard": {

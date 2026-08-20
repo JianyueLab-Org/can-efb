@@ -2,6 +2,7 @@
 import AppLayout from "@/layouts/AppLayout.astro";
 import PageHeader from "@/components/PageHeader.astro";
 import RoutePlanner from "@/components/RoutePlanner.vue";
+import RouteGenerator from "@/components/RouteGenerator.vue";
 import { getLocale, getMessages, useTranslations } from "@/lib/i18n";
 
 const locale = getLocale(Astro.cookies);
@@ -12,5 +13,20 @@ const description = t("pages.route.description");
 
 <AppLayout title={title} description={description}>
   <PageHeader title={title} description={description} />
+  {
+    /*
+    两件事，都在这一页，顺序是刻意的：**先生成，后展开**。
+    还没有航路的人要的是第一件；已经有一串航路字符串的人要的是第二件。
+    生成走 can-db 的规划器，展开走 can-api —— 见 lib/routePlan.ts 顶上的对照。
+  */
+  }
+  <h2 class="mb-3 text-sm font-semibold text-ink">
+    {t("route.generate.title")}
+  </h2>
+  <RouteGenerator messages={getMessages(locale, "efb")} client:load />
+
+  <h2 class="mt-8 mb-3 text-sm font-semibold text-ink">
+    {t("route.expand.title")}
+  </h2>
   <RoutePlanner messages={getMessages(locale, "efb")} client:load />
 </AppLayout>

@@ -37,6 +37,9 @@ const ALLOW_LIST: Record<string, Allowed> = {
   // 机场（`aip/airports`）**特意不在这里**：那一页是 SSR 取的，浏览器不需要这条
   // 路。哪天真有岛屿要在浏览器里查机场再加，别为对称而开。
   "aip/airways": { methods: ["GET"], who: "RouteMap.vue 的航路图层" },
+  // 航路生成。规划逻辑在 can-db（internal/aip/route.go）—— 这一条只是把它开给
+  // 浏览器，EFB 一行规划代码都没有。
+  "aip/route": { methods: ["GET"], who: "RouteGenerator.vue" },
 };
 
 const PASS_THROUGH = ["content-type", "cache-control"];
