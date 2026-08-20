@@ -61,7 +61,23 @@ const props = defineProps<{ points: Point[]; label: string }>();
  * **这一处刻意和 can-radar 不一样。** 那边的地图是拿来定位飞机的，地名和边界都
  * 有用；这边不是。改之前先想清楚是哪一种用途。
  */
-const LAND_URL = "/basemap/land-110m.json";
+/**
+ * 陆地数据有**两份**，先粗后细。
+ *
+ * 起因是 1:110m 的海岸线在高缩放下明显是粗的，而换成 1:50m 要付 340 KB（gzip
+ * 后）—— 那是首屏还什么都没画出来时就要等的量。化简帮不上忙：Natural Earth 的
+ * 50m 本身已经是化简过的数据，Douglas-Peucker 在「看不出差别」的容差（0.005°，
+ * zoom 9 下约 2 个像素）下只能压到 329 KB，而要压到 207 KB 就得放宽到 0.02°，
+ * 那在 zoom 9 下是约 9 个像素的削角，肉眼看得见。
+ *
+ * 所以不在两者之间选，而是**两个都要**：110m 立刻画出来（34 KB），50m 在后台拉，
+ * 到了就换掉。首屏不因此变慢，海岸线随后自己变细，而 50m 之后一直躺在浏览器缓存
+ * 里 —— 静态资源，第二次访问不再付这个钱。
+ *
+ * 换层是整层替换而不是叠加：两份画的是同一件东西，叠着会让海岸线出现双线。
+ */
+const LAND_COARSE_URL = "/basemap/land-110m.json";
+const LAND_FINE_URL = "/basemap/land-50m.json";
 
 /** 海陆两色，跟着主题走。取自 positron / dark matter 的海陆色，接近但更素。 */
 const PALETTE = {
@@ -76,7 +92,10 @@ const PALETTE = {
  * 用不上；留着是为了不正常的那一次 —— 保活失败时组件会重建，而重新拉一遍 94 KB
  * 只为画同一张海陆图是没道理的。
  */
-let landCache: unknown = null;
+const landCache: { coarse: unknown; fine: unknown } = {
+  coarse: null,
+  fine: null,
+};
 
 const container = ref<HTMLDivElement | null>(null);
 
@@ -275,24 +294,46 @@ onMounted(() => {
  *
  * `interactive: false`：陆地不该吃掉点击，航路点的 tooltip 要能点到。
  */
+async function fetchLand(url: string): Promise<unknown> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(String(response.status));
+  return response.json();
+}
+
+/** 把一份数据铺成陆地层，替换掉上一层。 */
+function showLand(data: unknown) {
+  if (!map) return;
+  const next = L.geoJSON(data as GeoJsonObject, {
+    interactive: false,
+    style: { weight: 0.5, fillOpacity: 1, opacity: 1 },
+  });
+  next.addTo(map);
+  // 陆地要压在航路下面，否则线和点会被它盖住。
+  next.bringToBack();
+  // 先加后删：中间没有一帧是空海，避免换层时闪一下。
+  if (landLayer) map.removeLayer(landLayer);
+  landLayer = next;
+  applyPalette();
+}
+
 async function loadLand() {
+  // 粗的那份先上。它小，通常一个 RTT 就到了。
   try {
-    if (!landCache) {
-      const response = await fetch(LAND_URL);
-      if (!response.ok) return;
-      landCache = await response.json();
-    }
-    if (!map) return;
-    landLayer = L.geoJSON(landCache as GeoJsonObject, {
-      interactive: false,
-      style: { weight: 0.5, fillOpacity: 1, opacity: 1 },
-    });
-    landLayer.addTo(map);
-    // 陆地要压在航路下面，否则线和点会被它盖住。
-    landLayer.bringToBack();
-    applyPalette();
+    if (!landCache.coarse) landCache.coarse = await fetchLand(LAND_COARSE_URL);
+    showLand(landCache.coarse);
   } catch {
-    // 见上：静默降级成一片海。
+    // 静默降级成一片海：航路线、航路点、缩放全都还在，为一张装饰性底图弹错误
+    // 提示是把噪音摆在比信息更显眼的位置。
+  }
+
+  // 细的那份随后换上。失败就停在粗的那份 —— 那是一个完全可用的结果，不该因为
+  // 「更好的那份没拿到」把已经画好的东西撤掉。
+  try {
+    if (!landCache.fine) landCache.fine = await fetchLand(LAND_FINE_URL);
+    // 组件可能在这段等待里被拆掉了。
+    if (map) showLand(landCache.fine);
+  } catch {
+    // 同上。
   }
 }
 
