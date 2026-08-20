@@ -64,6 +64,9 @@ const hasPoints = computed(
 let unsubscribe: (() => void) | null = null;
 
 onMounted(() => {
+  // 见 RouteMap.vue 顶上：这一批 `[efb:map]` 是排查「一片蓝」用的临时脚手架。
+  // 这一行证明外壳这个岛屿水合了 —— 它是 RouteMap 能不能被渲染的前提。
+  console.log("[efb:map] MapSurface mounted");
   mounted.value = true;
   unsubscribe = subscribeToMap((payload) => {
     points.value = payload.points ?? [];
