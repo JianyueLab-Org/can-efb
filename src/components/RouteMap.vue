@@ -61,7 +61,23 @@ const props = defineProps<{ points: Point[]; label: string }>();
  * **这一处刻意和 can-radar 不一样。** 那边的地图是拿来定位飞机的，地名和边界都
  * 有用；这边不是。改之前先想清楚是哪一种用途。
  */
-const LAND_URL = "/basemap/land-110m.json";
+/**
+ * 陆地数据：Natural Earth **1:50m**，公有领域，坐标 3 位小数（约 110 m，远低于
+ * zoom 9 下一个像素代表的距离）。1,420 个多边形，1.1 MB，gzip 后 340 KB。
+ *
+ * **这里刻意只有一份，而且是细的那一份。** 中间做过一版「110m 先画、50m 后台换
+ * 上」的渐进式：首屏只等 34 KB，海岸线随后自己变细。它省的是**第一次**访问的等
+ * 待，代价是第一眼看到的海岸线是粗的 —— 而这块地图的用途就是看形状，第一眼给出
+ * 粗的形状，正是它该避免的事。所以退回单份，直接要细的。
+ *
+ * 化简救不了体积，这一点是量过的：NE 的 50m 本身已经是化简过的数据，
+ * Douglas-Peucker 在「看不出差别」的容差（0.005°，zoom 9 下约 2 个像素）下只能压
+ * 到 329 KB；要压到 207 KB 得放宽到 0.02°，那是约 9 个像素的削角，肉眼看得见。
+ *
+ * 340 KB 只付一次：它是静态资源，之后一直在浏览器缓存里。真觉得首屏等得难受，把
+ * 渐进式加回来是一件小事 —— 但那要重新接受「第一眼是粗的」。
+ */
+const LAND_URL = "/basemap/land-50m.json";
 
 /** 海陆两色，跟着主题走。取自 positron / dark matter 的海陆色，接近但更素。 */
 const PALETTE = {
@@ -282,7 +298,9 @@ async function loadLand() {
       if (!response.ok) return;
       landCache = await response.json();
     }
+    // 组件可能在这段等待里被拆掉了 —— 1.1 MB 不是一瞬间的事。
     if (!map) return;
+
     landLayer = L.geoJSON(landCache as GeoJsonObject, {
       interactive: false,
       style: { weight: 0.5, fillOpacity: 1, opacity: 1 },
@@ -292,7 +310,8 @@ async function loadLand() {
     landLayer.bringToBack();
     applyPalette();
   } catch {
-    // 见上：静默降级成一片海。
+    // 静默降级成一片海：航路线、航路点、缩放全都还在。为一张装饰性底图弹错误提
+    // 示，是把噪音摆在比信息更显眼的位置。
   }
 }
 
