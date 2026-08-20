@@ -29,6 +29,13 @@ import {
   ref,
 } from "vue";
 import { subscribeToMap, type MapPoint } from "@/lib/mapBus";
+import {
+  fetchAirways,
+  toAirwayLines,
+  distinctLocTypes,
+  type AirwayLevel,
+} from "@/lib/airways";
+import type { FeatureCollection } from "geojson";
 
 const props = defineProps<{
   /** 地图角上的说明，已翻译。 */
@@ -37,6 +44,8 @@ const props = defineProps<{
   emptyTitle: string;
   /** 没东西可画时那条提示的正文，已翻译。 */
   emptyBody: string;
+  /** 航路图层开关的三个文案（关 / 高空 / 低空），已翻译。 */
+  airwayLabels: { off: string; high: string; low: string };
 }>();
 
 /** 见文件顶上最后一段。`mounted` 之前一律不渲染 RouteMap。 */
@@ -51,6 +60,9 @@ const RouteMap = defineAsyncComponent({
   },
 });
 
+/** 见 setAirwayLevel 上面的注释：跨组件重建保留。 */
+const airwayCache = new Map<AirwayLevel, FeatureCollection>();
+
 const points = ref<MapPoint[]>([]);
 const markers = ref<MapPoint[]>([]);
 const focus = ref<MapPoint | null>(null);
@@ -60,6 +72,53 @@ const label = ref(props.label);
 const hasPoints = computed(
   () => points.value.length > 0 || markers.value.length > 0,
 );
+
+/**
+ * 航路图层：关 / 高空 / 低空。
+ *
+ * **按需拉，而且拉过的留着。** 整张全国航路网是几百 KB，默认关着 —— 大多数时候
+ * 人是来看自己那条航路的，不是来看全国的网。切回已经拉过的那一层不该再打一次
+ * 接口，所以按 level 缓存。
+ *
+ * 缓存放在组件外的模块作用域：这块地图跨页面存活，但保活失败时组件会重建，那时
+ * 缓存还在就不必重拉。
+ */
+const airwayLevel = ref<AirwayLevel | "off">("off");
+const airways = ref<FeatureCollection | null>(null);
+const airwayBusy = ref(false);
+
+async function setAirwayLevel(level: AirwayLevel | "off") {
+  airwayLevel.value = level;
+  if (level === "off") {
+    airways.value = null;
+    return;
+  }
+
+  const cached = airwayCache.get(level);
+  if (cached) {
+    airways.value = cached;
+    return;
+  }
+
+  airwayBusy.value = true;
+  try {
+    const graph = await fetchAirways(level);
+    // 分色规则要按真实取值定，而写这一版时没人看过这个库里到底有哪几种类型 ——
+    // 先把它们打出来。见 lib/airways.ts 里 distinctLocTypes 的注释。
+    console.log("[efb:map] airway locTypes", distinctLocTypes(graph));
+    const lines = toAirwayLines(graph);
+    airwayCache.set(level, lines);
+    airways.value = lines;
+  } catch (error) {
+    // 这一层是用户明确打开的，不是装饰性底图 —— 失败要说话，而且要退回"关"，
+    // 否则开关停在"高空"上却什么都没画，看起来像这一带没有航路。
+    console.error("[efb:map] 航路网加载失败:", error);
+    airwayLevel.value = "off";
+    airways.value = null;
+  } finally {
+    airwayBusy.value = false;
+  }
+}
 
 let unsubscribe: (() => void) | null = null;
 
@@ -94,6 +153,7 @@ onBeforeUnmount(() => {
       :points="points"
       :markers="markers"
       :focus="focus"
+      :airways="airways"
       :label="label"
       class="h-full"
     />
@@ -108,6 +168,24 @@ onBeforeUnmount(() => {
       没东西可画时的提示。压在地图**上角**而不是替掉整块：这一版外壳的前提就是
       右边是地图，把它整个换成文字等于把前提拿掉。
     -->
+    <!--
+      航路图层开关。放在地图上而不是面板里：地图是跨页面常驻的，而面板每换一页就
+      整个换掉 —— 开关跟着面板走的话，切一页图层状态就没人管了。
+    -->
+    <div class="map-layers card">
+      <button
+        v-for="opt in ['off', 'high', 'low'] as const"
+        :key="opt"
+        type="button"
+        class="map-layer-btn"
+        :class="airwayLevel === opt ? 'is-on' : ''"
+        :disabled="airwayBusy"
+        @click="setAirwayLevel(opt)"
+      >
+        {{ airwayLabels[opt] }}
+      </button>
+    </div>
+
     <div v-if="!hasPoints" class="map-hint card">
       <p class="font-medium text-ink">{{ emptyTitle }}</p>
       <p class="mt-1 text-muted">{{ emptyBody }}</p>

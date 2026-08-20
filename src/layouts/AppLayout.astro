@@ -82,6 +82,11 @@ const crossLinks = buildCrossLinks(t);
       label={t("route.map.label")}
       emptyTitle={t("map.empty.title")}
       emptyBody={t("map.empty.body")}
+      airwayLabels={{
+        off: t("map.airways.off"),
+        high: t("map.airways.high"),
+        low: t("map.airways.low"),
+      }}
       client:load
       transition:persist
     />
