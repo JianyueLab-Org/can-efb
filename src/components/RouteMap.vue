@@ -1,31 +1,45 @@
 <script setup lang="ts">
 /**
- * 航路地图。把 `/api/v1/route` 展开出来的点画成一条线。
+ * 地图画布。**MapLibre GL**，不是 Leaflet —— 这一版是换库重写。
  *
- * **这个组件永远不在服务端渲染。** Leaflet 在模块顶层就摸 `window`，SSR 会直接
- * 抛。`RoutePlanner` 用 `defineAsyncComponent` 引它，并且只在真的解出航路之后才
- * 渲染 —— 于是 Leaflet 那一百多 KB 只在用户按下「展开」并成功之后才下载。对一个
- * 可能在机上用平板打开的站来说，这不是微优化：没解航路的人一个字节都不该付。
+ * ## 为什么换
  *
- * 画法照抄 can-radar 的 `RadarMap.vue`（`drawRouteLine`），但**只留了航路那一
- * 层**：没有航空器、没有管制席位、没有扇区边界，那些是雷达的事。两处刻意保留的
- * 一致：
+ * 这块地图要长成一张航路图：航路线、五字码航路点、导航台符号加频率、空域多边形
+ * 和它们的上下限标注，全都叠在一起。Leaflet 把每个标注渲染成 DOM 节点，一屏几千
+ * 个就卡；更要命的是它**没有标签避让**，密集处标注互相压成一团。MapLibre 在 GPU
+ * 上画矢量，标签碰撞是它的内建能力 —— 这是换库的全部理由。
  *
- * - **大圆弧，不是直线。** 墨卡托上两点之间的直线不是飞机飞的路径，长段尤其明
- *   显。`arc()` 按段长决定插值密度，短段不浪费点。
- * - **SID/STAR 画虚线**，航路段画实线，而且转折那一段同时属于两条线，所以样式
- *   变化处没有缺口。
+ * ## 没有瓦片，也没有外部依赖
  *
- * 底图是一层 Natural Earth 的陆地多边形（不是瓦片），**跟着主题走**。主题在这个站是 `<html>` 上的
- * `dark` 类，而 `ThemeLangControls` 换主题时不发任何事件 —— 所以这里挂了一个
- * `MutationObserver` 盯 class。没有别的通道：那个组件是从 can-web 同步来的，为
- * 了地图在它里面加一个事件，就等于让四个站的公共文件为一个站的需求分叉。
+ * style 是**手写的一个对象**，不指向任何瓦片服务：一个 background 图层当海，一个
+ * GeoJSON source 画陆地，如此而已。所以底图里不存在道路、建筑和 POI —— 不是关掉
+ * 了，是那些数据根本不在这张图里。数据是 Natural Earth 1:50m 陆地多边形，公有领
+ * 域，在 `public/basemap/` 下。
+ *
+ * 由此也不需要归属声明，`attributionControl` 关着。**这一条和「不用瓦片」绑在一
+ * 起**：哪天加回任何一个瓦片源，那行字必须一起回来，否则就是违反许可。
+ *
+ * ## 绝不服务端渲染
+ *
+ * 和 Leaflet 那一版同一条规矩，理由一样硬：`maplibre-gl` 在模块顶层就摸
+ * `window`。`MapSurface` 用 `defineAsyncComponent` + `mounted` 守着它 —— 改成静态
+ * import，**每一个**页面都会 500（这块地图挂在外壳上，不再只是 `/route`）。
+ *
+ * ## 契约没变
+ *
+ * props 仍然是 `points`（连成线的航路）/ `markers`（只画点）/ `focus`（对镜头），
+ * 和 `lib/mapBus.ts` 一一对应。换库是实现的事，通道不该跟着换。
  */
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+import {
+  Map as MapLibreMap,
+  NavigationControl,
+  LngLatBounds,
+  type GeoJSONSource,
+} from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
+import type { Feature, FeatureCollection } from "geojson";
 import { arc, type LatLon } from "@/lib/geo";
-import type { GeoJsonObject } from "geojson";
 
 interface Point {
   ident: string;
@@ -36,114 +50,48 @@ interface Point {
 }
 
 const props = defineProps<{
-  /** 连成线的点 —— 一条航路。 */
   points: Point[];
-  /**
-   * 只画点、不连线的点 —— 一批彼此无关的位置，比如全国的机场。
-   *
-   * 和 `points` 分开而不是加一个开关：一次渲染里两者可以同时存在（航路画在机场
-   * 底图上）。把机场塞进 `points` 的后果不是样式不对，是**几百个机场被顺次连成
-   * 一条面条**。
-   */
   markers?: Point[];
-  /** 有就把视野对到它，而不是框住全部。 */
   focus?: Point | null;
   label: string;
 }>();
 
-/**
- * **没有瓦片底图。** 这块地图画的是一层陆地多边形，海洋就是容器的底色。
- *
- * 为什么不是瓦片：栅格底图（CARTO 的 positron / dark matter 那两套，包括
- * `_nolabels` 变体）里除了海陆，还烘焙着国境线、道路、城市面 —— 那些是图片的一
- * 部分，关不掉。而这块地图要的只有「航路跨过哪片陆地、哪片海」，多出来的每一条
- * 线都是噪音。换个瓦片样式解决不了，只能不用瓦片。
- *
- * 数据是 Natural Earth 1:110m 的陆地多边形，**公有领域**（NE 明确声明无需授权、
- * 无需署名）—— 所以这里也不再需要那行归属声明，`attributionControl` 因此关掉
- * 了。注意这个「可以关」**完全依赖于不再使用 OSM/CARTO 的瓦片**：哪天把瓦片加
- * 回来，那行字必须一起回来，否则就是违反许可。
- *
- * 体积：127 个多边形，坐标截到 3 位小数（约 110 m，远低于 zoom 9 下一个像素代
- * 表的距离），94 KB，gzip 后 34 KB。它**取代**了瓦片流量，而不是叠加 —— 一个视
- * 野的瓦片轻松就是几百 KB，所以这是净赚。
- *
- * 代价写清楚：1:110m 的海岸线在高缩放下是粗的。这块地图的用途是看航路形状，
- * `fitBounds` 又把 maxZoom 压在 9，所以够用；真要更细的海岸线得换 1:50m，那是
- * 1.6 MB，为这个用途不值。
- *
- * **这一处刻意和 can-radar 不一样。** 那边的地图是拿来定位飞机的，地名和边界都
- * 有用；这边不是。改之前先想清楚是哪一种用途。
- */
-/**
- * 陆地数据：Natural Earth **1:50m**，公有领域，坐标 3 位小数（约 110 m，远低于
- * zoom 9 下一个像素代表的距离）。1,420 个多边形，1.1 MB，gzip 后 340 KB。
- *
- * **这里刻意只有一份，而且是细的那一份。** 中间做过一版「110m 先画、50m 后台换
- * 上」的渐进式：首屏只等 34 KB，海岸线随后自己变细。它省的是**第一次**访问的等
- * 待，代价是第一眼看到的海岸线是粗的 —— 而这块地图的用途就是看形状，第一眼给出
- * 粗的形状，正是它该避免的事。所以退回单份，直接要细的。
- *
- * 化简救不了体积，这一点是量过的：NE 的 50m 本身已经是化简过的数据，
- * Douglas-Peucker 在「看不出差别」的容差（0.005°，zoom 9 下约 2 个像素）下只能压
- * 到 329 KB；要压到 207 KB 得放宽到 0.02°，那是约 9 个像素的削角，肉眼看得见。
- *
- * 340 KB 只付一次：它是静态资源，之后一直在浏览器缓存里。真觉得首屏等得难受，把
- * 渐进式加回来是一件小事 —— 但那要重新接受「第一眼是粗的」。
- */
 const LAND_URL = "/basemap/land-50m.json";
 
-/** 海陆两色，跟着主题走。取自 positron / dark matter 的海陆色，接近但更素。 */
+/**
+ * 两套配色。深色那套按航路图来：**陆地纯黑、海洋深蓝**，线条压到刚好看得见。
+ *
+ * 网格线比陆地边界更淡 —— 它是刻度不是内容，抢了注意力就本末倒置。
+ */
 const PALETTE = {
-  light: { ocean: "#dde5ea", land: "#f4f5f3" },
-  dark: { ocean: "#12161a", land: "#252a2f" },
+  dark: {
+    ocean: "#0a1628",
+    land: "#000000",
+    landLine: "#1b2836",
+    grid: "#1e2a38",
+    route: "#7ab8e0",
+    marker: "#cfe4f2",
+  },
+  light: {
+    ocean: "#dde5ea",
+    land: "#f4f5f3",
+    landLine: "#c8d2d8",
+    grid: "#cbd5db",
+    route: "#2f6f9e",
+    marker: "#1d4e70",
+  },
 };
 
-/**
- * 拿到的陆地数据在模块层缓存。
- *
- * 外壳里那块地图带 `transition:persist`，正常情况下跨页面不会重新挂载，这个缓存
- * 用不上；留着是为了不正常的那一次 —— 保活失败时组件会重建，而重新拉一遍 94 KB
- * 只为画同一张海陆图是没道理的。
- */
-let landCache: unknown = null;
-
 const container = ref<HTMLDivElement | null>(null);
+const corners = ref({ nw: "", se: "" });
 
-let map: L.Map | null = null;
-let landLayer: L.GeoJSON | null = null;
-let routeLayer: L.LayerGroup | null = null;
+let map: MapLibreMap | null = null;
 let themeObserver: MutationObserver | null = null;
 let resizeObserver: ResizeObserver | null = null;
+let landCache: unknown = null;
 
 function isDark(): boolean {
   return document.documentElement.classList.contains("dark");
-}
-
-/**
- * 滚轮缩放**只在宽屏开**，断点和 CSS 里的 `.app-shell` 用同一个 1024px。
- *
- * 这个值以前是写死的 `false`，注释写着「滚轮缩放会抢走页面滚动」。那在旧布局里
- * 是对的 —— 那时地图是航路页中的一张插图，外面是一整页可滚的正文。
- *
- * 现在分成两种情况，而且**只有一种**还成立：
- *
- * - **宽屏（≥1024px）**：`.app-shell` 是 `height: 100dvh`，面板自己滚，地图那一
- *   列根本不滚。滚轮没有东西可抢，关着反而让这块主显示面缩放不了 —— 开。
- * - **窄屏**：布局变成竖排，页面是真的会滚，而地图占顶上 40dvh。滚轮停在地图上
- *   就会把页面卡住，那是最招人烦的一类交互 —— 继续关。触摸的双指缩放不受影响
- *   （Leaflet 的 touchZoom 默认开着），所以窄屏上真正要缩放的人并没有被挡住。
- *
- * 用 matchMedia 而不是读一次窗口宽度：窗口可以被拖动、平板可以转屏，读一次的话
- * 从窄拖到宽之后滚轮仍然是死的。
- */
-const WIDE = "(min-width: 1024px)";
-let wideQuery: MediaQueryList | null = null;
-
-function syncWheelZoom() {
-  if (!map || !wideQuery) return;
-  if (wideQuery.matches) map.scrollWheelZoom.enable();
-  else map.scrollWheelZoom.disable();
 }
 
 function palette() {
@@ -151,182 +99,126 @@ function palette() {
 }
 
 /**
- * 把海陆两色刷上去。主题一变就要重来一次。
+ * 经纬网格。**生成出来的，不是一份数据文件。**
  *
- * 海洋是**容器的背景色**而不是一个图层：整张地图除了陆地就是海，画一个覆盖全球
- * 的多边形只是把同一件事做得更贵。
+ * 10° 一条：再密就在全国视野下糊成一片，再疏就失去刻度的作用。经线按纬度采样成
+ * 折线而不是两点一线 —— 墨卡托上经线是直的，但换投影就不是了，采样让这一层不依
+ * 赖当前投影。
  */
-function applyPalette() {
-  const { ocean, land } = palette();
-  if (container.value) container.value.style.background = ocean;
-  landLayer?.setStyle({ fillColor: land, color: land });
-}
-
-/** 线和点的颜色。深色底图上用亮一点的蓝，浅色底图上用品牌蓝。 */
-function lineColor(): string {
-  return isDark() ? "#7ab8e0" : "#2f6f9e";
-}
-
-const isProcedure = (point: Point) =>
-  point.kind === "sid" || point.kind === "star";
-const isAirport = (point: Point) => point.kind === "airport";
-
-/**
- * 一段一段地画，样式相同的连成一条 polyline。
- *
- * 一条腿的样式取自**它到达的那个点**：SID 的第一条腿属于 SID。这条规则和
- * can-radar 一致，改之前先看那边。
- */
-function drawLine(points: Point[], color: string) {
-  if (!routeLayer || points.length < 2) return;
-
-  let from: LatLon = [points[0].lat, points[0].lon];
-  let run: LatLon[] = [from];
-  let runProcedure = isProcedure(points[1]);
-
-  const flush = () => {
-    if (run.length < 2) return;
-    L.polyline(run, {
-      color,
-      weight: 2,
-      opacity: runProcedure ? 0.9 : 0.75,
-      dashArray: runProcedure ? "4 4" : undefined,
-      interactive: false,
-    }).addTo(routeLayer!);
-  };
-
-  for (const point of points.slice(1)) {
-    const to: LatLon = [point.lat, point.lon];
-    const procedure = isProcedure(point);
-
-    if (procedure !== runProcedure) {
-      flush();
-      // 转折那条腿同时属于前后两条线，样式变化处才不会裂开一个口子。
-      run = [from];
-      runProcedure = procedure;
-    }
-
-    run.push(...arc(from, to).slice(1));
-    from = to;
-  }
-  flush();
-}
-
-/** 机场画成方块，航路点画成小圆点 —— 一眼分得出两头和中间。 */
-function drawPoints(points: Point[], color: string) {
-  if (!routeLayer) return;
-
-  for (const point of points) {
-    const airport = isAirport(point);
-    const marker = L.circleMarker([point.lat, point.lon], {
-      radius: airport ? 5 : 3,
-      color,
-      weight: airport ? 2.5 : 1.5,
-      fillColor: color,
-      fillOpacity: airport ? 1 : 0.35,
+function graticule(): FeatureCollection {
+  const features: Feature[] = [];
+  for (let lon = -180; lon <= 180; lon += 10) {
+    const coords: [number, number][] = [];
+    for (let lat = -80; lat <= 80; lat += 5) coords.push([lon, lat]);
+    features.push({
+      type: "Feature",
+      properties: {},
+      geometry: { type: "LineString", coordinates: coords },
     });
-    marker.bindTooltip(
-      point.via ? `${point.ident} · ${point.via}` : point.ident,
-      {
-        direction: "top",
-        offset: [0, -4],
-        className: "route-map-tip",
-      },
-    );
-    marker.addTo(routeLayer);
   }
+  for (let lat = -80; lat <= 80; lat += 10) {
+    const coords: [number, number][] = [];
+    for (let lon = -180; lon <= 180; lon += 5) coords.push([lon, lat]);
+    features.push({
+      type: "Feature",
+      properties: {},
+      geometry: { type: "LineString", coordinates: coords },
+    });
+  }
+  return { type: "FeatureCollection", features };
 }
 
+/** 航路线：相邻两点之间走大圆弧。 */
+function routeLines(points: Point[]): FeatureCollection {
+  const features: Feature[] = [];
+  const isProcedure = (p: Point) => p.kind === "sid" || p.kind === "star";
+
+  for (let i = 1; i < points.length; i++) {
+    const from: LatLon = [points[i - 1].lat, points[i - 1].lon];
+    const to: LatLon = [points[i].lat, points[i].lon];
+    features.push({
+      type: "Feature",
+      // 一条腿的样式取自**它到达的那个点**：SID 的第一条腿属于 SID。这条规则和
+      // can-radar 一致，改之前先看那边。
+      properties: { procedure: isProcedure(points[i]) ? 1 : 0 },
+      geometry: {
+        type: "LineString",
+        coordinates: arc(from, to).map(([lat, lon]) => [lon, lat]),
+      },
+    });
+  }
+  return { type: "FeatureCollection", features };
+}
+
+function pointFeatures(points: Point[]): FeatureCollection {
+  return {
+    type: "FeatureCollection",
+    features: points.map((p) => ({
+      type: "Feature",
+      properties: { ident: p.ident, airport: p.kind === "airport" ? 1 : 0 },
+      geometry: { type: "Point", coordinates: [p.lon, p.lat] },
+    })),
+  };
+}
+
+function fmt(lat: number, lon: number): string {
+  const ns = lat >= 0 ? "N" : "S";
+  const ew = lon >= 0 ? "E" : "W";
+  return `${ns}${Math.abs(lat).toFixed(1)}° ${ew}${Math.abs(lon).toFixed(1)}°`;
+}
+
+/** 角落坐标标注：读当前视野的两个角。 */
+function updateCorners() {
+  if (!map) return;
+  const b = map.getBounds();
+  corners.value = {
+    nw: fmt(b.getNorth(), b.getWest()),
+    se: fmt(b.getSouth(), b.getEast()),
+  };
+}
+
+function applyPalette() {
+  if (!map || !map.isStyleLoaded()) return;
+  const c = palette();
+  map.setPaintProperty("ocean", "background-color", c.ocean);
+  map.setPaintProperty("land", "fill-color", c.land);
+  map.setPaintProperty("land-outline", "line-color", c.landLine);
+  map.setPaintProperty("grid", "line-color", c.grid);
+  map.setPaintProperty("route", "line-color", c.route);
+  map.setPaintProperty("markers", "circle-color", c.marker);
+  map.setPaintProperty("markers", "circle-stroke-color", c.marker);
+}
+
+/** 把当前 props 灌进 source。source 已经在，只换数据 —— 不重建图层。 */
 function render() {
-  if (!map || !routeLayer) return;
-  routeLayer.clearLayers();
+  if (!map || !map.isStyleLoaded()) return;
 
   const points = props.points ?? [];
   const markers = props.markers ?? [];
-  const color = lineColor();
 
-  // 先画 markers，再画航路：后画的压在上面，航路才不会被一片机场点盖住。
-  if (markers.length) drawPoints(markers, color);
-  if (points.length) {
-    drawLine(points, color);
-    drawPoints(points, color);
-  }
+  (map.getSource("route") as GeoJSONSource | undefined)?.setData(
+    routeLines(points),
+  );
+  (map.getSource("markers") as GeoJSONSource | undefined)?.setData(
+    pointFeatures([...markers, ...points]),
+  );
 
-  // **视野有两种取法，focus 优先。**
-  //
-  // 没有 focus 就框住画出来的一切；有 focus 就只把镜头对过去，不重新框 —— 那是
-  // 「在一堆点里挑一个看」的动作（机场列表点一行），此时把全国重新框一遍等于把
-  // 用户刚才的缩放全丢掉。
+  // 视野：focus 优先 —— 「在一堆点里挑一个看」不该把用户刚才的缩放丢掉。
   if (props.focus) {
-    // 至少放到 8 级：从全国视野点一个机场，停在原缩放上等于什么都没发生。
-    map.setView(
-      [props.focus.lat, props.focus.lon],
-      Math.max(map.getZoom(), 8),
-      { animate: true },
-    );
+    map.easeTo({
+      center: [props.focus.lon, props.focus.lat],
+      zoom: Math.max(map.getZoom(), 7),
+    });
     return;
   }
 
   const all = [...points, ...markers];
   if (!all.length) return;
-
-  const bounds = L.latLngBounds(
-    all.map((p) => [p.lat, p.lon] as [number, number]),
-  );
-  // maxZoom 挡住只有一个点（或者两点极近）时地图一头扎到街道级的情况。
-  map.fitBounds(bounds, { padding: [32, 32], maxZoom: 9 });
+  const bounds = new LngLatBounds();
+  for (const p of all) bounds.extend([p.lon, p.lat]);
+  map.fitBounds(bounds, { padding: 48, maxZoom: 8, duration: 0 });
 }
 
-onMounted(() => {
-  if (!container.value) return;
-
-  map = L.map(container.value, {
-    zoomControl: true,
-    // 不再需要归属声明：底图是公有领域的 Natural Earth，见 LAND_URL 上面那段。
-    // **这一行和「不用瓦片」是绑在一起的**，别单独改。
-    attributionControl: false,
-    // 初始关掉，随后由 syncWheelZoom() 按断点决定 —— 见那个函数上面的注释。
-    // 不在这里直接给 true：窄屏下那样会把页面滚动卡死。
-    scrollWheelZoom: false,
-    worldCopyJump: true,
-  }).setView([34, 110], 4);
-
-  // 海洋先上色，别等陆地拉回来 —— 否则首帧是一块白/黑底，和主题不搭。
-  applyPalette();
-
-  routeLayer = L.layerGroup().addTo(map);
-
-  // 容器尺寸会变（侧栏折叠、窗口缩放、手机转屏），不告诉 Leaflet 就会画出错位
-  // 的图层。
-  resizeObserver = new ResizeObserver(() => map?.invalidateSize());
-  resizeObserver.observe(container.value);
-
-  themeObserver = new MutationObserver(() => {
-    applyPalette();
-    render();
-  });
-  themeObserver.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ["class"],
-  });
-
-  wideQuery = window.matchMedia(WIDE);
-  wideQuery.addEventListener("change", syncWheelZoom);
-  syncWheelZoom();
-
-  render();
-  void loadLand();
-});
-
-/**
- * 拉陆地数据并铺上去。
- *
- * 失败**不抛也不提示**：拿不到海陆图时地图仍然是可用的 —— 航路线、航路点、缩放
- * 全都在，只是底色是一片海。为一张装饰性的底图弹一个错误提示，是把噪音摆在比信
- * 息更显眼的位置。
- *
- * `interactive: false`：陆地不该吃掉点击，航路点的 tooltip 要能点到。
- */
 async function loadLand() {
   try {
     if (!landCache) {
@@ -334,42 +226,126 @@ async function loadLand() {
       if (!response.ok) return;
       landCache = await response.json();
     }
-    // 组件可能在这段等待里被拆掉了 —— 1.1 MB 不是一瞬间的事。
     if (!map) return;
-
-    landLayer = L.geoJSON(landCache as GeoJsonObject, {
-      interactive: false,
-      style: { weight: 0.5, fillOpacity: 1, opacity: 1 },
-    });
-    landLayer.addTo(map);
-    // 陆地要压在航路下面，否则线和点会被它盖住。
-    landLayer.bringToBack();
-    applyPalette();
+    (map.getSource("land") as GeoJSONSource | undefined)?.setData(
+      landCache as FeatureCollection,
+    );
   } catch {
-    // 静默降级成一片海：航路线、航路点、缩放全都还在。为一张装饰性底图弹错误提
-    // 示，是把噪音摆在比信息更显眼的位置。
+    // 静默降级成一片海：航路线、点、缩放全都还在。为一张底图弹错误提示，是把噪
+    // 音摆在比信息更显眼的位置。
   }
 }
+
+onMounted(() => {
+  if (!container.value) return;
+  const c = palette();
+
+  map = new MapLibreMap({
+    container: container.value,
+    // 手写 style，不指向任何瓦片服务 —— 见文件顶上。
+    style: {
+      version: 8,
+      sources: {
+        land: {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        },
+        grid: { type: "geojson", data: graticule() },
+        route: {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        },
+        markers: {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        },
+      },
+      layers: [
+        {
+          id: "ocean",
+          type: "background",
+          paint: { "background-color": c.ocean },
+        },
+        {
+          id: "land",
+          type: "fill",
+          source: "land",
+          paint: { "fill-color": c.land },
+        },
+        {
+          id: "land-outline",
+          type: "line",
+          source: "land",
+          paint: { "line-color": c.landLine, "line-width": 0.6 },
+        },
+        {
+          id: "grid",
+          type: "line",
+          source: "grid",
+          paint: { "line-color": c.grid, "line-width": 0.5 },
+        },
+        {
+          id: "route",
+          type: "line",
+          source: "route",
+          paint: { "line-color": c.route, "line-width": 1.4 },
+        },
+        {
+          id: "markers",
+          type: "circle",
+          source: "markers",
+          paint: {
+            "circle-color": c.marker,
+            "circle-radius": ["case", ["==", ["get", "airport"], 1], 4, 2.5],
+            "circle-stroke-color": c.marker,
+            "circle-stroke-width": 0.8,
+            "circle-opacity": ["case", ["==", ["get", "airport"], 1], 1, 0.45],
+          },
+        },
+      ],
+    },
+    center: [110, 34],
+    zoom: 3,
+    attributionControl: false,
+    // 滚轮缩放：宽屏开、窄屏关，和上一版同一条规矩 —— 窄屏下页面会滚，滚轮停在
+    // 地图上会把它卡住。
+    scrollZoom: window.matchMedia("(min-width: 1024px)").matches,
+  });
+
+  map.addControl(new NavigationControl({ showCompass: false }), "top-left");
+
+  map.on("load", () => {
+    render();
+    updateCorners();
+    void loadLand();
+  });
+  map.on("move", updateCorners);
+
+  resizeObserver = new ResizeObserver(() => map?.resize());
+  resizeObserver.observe(container.value);
+
+  themeObserver = new MutationObserver(applyPalette);
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class"],
+  });
+});
 
 watch(() => [props.points, props.markers, props.focus], render, { deep: true });
 
 onBeforeUnmount(() => {
-  wideQuery?.removeEventListener("change", syncWheelZoom);
-  wideQuery = null;
   themeObserver?.disconnect();
   resizeObserver?.disconnect();
   map?.remove();
   map = null;
-  landLayer = null;
-  routeLayer = null;
 });
 </script>
 
 <template>
-  <!--
-    没有 card 外壳：这块地图现在是外壳里那一整列显示面（`MapSurface.vue`），
-    不再是航段表上面的一张插图。圆角和边框在一块通栏的显示面上只会切掉地图的
-    四个角，而且和左边面板之间已经有一条分隔线了。
-  -->
-  <div ref="container" class="route-map" role="img" :aria-label="label"></div>
+  <div class="route-map-wrap">
+    <div ref="container" class="route-map" role="img" :aria-label="label"></div>
+    <!-- 角落坐标标注：航路图上用来读当前视野范围的那两个数。 -->
+    <span class="map-corner map-corner-nw">{{ corners.nw }}</span>
+    <span class="map-corner map-corner-se">{{ corners.se }}</span>
+  </div>
 </template>

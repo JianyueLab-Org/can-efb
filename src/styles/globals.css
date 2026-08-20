@@ -72,8 +72,8 @@
 
    can-radar 的 globals.css 里有约 250 行 Leaflet 样式，这里**没有照抄** —— 那
    一整块伺候的是雷达的弹窗、扇区边界和席位配色，这个站一个都没有。留下的只有
-   两件事：让容器在深浅两套主题下都不露出 Leaflet 自带的灰底，以及把控件和归属
-   声明调到和站内其余控件一个观感。
+   两件事：让容器在深浅两套主题下都不露出地图库自带的灰底，以及把控件调到和站
+   内其余控件一个观感。归属声明没有了 —— 底图不再用任何瓦片源，见 RouteMap.vue。
 
    **高度是撑满父容器，不是写死的。** 这里以前写着 22rem / 28rem，理由是「地图
    在航段表上面，太高会把表顶到折叠线以下」—— 那是旧布局的理由，在那一版里地图
@@ -88,42 +88,56 @@
   width: 100%;
   background: var(--surface-sunken);
 }
-/* Leaflet 自己给容器设了字体，不接管的话地图上的文字和全站不是一套。 */
-.leaflet-container {
+/* MapLibre 自己给容器设了字体，不接管的话地图上的文字和全站不是一套。 */
+.maplibregl-canvas-container,
+.maplibregl-map {
   font: inherit;
 }
 
-.leaflet-control-attribution {
-  background: color-mix(in srgb, var(--surface) 85%, transparent);
-  color: var(--color-muted);
-  font-size: 0.6875rem;
-}
-.leaflet-control-attribution a {
-  color: var(--color-muted);
-}
-
-.leaflet-control-zoom a {
+/* 缩放控件调成和站内其余控件一个观感。默认那套白底方块在纯黑陆地上很扎眼。 */
+.maplibregl-ctrl-group {
   background: var(--surface-raised);
-  color: var(--color-ink);
-  border-color: var(--border-subtle);
+  border: 1px solid var(--border-subtle);
+  box-shadow: none;
 }
-.leaflet-control-zoom a:hover {
+.maplibregl-ctrl-group button + button {
+  border-top-color: var(--border-subtle);
+}
+.maplibregl-ctrl-group button:hover {
   background: var(--surface-overlay);
 }
 
-/* 航路点的名字。深浅两套都要，默认那个白底黑字在深色底图上很扎眼。 */
-.route-map-tip {
-  background: var(--surface-raised);
-  color: var(--color-ink);
-  border: 1px solid var(--border-subtle);
-  border-radius: 0.375rem;
-  box-shadow: none;
+/* 地图外框。角落坐标是绝对定位在它上面的，所以这一层要建立定位上下文。 */
+.route-map-wrap {
+  position: relative;
+  height: 100%;
+  width: 100%;
+}
+
+/* 角落坐标标注。
+
+   等宽字体不是装饰：这两个数是拿来读的，比例字体下小数点不对齐，扫一眼读不出
+   来。`pointer-events: none` 同样是必须的 —— 它压在地图上，能挡住拖动就成了一
+   个看不出原因的死角。 */
+.map-corner {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.6875rem;
-  padding: 0.125rem 0.375rem;
+  color: var(--color-muted);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  padding: 0.0625rem 0.25rem;
+  border-radius: 0.25rem;
 }
-.route-map-tip::before {
-  display: none;
+.map-corner-nw {
+  top: 0.5rem;
+  /* 左上角让给缩放控件。 */
+  left: 3rem;
+}
+.map-corner-se {
+  right: 0.5rem;
+  bottom: 0.5rem;
 }
 
 /* ---------------------------------------------------------------------------
