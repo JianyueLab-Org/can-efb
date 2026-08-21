@@ -10,15 +10,24 @@
  * 个机场，但统计不用等，所以它单独走。一个失败不影响另外两个渲染 —— 天气挂了
  * 不该让人看不到自己的计划。
  */
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { api } from "@/lib/canApi";
 import { createTranslator } from "@/lib/i18n";
 import {
   facilityLabel,
   fetchDatafeed,
+  onlineAtis,
   onlineControllers,
   type DatafeedController,
 } from "@/lib/datafeed";
+import {
+  atisLetter,
+  atisText,
+  facilityColor,
+  groupControllers,
+  onlineFor,
+  type StationGroup,
+} from "@/lib/atc";
 import { Icon } from "@jianyuelab-org/can-ui";
 
 const props = defineProps<{
@@ -83,18 +92,48 @@ async function loadSummary() {
  *
  * 不轮询：仪表盘是打开时看一眼的页面，而地图那块常驻组件已经在每 30 秒刷新。
  * 这里再起一个定时器，等于同一份数据在同一个标签页里被取两遍。
+ *
+ * ## 按机场归堆、按席位顺序排，这两条都来自 can-radar
+ *
+ * 上一版是**按呼号字母排的一条平铺列表**，理由写着"同一个机场的席位呼号前缀相
+ * 同，排出来自然是挨着的"。前半句对，后半句不完全：挨着不等于分得开 —— 二十个席
+ * 位平铺下来，眼睛得自己去数哪几行是同一个场的。而且字母序会把 `ZSSS_APP` 排在
+ * `ZSSS_DEL` 前面，那正好是**联系顺序的反面**。
+ *
+ * 现在按 can-radar 的两条规矩来（`lib/atc.ts`）：场面席位并进机场那一堆，进近和
+ * 区域各自成堆；堆内按放行→地面→塔台→进近→区域排，也就是一架飞机依次要叫的那个
+ * 顺序，于是这份列表读起来本身就是一条流程。
  */
-const controllers = ref<DatafeedController[]>([]);
+const groups = ref<StationGroup[]>([]);
+const atis = ref<DatafeedController[]>([]);
 const atcLoading = ref(true);
+/**
+ * 取数那一刻的时间，给"上席多久"用。
+ *
+ * **存下来而不是在模板里调 `Date.now()`** —— 模板里每次重渲染都会重算，而 Vue 无
+ * 从知道那个值变了，于是显示的时长会在某些重渲染后跳、另一些不跳。取一次，跟着这
+ * 批数据走。
+ */
+const fetchedAt = ref(Date.now());
+
+/** 席位总数，标题右边那个数 —— 归堆之后不能再数堆数。 */
+const controllerCount = computed(() =>
+  groups.value.reduce((n, g) => n + g.stations.length, 0),
+);
 
 async function loadControllers() {
   try {
-    controllers.value = onlineControllers(await fetchDatafeed());
+    const feed = await fetchDatafeed();
+    groups.value = groupControllers(onlineControllers(feed));
+    // ATIS 单独一份，不混进上面 —— 见 datafeed.ts 里 onlineAtis 的注释。
+    atis.value = onlineAtis(feed);
+    fetchedAt.value = Date.now();
   } catch (error) {
     // 静默退回空列表：一个连不上实时数据源的仪表盘不该在飞行计划上面压一条
     // 红条 —— 它和这一页的其余部分完全无关。
     console.error("[efb] 在线管制加载失败:", error);
-    controllers.value = [];
+    groups.value = [];
+    atis.value = [];
   } finally {
     atcLoading.value = false;
   }
@@ -200,31 +239,104 @@ onMounted(() => {
           {{ t("dashboard.atc.title") }}
         </h2>
         <span v-if="!atcLoading" class="text-xs text-muted">{{
-          t("dashboard.atc.count", { count: String(controllers.length) })
+          t("dashboard.atc.count", { count: String(controllerCount) })
         }}</span>
       </div>
 
       <p v-if="atcLoading" class="text-sm text-muted">
         {{ t("dashboard.atc.loading") }}
       </p>
-      <p v-else-if="!controllers.length" class="text-sm text-muted">
+      <p v-else-if="!groups.length" class="text-sm text-muted">
         {{ t("dashboard.atc.none") }}
       </p>
-      <ul v-else class="divide-y divide-subtle">
-        <li
-          v-for="c in controllers"
-          :key="c.callsign"
-          class="flex items-baseline justify-between gap-3 py-2"
-        >
-          <span class="min-w-0">
-            <span class="font-mono text-sm text-ink">{{ c.callsign }}</span>
-            <span class="ml-2 text-xs text-muted">{{
-              facilityLabel(c.facility)
+      <!--
+        一堆一个小节：场面席位归到机场四字码下面，进近和区域各自成堆。
+        堆内的顺序是"该按这个次序联系"，不是字母序 —— 见 loadControllers 上面。
+      -->
+      <div v-else class="space-y-3">
+        <div v-for="g in groups" :key="g.code">
+          <p
+            class="mb-1 font-mono text-xs font-semibold tracking-wide text-muted"
+          >
+            {{ g.code }}
+          </p>
+          <ul class="divide-y divide-subtle">
+            <li
+              v-for="c in g.stations"
+              :key="c.callsign"
+              class="flex items-baseline justify-between gap-3 py-1.5"
+            >
+              <span class="flex min-w-0 items-baseline gap-2">
+                <!--
+                  席位色。一个小方块而不是给整行上色：颜色在这里是**分类**，
+                  不是强调，染满一行会让二十行里每一行都在喊。
+                -->
+                <span
+                  class="inline-block size-2 shrink-0 rounded-[2px]"
+                  :style="{ background: facilityColor(c.facility) }"
+                  aria-hidden="true"
+                ></span>
+                <span class="truncate font-mono text-sm text-ink">{{
+                  c.callsign
+                }}</span>
+                <span class="shrink-0 text-xs text-muted">{{
+                  facilityLabel(c.facility)
+                }}</span>
+              </span>
+              <span class="flex shrink-0 items-baseline gap-2">
+                <!--
+                  上席多久。**必须走 parseFeedTime** —— logon_time 是不带时区标
+                  记的 UTC 墙钟，直接 new Date() 在中国会多算八小时，而算出来的
+                  仍然是一个看着合理的时长。见 lib/atc.ts。
+                -->
+                <span
+                  v-if="onlineFor(c.logon_time, fetchedAt)"
+                  class="text-xs tabular-nums text-muted"
+                  >{{ onlineFor(c.logon_time, fetchedAt) }}</span
+                >
+                <span class="font-mono text-sm tabular-nums text-ink">{{
+                  c.frequency
+                }}</span>
+              </span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!--
+      ATIS 通播。**和上面那段分开**，因为它不是能呼叫的席位 —— 混进去会让人对着
+      一个没人的频率喊。但正文本身是放行前和进场前要听的东西，对飞行包来说是最有
+      用的实时文本之一，所以是分开摆而不是丢掉。见 datafeed.ts 的 onlineAtis。
+    -->
+    <section v-if="atis.length" class="card p-5">
+      <h2 class="mb-3 text-sm font-semibold text-ink">
+        {{ t("dashboard.atis.title") }}
+      </h2>
+      <ul class="space-y-3">
+        <li v-for="a in atis" :key="a.callsign">
+          <div class="flex items-baseline justify-between gap-3">
+            <span class="flex min-w-0 items-baseline gap-2">
+              <span class="truncate font-mono text-sm text-ink">{{
+                a.callsign
+              }}</span>
+              <!-- 通播代号认不出来就不显示，不猜：错一个字母就是让人按上一份天气做决定。 -->
+              <span
+                v-if="atisLetter(a)"
+                class="rounded bg-overlay px-1.5 font-mono text-xs font-semibold text-ink"
+                >{{ atisLetter(a) }}</span
+              >
+            </span>
+            <span class="shrink-0 font-mono text-sm tabular-nums text-ink">{{
+              a.frequency
             }}</span>
-          </span>
-          <span class="font-mono text-sm tabular-nums text-ink">{{
-            c.frequency
-          }}</span>
+          </div>
+          <p
+            v-if="atisText(a)"
+            class="mt-1 font-mono text-xs leading-relaxed text-muted"
+          >
+            {{ atisText(a) }}
+          </p>
         </li>
       </ul>
     </section>

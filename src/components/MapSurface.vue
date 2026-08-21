@@ -33,7 +33,6 @@ import {
   fetchAirways,
   toAirwayLines,
   toAirwayFixes,
-  distinctLocTypes,
   type AirwayLevel,
 } from "@/lib/airways";
 import {
@@ -87,8 +86,19 @@ const props = defineProps<{
     app: string;
     restricted: string;
   };
-  /** 「有 n 块边界不完整没画」那句，`{n}` 会被替换。已翻译。 */
-  t: { partial: string };
+  /** 图层相关的几句话，已翻译。 */
+  t: {
+    /** 「有 n 块边界不完整没画」，`{n}` 会被替换。 */
+    partial: string;
+    /** 没有 aipAccess 时那一句。 */
+    denied: string;
+    /** 某一层取回来是空的时候那一句，按层分。 */
+    emptyAirways: string;
+    emptyNavaids: string;
+    emptyGeneric: string;
+  };
+  /** 地图整个起不来时那两句，转交给 RouteMap。 */
+  failureText: { init: string; webgl: string };
 }>();
 
 /** 见文件顶上最后一段。`mounted` 之前一律不渲染 RouteMap。 */
@@ -189,6 +199,43 @@ function isDenied(error: unknown): boolean {
   return error instanceof Error && /\b(401|403)\b/.test(error.message);
 }
 
+/**
+ * 图层层面的一句话：这一层为什么没东西。
+ *
+ * **这是本次改动要解决的那个故障。** 一个按需图层有三种没东西的情形，而以前只有
+ * 一种会说话：
+ *
+ *   1. 请求失败      —— 会说（console.error + 退回关）
+ *   2. 权限不够      —— **不说**，`deniedThisSession` 把它咽掉了
+ *   3. 取回来是空的  —— **不说**，因为它根本不是错误：200 加一个空数组，
+ *                       `toAirwayLines` 得到 0 个要素，一路顺畅地画出一张空图
+ *
+ * 第 3 种是今天线上高空航路的真实处境：航段的 `level` 一列全是默认值，can-db 的
+ * 高空视图因此返回 0 条（见那个仓库的 TODO）。开关亮在「高空」上、图上一条线都没
+ * 有、控制台一个字都没有 —— 于是它看起来像**地图坏了**，而不是像**这一层没有数
+ * 据**。这两件事对使用者要做的判断完全不同。
+ *
+ * 带 `layer` 是为了让提示跟着来源走：B 层加载成功时不该把 A 层那句话抹掉，而 A
+ * 层自己关掉时那句话必须跟着消失。
+ */
+const notice = ref<{ layer: string; text: string } | null>(null);
+
+function setNotice(layer: string, text: string) {
+  // 权限那条是**会话级**的，压过一切按层的提示：它一旦成立，其余每一层都会因为
+  // 同一个原因空着，而把「这一层没有数据」摆在最前面会让人以为换一层就好了。
+  if (notice.value?.layer === "denied") return;
+  notice.value = { layer, text };
+}
+
+function clearNotice(layer: string) {
+  if (notice.value?.layer === layer) notice.value = null;
+}
+
+function noteDenied() {
+  deniedThisSession = true;
+  notice.value = { layer: "denied", text: props.t.denied };
+}
+
 let navaidCache: FeatureCollection | null = null;
 
 const points = ref<MapPoint[]>([]);
@@ -224,6 +271,7 @@ async function setAirwayLevel(level: AirwayLevel | "off") {
   if (level === "off") {
     airways.value = null;
     airwayFixes.value = null;
+    clearNotice("airways");
     return;
   }
 
@@ -231,6 +279,9 @@ async function setAirwayLevel(level: AirwayLevel | "off") {
   if (cached) {
     airways.value = cached.lines;
     airwayFixes.value = cached.fixes;
+    // 缓存命中也要判一次空：空的那一层缓存的正是"空"，而提示不该只在第一次出现。
+    if (cached.lines.features.length) clearNotice("airways");
+    else setNotice("airways", props.t.emptyAirways);
     return;
   }
 
@@ -238,19 +289,21 @@ async function setAirwayLevel(level: AirwayLevel | "off") {
   airwayBusy.value = true;
   try {
     const graph = await fetchAirways(level);
-    // 分色规则要按真实取值定，而写这一版时没人看过这个库里到底有哪几种类型 ——
-    // 先把它们打出来。见 lib/airways.ts 里 distinctLocTypes 的注释。
-    console.log("[efb:map] airway locTypes", distinctLocTypes(graph));
     const lines = toAirwayLines(graph);
     // 航路点和线一起来一起走：它们是同一份图的两个面，分开缓存迟早不同步。
     const fixes = toAirwayFixes(graph);
     airwayCache.set(level, { lines, fixes });
     airways.value = lines;
     airwayFixes.value = fixes;
+
+    // **取回来是空的，不是失败。** 所以不退回"关"：开关停在这一层是对的，人确实
+    // 选了它，只是这一层今天没有数据。退回"关"反而会让人以为自己没点上。
+    if (lines.features.length) clearNotice("airways");
+    else setNotice("airways", props.t.emptyAirways);
   } catch (error) {
     // 这一层是用户明确打开的，不是装饰性底图 —— 失败要说话，而且要退回"关"，
     // 否则开关停在"高空"上却什么都没画，看起来像这一带没有航路。
-    if (isDenied(error)) deniedThisSession = true;
+    if (isDenied(error)) noteDenied();
     console.error("[efb:map] 航路网加载失败:", error);
     airwayLevel.value = "off";
     airways.value = null;
@@ -443,11 +496,14 @@ async function toggleNavaids() {
   if (showNavaids.value) {
     showNavaids.value = false;
     navaids.value = null;
+    clearNotice("navaids");
     return;
   }
   if (navaidCache) {
     navaids.value = navaidCache;
     showNavaids.value = true;
+    if (navaidCache.features.length) clearNotice("navaids");
+    else setNotice("navaids", props.t.emptyNavaids);
     return;
   }
   if (deniedThisSession) return;
@@ -456,10 +512,13 @@ async function toggleNavaids() {
     navaidCache = toNavaidPoints(await fetchNavaids());
     navaids.value = navaidCache;
     showNavaids.value = true;
+    // 和航路那层同一条：空不是错，开关留在打开状态，用一句话说明它为什么空。
+    if (navaidCache.features.length) clearNotice("navaids");
+    else setNotice("navaids", props.t.emptyNavaids);
   } catch (error) {
     // 和航路那层同一条规矩：用户明确打开的图层，失败要说话并退回关，否则开关亮
     // 着却什么都没画，看起来像这一带没有导航台。
-    if (isDenied(error)) deniedThisSession = true;
+    if (isDenied(error)) noteDenied();
     console.error("[efb:map] 导航台加载失败:", error);
     showNavaids.value = false;
   } finally {
@@ -536,7 +595,7 @@ async function loadMoraFor(v: {
     }
     mora.value = toMORAPoints([...moraCells.values()]);
   } catch (error) {
-    if (isDenied(error)) deniedThisSession = true;
+    if (isDenied(error)) noteDenied();
     // 取失败的块要放回去，否则这次会话里再也不会重试它。
     for (const b of wanted) moraBlocks.delete(`${b.lat},${b.lon}`);
     console.error("[efb:map] Grid MORA 加载失败:", error);
@@ -633,6 +692,10 @@ async function toggleAirspace(which: "ctr" | "app" | "restricted") {
   if (flag.value) {
     flag.value = false;
     composeAirspaces();
+    // 三层都关掉了才撤提示 —— 还开着一层就说明那句话仍然在描述屏幕上的情况。
+    if (!airspaces.value?.features.length && !showCtr.value && !showApp.value) {
+      if (!showRestricted.value) clearNotice("airspace");
+    }
     return;
   }
   if (deniedThisSession) return;
@@ -643,8 +706,11 @@ async function toggleAirspace(which: "ctr" | "app" | "restricted") {
     else await loadControlled();
     flag.value = true;
     composeAirspaces();
+    // 三层共用一个要素集合，所以空不空要看合成之后的结果，不看单独哪一族。
+    if (airspaces.value?.features.length) clearNotice("airspace");
+    else setNotice("airspace", props.t.emptyGeneric);
   } catch (error) {
-    if (isDenied(error)) deniedThisSession = true;
+    if (isDenied(error)) noteDenied();
     console.error("[efb:map] 空域加载失败:", error);
     flag.value = false;
     composeAirspaces();
@@ -661,9 +727,6 @@ const skippedTotal = computed(
 let unsubscribe: (() => void) | null = null;
 
 onMounted(() => {
-  // 见 RouteMap.vue 顶上：这一批 `[efb:map]` 是排查「一片蓝」用的临时脚手架。
-  // 这一行证明外壳这个岛屿水合了 —— 它是 RouteMap 能不能被渲染的前提。
-  console.log("[efb:map] MapSurface mounted");
   mounted.value = true;
   document.addEventListener("visibilitychange", onVisible);
 
@@ -723,6 +786,7 @@ onBeforeUnmount(() => {
       @viewport="onViewport"
       :airspaces="airspaces"
       :label="label"
+      :failure-text="failureText"
       class="h-full"
     />
 
@@ -831,6 +895,17 @@ onBeforeUnmount(() => {
     -->
     <p v-if="skippedTotal" class="map-partial card">
       {{ t.partial.replace("{n}", String(skippedTotal)) }}
+    </p>
+
+    <!--
+      「这一层为什么没东西」。见 notice 上面那段。
+
+      和上面那条 `partial` 分开、也叠在它下面：那条说的是"画出来的这张图缺了几
+      块"，这条说的是"你打开的那一层根本没有数据"。合成一条就得在两种完全不同的
+      处境里选一句话说，而它们同时出现是可能的。
+    -->
+    <p v-if="notice" class="map-notice card" :data-notice="notice.layer">
+      {{ notice.text }}
     </p>
 
     <!--

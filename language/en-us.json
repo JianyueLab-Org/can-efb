@@ -235,6 +235,9 @@
         "count": "{count} online",
         "loading": "Loading…",
         "none": "No controllers are online."
+      },
+      "atis": {
+        "title": "ATIS broadcasts"
       }
     },
     "settings": {
@@ -269,6 +272,11 @@
         "title": "Nothing on the map yet",
         "body": "Resolve a route and it will be drawn here. Routes are the only geographic data this network has today — weather is raw METAR text, live traffic lives on the radar site, and charts are licensed data."
       },
+      "emptyLayer": {
+        "airways": "The aeronautical database has no segments at this level. Until the data is re-imported the upper network is empty — switch to low to see the full route network.",
+        "navaids": "The aeronautical database has no navaid data.",
+        "generic": "The aeronautical database has no data for this layer."
+      },
       "airways": {
         "off": "No airways",
         "high": "Upper",
@@ -283,7 +291,12 @@
         "app": "APP",
         "restricted": "Restricted"
       },
-      "partial": "{n} airspaces are not drawn: the AIP publishes only part of their boundary (it follows a national border, or an arc)."
+      "partial": "{n} airspaces are not drawn: the AIP publishes only part of their boundary (it follows a national border, or an arc).",
+      "failure": {
+        "init": "The map failed to start. Reload the page; if it still fails, send us the console error.",
+        "webgl": "This browser has no working WebGL, so the map cannot be drawn. Enable hardware acceleration in your browser settings and try again."
+      },
+      "denied": "Your account does not have read access to the aeronautical database yet, so airways, navaids and airspace cannot be loaded. Ask an administrator for aipAccess."
     },
     "airports": {
       "search": "Search by ICAO, name or FIR",

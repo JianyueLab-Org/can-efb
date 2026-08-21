@@ -149,6 +149,23 @@ export function onlineControllers(feed: Datafeed | null): DatafeedController[] {
   );
 }
 
+/**
+ * 在线的 ATIS 通播。
+ *
+ * **和上面那个分开，这是它存在的全部意义。** 上面那句注释说的是"ATIS 不该混进可
+ * 呼叫的席位列表"，那条判断没变 —— 变的是它不再被整个丢掉：ATIS 的正文正是放行前
+ * 和进场前要听的那一段，对飞行包来说是最有用的实时文本之一。所以摆在另一处，标题
+ * 上就写明它是通播而不是席位。
+ *
+ * **怎么认出一条是 ATIS，看它来自哪个数组，不看 `facility`。** can-radar 在它的
+ * `groupStations` 里记着这一条：一条 ATIS 连接的 `facility` 不一定是 7。所以这里
+ * 只读 `feed.atis`，绝不去 `controllers` 里按 `facility === 7` 捞。
+ */
+export function onlineAtis(feed: Datafeed | null): DatafeedController[] {
+  if (!feed) return [];
+  return [...feed.atis].sort((a, b) => a.callsign.localeCompare(b.callsign));
+}
+
 // ---------------------------------------------------------------- 转成图层要素
 
 /**
@@ -177,6 +194,10 @@ export function toControllerPoints(
         callsign: c.callsign,
         // 频率是飞行员真正要的那一样，和呼号一起进标注。
         frequency: c.frequency,
+        // **席位类型进要素，好让地图按它分色。** 以前这一层所有点是同一个琥珀色，
+        // 于是塔台和区域在图上长得一模一样；而这两者对飞行员是完全不同的两件事。
+        // 颜色表在 `lib/atc.ts`，和列表用的是同一份。
+        facility: c.facility,
       },
       geometry: { type: "Point", coordinates: [lon, lat] },
     });

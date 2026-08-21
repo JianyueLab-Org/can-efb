@@ -88,7 +88,17 @@ const crossLinks = buildCrossLinks(t);
         low: t("map.airways.low"),
       }}
       cid={user?.id ?? null}
-      t={{ partial: t("map.partial") }}
+      t={{
+        partial: t("map.partial"),
+        denied: t("map.denied"),
+        emptyAirways: t("map.emptyLayer.airways"),
+        emptyNavaids: t("map.emptyLayer.navaids"),
+        emptyGeneric: t("map.emptyLayer.generic"),
+      }}
+      failureText={{
+        init: t("map.failure.init"),
+        webgl: t("map.failure.webgl"),
+      }}
       layerLabels={{
         firs: t("map.layers.firs"),
         navaids: t("map.layers.navaids"),

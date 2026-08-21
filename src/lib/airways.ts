@@ -108,35 +108,48 @@ export function toAirwayLines(graph: AirwayGraph): FeatureCollection {
 }
 
 /**
- * 数据里出现过哪些 `locType`。
- *
- * **这是给人看的，不是给代码用的。** 分色规则要按真实取值来定，而我写这一版时
- * 手上没有这个库的读权限，无从知道汇编到底发布了哪几种类型。所以先把它们打出
- * 来 —— 看到实际取值之后，再把分色从「一个默认色」细化成一张表。
- */
-export function distinctLocTypes(graph: AirwayGraph): string[] {
-  const seen = new Set<string>();
-  for (const meta of Object.values(graph.airways)) {
-    if (meta.locType) seen.add(meta.locType);
-  }
-  return [...seen].sort();
-}
-
-/**
  * 航路点：把图的 `fixes` 转成点要素。
  *
  * 这是**航路网自己的点集**（`fir IS NULL` 的那一份，约 2,300 个），不是全国所有
  * 航路点 —— can-db 的注释里专门解释过为什么两者不能混：ident 不唯一，267 个名字
  * 对应不止一个物理点，用全量去铺会把 21,204 行塌成 10,335 个条目、最后一个赢。
+ *
+ * ## 只画**这一层真的用到**的那些点
+ *
+ * `fixes` 是整张图的顶点集，**它不跟着 `?level=` 筛** —— can-db 那边是有意的，注
+ * 释写得很清楚：航段筛掉了，顶点留着，调用方于是能在本地换一层而不必再跑一趟。
+ *
+ * 那句话的另一半是：**筛的责任因此落在这里。** 全量铺出去的后果不是"多画了几个
+ * 点"，而是图上出现一批**没有任何航路连着的孤点**：高空只有约 1111 条航段，它们
+ * 引用的顶点远少于 2308 个，其余那些在高空图上不该存在 —— 画出来等于说"这里有个
+ * 高空航路点"，而那是假的。
+ *
+ * 所以这是**先修正确性，顺带省开销**：少掉的那些点同时也是标注，而标注是这张图上
+ * 最贵的一类要素（MapLibre 要为每个做碰撞检测）。
+ *
+ * 判据和 `toAirwayLines` 保持一致 —— 只认**真的画出来了**的航段：端点查不到坐标
+ * 的航段在那边被丢掉，它引用的顶点在这边也就不该留下。两处各写一套判断，迟早会出
+ * 现"线没画、点还在"的孤点。
  */
 export function toAirwayFixes(graph: AirwayGraph): FeatureCollection {
-  return {
-    type: "FeatureCollection",
-    features: Object.entries(graph.fixes).map(([ident, [lat, lon]]) => ({
+  const used = new Set<string>();
+  for (const seg of graph.segments) {
+    // 两端都要在 —— 和 toAirwayLines 的丢弃条件同一句话。
+    if (graph.fixes[seg.from] && graph.fixes[seg.to]) {
+      used.add(seg.from);
+      used.add(seg.to);
+    }
+  }
+
+  const features: Feature[] = [];
+  for (const ident of used) {
+    const [lat, lon] = graph.fixes[ident];
+    features.push({
       type: "Feature",
       properties: { ident },
       // fixes 是 [lat, lon]，GeoJSON 要 [lon, lat]。
       geometry: { type: "Point", coordinates: [lon, lat] },
-    })),
-  };
+    });
+  }
+  return { type: "FeatureCollection", features };
 }

@@ -31,7 +31,7 @@
  * props 仍然是 `points`（连成线的航路）/ `markers`（只画点）/ `focus`（对镜头），
  * 和 `lib/mapBus.ts` 一一对应。换库是实现的事，通道不该跟着换。
  */
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
   Map as MapLibreMap,
   AttributionControl,
@@ -46,22 +46,27 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import type { Feature, FeatureCollection } from "geojson";
 import { arc, type LatLon } from "@/lib/geo";
+import { FACILITY_COLORS } from "@/lib/atc";
 
 /**
- * 排查用的调用轨迹。**这一批日志是临时的**，等「一片蓝、没有 canvas」定位完就该
- * 删掉 —— 它们不是产品行为，是一次故障留下的脚手架。
+ * 管制点按 `facility` 分色的 MapLibre 表达式。
  *
- * 前缀统一成 `[efb:map]`，一是好在控制台里过滤，二是删的时候一搜就全在。
+ * 用 `match` 而不是在 JS 里把颜色写进要素属性：颜色是显示规则，写进数据之后每 30
+ * 秒刷新一次实时图层就要重算一遍几百个要素的颜色，而规则本身根本没变。
  *
- * 打在模块顶层的那一行有独立价值：它证明这个异步 chunk **真的被执行了**。在它之
- * 前，我们连「组件加载了没有」都只能靠翻 DOM 猜。
+ * **这批颜色不跟主题走**，和图上别的东西不一样。它们是席位的身份色（塔台红、地面
+ * 绿、进近橙……），深浅两套主题下都得是同一个红 —— 换一套色就等于换一套编码，而
+ * 这份编码是和 can-radar 共用的，那边的图例也照着它。
  */
-function trace(step: string, detail?: unknown) {
-  if (detail === undefined) console.log(`[efb:map] ${step}`);
-  else console.log(`[efb:map] ${step}`, detail);
+function facilityCircleColor() {
+  const cases: (string | number)[] = [];
+  for (const [facility, color] of Object.entries(FACILITY_COLORS)) {
+    cases.push(Number(facility), color);
+  }
+  // 末尾是兜底色：datafeed 里出现一个没见过的 facility 时画成 OBS 的灰，而不是让
+  // 整条表达式失效把这一层弄没。
+  return ["match", ["get", "facility"], ...cases, FACILITY_COLORS[0]];
 }
-
-trace("module evaluated");
 
 /**
  * **告诉 MapLibre 它的 worker 在哪，否则整块地图是死的。**
@@ -86,7 +91,6 @@ trace("module evaluated");
  * 异步 import，顶层就是最早的时机。
  */
 setWorkerUrl(workerUrl);
-trace("worker url set", workerUrl);
 
 interface Point {
   ident: string;
@@ -161,6 +165,17 @@ const props = defineProps<{
   /** 自己那架飞机，至多一个要素。 */
   own?: FeatureCollection | null;
   label: string;
+  /**
+   * 地图起不来时显示的两句话，**已翻译**。
+   *
+   * 以前这里显示的是 `failure` 里那个内部记号本身 —— 屏幕上会出现
+   * `map-init-failed` 这样一串英文标识。它对使用者没有任何意义，而且四种语言的
+   * 站点上都是英文，看起来像页面崩了而不是像一条说明。
+   *
+   * 记号仍然留在代码里（它是日志和分支用的），只是不再直接渲染：显示什么由外壳
+   * 按语言给。
+   */
+  failureText: { init: string; webgl: string };
 }>();
 
 /**
@@ -297,9 +312,18 @@ const corners = ref({ nw: "", se: "" });
  * 正常运行时仍然不为装饰性底图弹提示 —— 那条判断没变。变的是「彻底起不来」和
  * 「底图这一层没拿到」现在会各自说一句话。
  */
-const failure = ref<string | null>(null);
+const failure = ref<"container" | "init" | "webgl" | null>(null);
 
-trace("setup");
+/**
+ * 上面那个记号对应的**人话**，按语言来。
+ *
+ * `container`（容器没挂上）和 `init` 归成同一句：对使用者来说它们是同一件事
+ * ——「地图没起来」——，区别只在排查时看日志。分成两句只会让人以为自己遇到的是
+ * 两种不同的毛病。
+ */
+const failureMessage = computed(() =>
+  failure.value === "webgl" ? props.failureText.webgl : props.failureText.init,
+);
 
 let map: MapLibreMap | null = null;
 let themeObserver: MutationObserver | null = null;
@@ -519,9 +543,13 @@ function applyPalette() {
   map.setPaintProperty("markers", "circle-stroke-color", c.marker);
 
   // 实时那三层也要跟着换主题，否则深浅色一切换它们就留在上一套配色里。
-  map.setPaintProperty("atc", "circle-color", c.atc);
+  //
+  // **管制那两层的颜色故意不在这里换。** 它们按 `facility` 分色（见
+  // `facilityCircleColor`），而席位色是身份编码、两套主题下必须是同一个红同一个
+  // 绿。在这里补一句 `setPaintProperty("atc", "circle-color", …)` 会把那个表达式
+  // 整个换成一个平色 —— 而且只在切主题的那一刻发生，看起来像"切一次深色管制就全
+  // 变一个色"。描边和光晕仍然跟主题，它们是为了在底色上压得住，不是编码。
   map.setPaintProperty("atc", "circle-stroke-color", c.ocean);
-  map.setPaintProperty("atc-labels", "text-color", c.atc);
   map.setPaintProperty("atc-labels", "text-halo-color", c.ocean);
   map.setPaintProperty("traffic", "icon-color", c.traffic);
   map.setPaintProperty("own", "icon-color", c.own);
@@ -541,13 +569,6 @@ let lastFocus: unknown = null;
 
 /** 把当前 props 灌进 source。source 已经在，只换数据 —— 不重建图层。 */
 function render() {
-  trace("render", {
-    hasMap: !!map,
-    styleLoaded: map?.isStyleLoaded(),
-    points: props.points?.length ?? 0,
-    markers: props.markers?.length ?? 0,
-    airways: props.airways?.features.length ?? 0,
-  });
   if (!map || !map.isStyleLoaded()) return;
 
   const points = props.points ?? [];
@@ -620,18 +641,12 @@ function render() {
 async function loadLand() {
   try {
     if (!landCache) {
-      trace("land fetch start", LAND_URL);
       const response = await fetch(LAND_URL);
-      trace("land fetch done", response.status);
       if (!response.ok) return;
       landCache = await response.json();
-      trace("land parsed", {
-        features: (landCache as { features?: unknown[] })?.features?.length,
-      });
     }
     if (!map) return;
     const source = map.getSource("land") as GeoJSONSource | undefined;
-    trace("land setData", { hasSource: !!source });
     source?.setData(landCache as FeatureCollection);
   } catch (error) {
     // 界面上仍然静默降级成一片海 —— 为一张装饰性底图弹提示，是把噪音摆在比信息
@@ -644,38 +659,37 @@ async function loadLand() {
 }
 
 onMounted(() => {
-  trace("onMounted", { hasContainer: !!container.value });
-
   // 这一条以前是静默 return，而它正是「有容器、没 canvas」那个现象的唯一出口 ——
   // MapLibre 的 canvas 在构造函数里同步创建，所以没有 canvas 就意味着构造没执行。
   if (!container.value) {
-    failure.value = "map-container-missing";
+    failure.value = "container";
     console.error("[efb] 地图容器没有挂上，MapLibre 没有初始化");
     return;
   }
 
-  // 容器尺寸。为 0 的话 MapLibre 仍然会建 canvas，但什么都看不见 —— 这两种故障
-  // 长得很像，所以把数字打出来分开。
-  const rect = container.value.getBoundingClientRect();
-  trace("container rect", { width: rect.width, height: rect.height });
-
   // **WebGL 能不能拿到。** MapLibre 5 以后拿不到上下文会直接抛，而那正是「有容
-  // 器、没 canvas」最像的原因。这里单独探一次，不依赖 MapLibre 自己的报错。
+  // 器、没 canvas」最像的原因。
+  //
+  // **探到的结果不用来提前返回。** 探针用的是默认属性，而 MapLibre 要的上下文属
+  // 性和它不完全一样 —— 探针失败而地图其实能画是可能的，那时提前返回就是自己造
+  // 了一次故障。所以只把结论记下来，等真的构造失败时用它挑一句说得准的话：
+  // 「这台设备的浏览器没有 WebGL」和「地图初始化失败」对使用者是两种不同的处境，
+  // 前者他能去开硬件加速，后者只能报障。
+  let webglAvailable = true;
   try {
     const probe = document.createElement("canvas");
-    const gl =
+    webglAvailable = Boolean(
       probe.getContext("webgl2") ||
-      probe.getContext("webgl") ||
-      probe.getContext("experimental-webgl");
-    trace("webgl probe", gl ? "available" : "**unavailable**");
-  } catch (error) {
-    trace("webgl probe threw", error);
+        probe.getContext("webgl") ||
+        probe.getContext("experimental-webgl"),
+    );
+  } catch {
+    webglAvailable = false;
   }
 
   const c = palette();
 
   try {
-    trace("constructing MapLibre");
     map = new MapLibreMap({
       container: container.value,
       // 手写 style，不指向任何瓦片服务 —— 见文件顶上。
@@ -1121,7 +1135,10 @@ onMounted(() => {
             source: "atc",
             paint: {
               "circle-radius": 4,
-              "circle-color": c.atc,
+              // **按席位分色，不再是一律琥珀。** 以前这一层所有点同一个颜色，塔台
+              // 和区域在图上分不开 —— 而对飞行员那是"我现在该叫谁"和"我巡航时该
+              // 叫谁"的区别。色表在 `lib/atc.ts`，列表和这里共用一份。
+              "circle-color": facilityCircleColor() as never,
               "circle-stroke-width": 1,
               "circle-stroke-color": c.ocean,
             },
@@ -1143,7 +1160,9 @@ onMounted(() => {
               "text-anchor": "top",
             },
             paint: {
-              "text-color": c.atc,
+              // 标注和点用同一个席位色 —— 点是红的、字是琥珀的，会让人以为那是两
+              // 样东西。
+              "text-color": facilityCircleColor() as never,
               "text-halo-color": c.ocean,
               "text-halo-width": 1.4,
             },
@@ -1258,16 +1277,13 @@ onMounted(() => {
       scrollZoom: window.matchMedia("(min-width: 1024px)").matches,
     });
 
-    trace("constructed", {
-      canvas: !!map.getCanvas(),
-      width: map.getCanvas()?.width,
-      height: map.getCanvas()?.height,
-    });
     map.addControl(new NavigationControl({ showCompass: false }), "top-left");
   } catch (error) {
     // WebGL 不可用、构造参数不合法都会走到这里。以前它会作为一个未捕获异常冒到
     // Vue 的生命周期里 —— 而那条路径在生产构建下未必留下任何可读的东西。
-    failure.value = "map-init-failed";
+    // WebGL 拿不到是这里最常见的一种，而它对使用者是可行动的（去开硬件加速）——
+    // 所以上面那个探针的结论在这里用上，挑一句说得准的话。
+    failure.value = webglAvailable ? "init" : "webgl";
     console.error("[efb] MapLibre 初始化失败:", error);
     return;
   }
@@ -1305,9 +1321,7 @@ onMounted(() => {
     "bottom-right",
   );
 
-  map.on("styledata", () => trace("styledata"));
   map.on("load", () => {
-    trace("load");
     registerIcons();
     render();
     updateCorners();
@@ -1376,7 +1390,20 @@ onBeforeUnmount(() => {
       起不来时说出来。一块沉默的色块会被当成「地图是空的」，而它其实是「地图没
       起来」—— 这两件事该长得不一样。
     -->
-    <p v-if="failure" class="map-failure">{{ failure }}</p>
+    <!--
+      **显示人话，记号留在 `data-failure` 上。**
+
+      原来这里直接渲染 `failure` 本身，于是屏幕上会出现 `map-init-failed` 这样一
+      串英文标识 —— 当时的理由（样式那边写着）是"它是诊断标识、要能被原样搜到"，
+      而那个理由本身是成立的，错的是把它摆在了给成员看的位置：四种语言的站点上都
+      是这一串英文，读起来像页面崩了，而不像一条说明。
+
+      两件事因此分开：成员读到的是按语言给的一句话，诊断要的记号在属性里（也在
+      console 里），`document.querySelector('[data-failure]')` 一句就能拿到。
+    -->
+    <p v-if="failure" class="map-failure" :data-failure="failure">
+      {{ failureMessage }}
+    </p>
 
     <!-- 角落坐标标注：航路图上用来读当前视野范围的那两个数。 -->
     <span class="map-corner map-corner-nw">{{ corners.nw }}</span>
