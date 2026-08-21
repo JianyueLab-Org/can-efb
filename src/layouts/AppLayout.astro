@@ -61,8 +61,15 @@ const crossLinks = buildCrossLinks(t);
   />
 
   <div class="app-shell">
+    <!--
+      内边距比原来收了一档（sm:px-6 → sm:px-5）：面板现在最窄 20rem，两边各 24px
+      会把可用宽度压到 272px，而这里装的是表单。
+
+      `mx-auto max-w-3xl` 去掉了 —— 面板最宽 26rem，48rem 的上限**永远不会生效**，
+      留着只会让人以为正文列还能更宽。
+    -->
     <main id="main-content" tabindex="-1" class="app-panel">
-      <div class="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6 lg:py-10">
+      <div class="w-full px-4 py-8 sm:px-5 lg:py-10">
         <slot />
       </div>
     </main>

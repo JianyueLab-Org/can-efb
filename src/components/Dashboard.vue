@@ -208,7 +208,7 @@ onMounted(() => {
             {{ t("dashboard.plan.alternate") }} {{ plan.alternate }}
           </span>
         </div>
-        <dl class="mt-3 grid gap-3 text-sm sm:grid-cols-3">
+        <dl class="mt-3 grid gap-3 text-sm @sm:grid-cols-3">
           <div>
             <dt class="text-xs uppercase tracking-wide text-faint">
               {{ t("dashboard.plan.aircraft") }}
@@ -238,7 +238,7 @@ onMounted(() => {
     </section>
 
     <!-- 起降天气 -->
-    <section v-if="plan" class="grid gap-3 sm:grid-cols-2">
+    <section v-if="plan" class="grid gap-3 @md:grid-cols-2">
       <div
         v-for="icao in [plan.departure, plan.arrival]"
         :key="icao"

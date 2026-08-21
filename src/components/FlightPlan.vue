@@ -337,7 +337,7 @@ function errorFor(field: string): string {
     <form class="card space-y-5 p-5" @submit.prevent="file">
       <fieldset :disabled="disabled" class="space-y-5">
         <!-- 航空器 -->
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div class="grid gap-4 @xs:grid-cols-2 @2xl:grid-cols-4">
           <label class="block">
             <span class="mb-1 block text-sm font-medium text-ink">{{
               t("flightplan.fields.callsign")
@@ -409,7 +409,7 @@ function errorFor(field: string): string {
         </div>
 
         <!-- 起降 -->
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div class="grid gap-4 @xs:grid-cols-2 @2xl:grid-cols-4">
           <label class="block">
             <span class="mb-1 block text-sm font-medium text-ink">{{
               t("flightplan.fields.departure")
@@ -484,7 +484,7 @@ function errorFor(field: string): string {
         </div>
 
         <!-- 高度 / 时间 / 燃油 -->
-        <div class="grid gap-4 sm:grid-cols-3">
+        <div class="grid gap-4 @md:grid-cols-3">
           <label class="block">
             <span class="mb-1 block text-sm font-medium text-ink">{{
               t("flightplan.fields.cruisingAltitude")

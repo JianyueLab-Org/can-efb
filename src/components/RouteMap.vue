@@ -92,6 +92,21 @@ function facilityCircleColor() {
  */
 setWorkerUrl(workerUrl);
 
+/**
+ * 外壳现在是三栏还是上下堆叠。
+ *
+ * **答案来自 CSS**（`globals.css` 里 `--shell-layout`，在那条媒体查询里翻面），不
+ * 是这里再写一份 `matchMedia`。断点是布局的事，布局定义在 CSS；在 JS 里抄一份的下
+ * 场是改断点时漏掉一处，而那种不一致不会报错，只会在某个宽度区间里表现得很怪。
+ */
+function shellIsColumns(): boolean {
+  return (
+    getComputedStyle(document.documentElement)
+      .getPropertyValue("--shell-layout")
+      .trim() === "columns"
+  );
+}
+
 interface Point {
   ident: string;
   lat: number;
@@ -1272,9 +1287,15 @@ onMounted(() => {
       // 地名背这个体积不值得。
       localIdeographFontFamily:
         'system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif',
-      // 滚轮缩放：宽屏开、窄屏关，和上一版同一条规矩 —— 窄屏下页面会滚，滚轮停在
-      // 地图上会把它卡住。
-      scrollZoom: window.matchMedia("(min-width: 1024px)").matches,
+      // 滚轮缩放：三栏排布下开，堆叠排布下关 —— 堆叠时页面是会滚的，滚轮停在地
+      // 图上会把它卡住。
+      //
+      // **问 CSS，不再自己写一份断点。** 以前这里是
+      // `matchMedia("(min-width: 1024px)")`，和 globals.css 里的媒体查询各写一
+      // 份 —— 而断点一改（正是这次，1024 → 1152），两份就分叉了，表现是某个宽度
+      // 区间里滚轮把页面卡住，而那是没人查得到的那种毛病。现在断点只有媒体查询
+      // 里一个定义处，它翻 `--shell-layout`，这里读它。
+      scrollZoom: shellIsColumns(),
     });
 
     map.addControl(new NavigationControl({ showCompass: false }), "top-left");
