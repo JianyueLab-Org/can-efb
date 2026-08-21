@@ -151,8 +151,14 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 `Airports`、`Settings`）、地图那两件（`MapSurface.vue` 是外壳侧的常驻显示面，
 `RouteMap.vue` 是画布）、以及 `lib/nav.ts`、`language/*.json`。
 
-（这份清单里以前有 `Logbook` —— 那一页已经删了，`/api/v1/pilot/flights` 现在只剩
-概览页一个调用方，但**接口本身还在用**，别顺手把白名单那条也删了。）
+（这份清单里以前有 `Logbook`。那一页删掉时**词典里的 `logbook` 命名空间跟着一起
+删了，模板却没有** —— 概览页底下那两块统计还在调 `t("logbook.stats.flights")`，于
+是翻译器回退成把键名本身画到屏幕上。这是删一页时最容易漏的那一半：页面没了，别处
+引用它的文案还在，而 i18n 的回退让它**看起来像一个真的标签**。
+
+现在那两块统计也撤了，`/api/v1/pilot/flights` 因此没有调用方，白名单那条一并删掉
+——那份文件自己的规矩是每条都要写清楚谁在用。要重新做飞行统计，连同 `logbook.*`
+那批词条一起加回来。）
 
 **`RouteMap.vue` 是这个站唯一一个不能被服务端渲染的组件**：**MapLibre GL** 在模块
 顶层就摸 `window`。规矩没变，但它周围的两件事都变了，这段以前写的是旧的：
@@ -256,8 +262,9 @@ cookie 名是 **`NEXT_LOCALE`**，Next.js 时代留下来的；四个站共用�
 ```bash
 bun install
 bun run dev          # :4324；后台跑用 bunx astro dev --background
-bun run lint         # format:check + astro check + vue-tsc + bun test，CI 的门就是这个
+bun run lint         # format:check + astro check + vue-tsc + check:i18n + bun test，CI 的门就是这个
 bun run test         # 只跑测试
+bun run check:i18n   # 只查 t("…") 引用的键在不在词典里
 bun run build
 PUBLIC_ORIGIN=http://localhost:4324 bun run preview   # 预览构建产物，前缀别省
 ```
@@ -282,6 +289,23 @@ PUBLIC_ORIGIN=http://localhost:4324 bun run preview   # 预览构建产物，前
 **留意 Bun 的模块缓存**：紧接着改完源码就跑 `bun test`，有时会拿到上一份已转译的
 模块，于是"改坏了却仍然全绿"。要确认一次改动的效果，隔一次命令再跑，或者直接
 `bun -e 'import("./src/lib/atc.ts").then(…)'` 把值打出来看。
+
+### `check:i18n`：删一页时最容易漏的那一半
+
+`scripts/check-i18n-keys.mjs` 查每个 `t("…")` 的键在 `language/zh-cn.json` 里是不
+是真的存在。
+
+**它守的是一个不报错的故障。** 翻译器查不到键时**回退成显示键名本身** —— 那个回
+退本身没问题，但屏幕上会出现 `logbook.stats.flights` 这样一串东西，而它**看起来像
+一个真的标签**：排版正常、旁边还有一个真的数字，四种语言下都是同一串英文。类型检
+查看不见（键是字符串），构建看不见，只有人打开那一页才看得见。
+
+概览页底下那两块统计就是这么来的：删飞行日志那一页时，词典里的 `logbook` 命名空间
+跟着删了，**模板却没有**。
+
+它只认**字面量**的键，拼出来的（`t(\`nav.${key}\`)`）查不了 —— 强行查会逼着大家把
+动态键写成一长串 if。所以它的承诺是"写死的键不会挂"，不是"所有键都不会挂"。也只对
+zh-cn 那本查：别的语言缺键会回退到中文，是另一回事，不该混进同一个检查。
 
 **预览构建产物时 `PUBLIC_ORIGIN` 不能省。** 写操作要比对 Origin 头，比对的
 对象是 `lib/config.ts` 里的 `origin()`，它兜底成 `https://efb.ceruleanavi.net` ——

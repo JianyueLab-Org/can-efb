@@ -2,13 +2,19 @@
 /**
  * 概览：这次飞行开始之前要看的那几件事，一屏之内。
  *
- * 它自己**不产生任何数据** —— 全部是别的页面已经在用的那几个接口的组合：当前
- * 计划、起降两地的 METAR、飞行时间统计。所以这一页永远不会显示别处看不到的东
- * 西，也就不会和别处对不上。
+ * 它自己**不产生任何数据** —— 全部是别处已经在用的那几个来源的组合：当前计划、
+ * 起降两地的 METAR、在线管制和 ATIS。所以这一页永远不会显示别处看不到的东西，也
+ * 就不会和别处对不上。
  *
- * 三个请求是**并发**发出去的，而且互相不阻塞：METAR 要等计划回来才知道查哪两
- * 个机场，但统计不用等，所以它单独走。一个失败不影响另外两个渲染 —— 天气挂了
- * 不该让人看不到自己的计划。
+ * 两条线**并发**且互不阻塞：计划那条走 can-api（METAR 要等计划回来才知道查哪两个
+ * 机场，所以它挂在计划后面），管制那条走 can-fsd 的 datafeed。一条失败不影响另一
+ * 条渲染 —— 实时数据源连不上不该让人看不到自己的计划。
+ *
+ * **这里曾经还有一块飞行统计，删掉了。** 它显示的是
+ * `logbook.stats.flights` 这样的**键名本身** —— 删飞行日志那一页时词典里的
+ * `logbook` 命名空间跟着没了，模板却还在调它，而翻译器查不到键就回退成显示键名。
+ * 排版正常、旁边还有一个真的数字，所以它看起来完全像一个真的标签。
+ * `scripts/check-i18n-keys.mjs` 现在盯着这一类。
  */
 import { computed, onMounted, ref } from "vue";
 import { api } from "@/lib/canApi";
@@ -47,14 +53,8 @@ interface Plan {
   route: string;
   updatedAt: string;
 }
-interface Summary {
-  totalFlights: number;
-  formattedTotalTime: string;
-}
-
 const plan = ref<Plan | null>(null);
 const planLoading = ref(true);
-const summary = ref<Summary | null>(null);
 const metars = ref<Record<string, string | null>>({});
 
 async function loadMetar(icao: string) {
@@ -76,11 +76,6 @@ async function loadPlan() {
     void loadMetar(plan.value.departure);
     void loadMetar(plan.value.arrival);
   }
-}
-
-async function loadSummary() {
-  const result = await api<{ summary: Summary }>("/api/v1/pilot/flights");
-  if (result.ok) summary.value = result.data.summary;
 }
 
 /**
@@ -141,7 +136,6 @@ async function loadControllers() {
 
 onMounted(() => {
   void loadPlan();
-  void loadSummary();
   void loadControllers();
 });
 </script>
@@ -339,22 +333,6 @@ onMounted(() => {
           </p>
         </li>
       </ul>
-    </section>
-
-    <!-- 统计 -->
-    <section v-if="summary" class="grid gap-3 sm:grid-cols-2">
-      <div class="card flex items-baseline justify-between p-4">
-        <span class="text-sm text-muted">{{ t("logbook.stats.flights") }}</span>
-        <span class="text-xl font-semibold text-ink">{{
-          summary.totalFlights
-        }}</span>
-      </div>
-      <div class="card flex items-baseline justify-between p-4">
-        <span class="text-sm text-muted">{{ t("logbook.stats.total") }}</span>
-        <span class="font-mono text-xl font-semibold text-ink">{{
-          summary.formattedTotalTime
-        }}</span>
-      </div>
     </section>
   </div>
 </template>
