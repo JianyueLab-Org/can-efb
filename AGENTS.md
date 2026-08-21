@@ -18,9 +18,12 @@ Tailwind v4，Bun 装包。开发端口 **4324**（4321 can-web、4322 can-dev�
 写好了。改动照常在本仓库提交并推到自己的 upstream，**推完再**去根仓库移动那个
 commit 指针 —— 根仓库只记录指针，指向一个没推过的 SHA 会让别人克隆出坏掉的树。
 
-**已经接上 can-api**：会话、飞行计划（读/交/撤 + SimBrief 导入）、飞行日志、
-METAR、航路展开都是真数据。还有四个页面仍是占位 —— 航图、机场、性能、检查
-单 —— 它们不是没写，是**没有数据源**，占位组件会把缺的那一样说出来。
+**已经接上 can-api**（会话、飞行计划读/交/撤 + SimBrief 导入、飞行统计、METAR、
+航路展开）**和 can-db**（机场、航路网、导航台、空域、Grid MORA），加上 can-fsd 的
+实时 datafeed（在线管制、在线航班、自己那架飞机）。
+
+**只剩航图一页是占位**，因为那是有版权的数据，网络里没有任何一处提供它 —— 性能和
+检查单两页已经删掉而不是占着。详见〈还在占位的页面〉。
 
 和 can-dev / can-radar 一样，这个站**一行数据库凭据都不该有**，而且比它们更进
 一步：**一个 Secret 都没有**。can-dev 要注册 OAuth 应用、要 client secret 和
@@ -111,16 +114,17 @@ cookie 转发回去。哪天有人要在这里加 Secret，先确认那件事不
 下面这些和 can-web / can-dev / can-radar **逐字相同**。要改共有的行为，改在
 can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的那个毛病：
 
-| 文件                                      | 说明                                                                                          |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `src/lib/i18n.ts`                         | 除了只加载一个 `efb` 命名空间，其余逐字相同                                                   |
-| `src/lib/useOverlay.ts`                   | 焦点陷阱 / 滚动锁 / Esc                                                                       |
-| `src/components/ui/Icon.vue`              |                                                                                               |
-| `src/components/ui/ThemeLangControls.vue` | 含视图过渡的圆形擦除                                                                          |
-| `src/components/ThemeScript.astro`        | 无闪烁主题初始化                                                                              |
-| `src/components/icons.ts`                 | **前 47 个键**逐字相同；本站新增的在末尾 `can-efb only` 一段                                  |
-| `src/styles/globals.css`                  | **前 957 行**逐字等于 can-radar（Leaflet 那两百行没抄）；本站新增的在末尾 `can-efb only` 一节 |
-| `src/lib/geo.ts`                          | `distanceNm` / `greatCircle` / `arc` 逐字取自 can-radar 的 `radar.ts` 与 `RadarMap.vue`       |
+| 文件                                      | 说明                                                                                                                                                                         |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/lib/i18n.ts`                         | 除了只加载一个 `efb` 命名空间，其余逐字相同                                                                                                                                  |
+| `src/lib/useOverlay.ts`                   | 焦点陷阱 / 滚动锁 / Esc                                                                                                                                                      |
+| `src/components/ui/Icon.vue`              |                                                                                                                                                                              |
+| `src/components/ui/ThemeLangControls.vue` | 含视图过渡的圆形擦除                                                                                                                                                         |
+| `src/components/ThemeScript.astro`        | 无闪烁主题初始化                                                                                                                                                             |
+| `src/components/icons.ts`                 | **前 47 个键**逐字相同；本站新增的在末尾 `can-efb only` 一段                                                                                                                 |
+| `src/styles/globals.css`                  | **前 957 行**逐字等于 can-radar（Leaflet 那两百行没抄）；本站新增的在末尾 `can-efb only` 一节                                                                                |
+| `src/lib/geo.ts`                          | `distanceNm` / `greatCircle` / `arc` 逐字取自 can-radar 的 `radar.ts` 与 `RadarMap.vue`                                                                                      |
+| `src/lib/atc.ts`                          | `FACILITY_COLORS` / `facilityRank` / `stationAirport` / `parseFeedTime` 逐字取自 can-radar 的 `radar.ts`；`groupControllers` 是它 `RadarMap.vue` 里 `groupStations` 的列表版 |
 
 前两个文件都按「上游部分在前、本站部分在末尾单独一节」切开，就是为了同步时可以
 整段替换上半截。
@@ -129,18 +133,40 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 条发布通道不划算。这三个函数是封闭的数学，没有产品需求会推着它们变；唯一会变的
 是发现算错了，而那时两边都得改，跨仓库的包也拦不住。改之前先看 can-radar 那份。
 
+`atc.ts` 同一个判断，但**多了一条测试兜底**（见下面〈命令〉那节）：它移过来的东
+西里有一件错了看不出来 —— `logon_time` 是**没有时区标记的 UTC 墙钟**，`new Date()`
+会当本地时间读，于是每个"上席多久"都偏掉观看者的时区。can-radar 那边是踩出来的，
+这边靠测试钉住。
+
+移过来时**有意没搬两样**，因为这个站的用途不同：`facilityLetter`（地图标牌上四个
+字母并排用的缩写，而这里是带频率的列表，位置够写全 `GND`/`TWR`），以及
+`groupStations` 里那一半地图专属的活（标牌锚点、重叠堆叠、把进近挪到它管的空域边
+界上）。
+
 **这个站自己的**：外壳（`AppRail.vue`、`SidebarNav.vue`、`RailScript.astro`、
 两个 layout、`PageHeader.astro`、`Placeholder.astro`）、数据层
 （`lib/canApi.ts`、`server/canApi.ts`、`lib/config.ts`、`lib/session.ts`、
-`middleware.ts`、`pages/api/v1/[...path].ts`）、六个功能岛屿
-（`Dashboard`、`FlightPlan`、`Weather`、`Logbook`、`RoutePlanner`、`Settings`）
-和航路地图 `RouteMap.vue`、`lib/nav.ts`、`language/*.json`。
+`middleware.ts`、`pages/api/v1/[...path].ts`、`pages/api/db/[...path].ts`）、功能
+岛屿（`Dashboard`、`FlightPlan`、`Weather`、`RoutePlanner`、`RouteGenerator`、
+`Airports`、`Settings`）、地图那两件（`MapSurface.vue` 是外壳侧的常驻显示面，
+`RouteMap.vue` 是画布）、以及 `lib/nav.ts`、`language/*.json`。
 
-**`RouteMap.vue` 是这个站唯一一个不能被服务端渲染的组件**：Leaflet 在模块顶层
-就摸 `window`。它由 `RoutePlanner` 用 `defineAsyncComponent` 引入，并且只在真的
-解出航路之后才渲染 —— 于是那 152 KB 的 chunk 只在用了这个功能的人身上产生流量
-（15 KB 的 leaflet.css 仍然随页面走，Vite 会把异步 chunk 的样式提到 `<head>`）。
-静态 import 它，或者给它加 `client:load`，两种改法都会让 `/route` 直接 500。
+（这份清单里以前有 `Logbook` —— 那一页已经删了，`/api/v1/pilot/flights` 现在只剩
+概览页一个调用方，但**接口本身还在用**，别顺手把白名单那条也删了。）
+
+**`RouteMap.vue` 是这个站唯一一个不能被服务端渲染的组件**：**MapLibre GL** 在模块
+顶层就摸 `window`。规矩没变，但它周围的两件事都变了，这段以前写的是旧的：
+
+- **库是 MapLibre，不是 Leaflet。** 换库是为了标签避让和 GPU 渲染 —— 这块地图要
+  把航路线、五字码、导航台、空域边界和它们的标注全叠在一起，而 Leaflet 把每个标
+  注渲染成 DOM 节点、且没有碰撞检测。理由写在 `RouteMap.vue` 顶上。
+- **引它的是 `MapSurface.vue`，不是 `RoutePlanner`，而且地图挂在外壳上、每一页都
+  在。** 所以"解出航路才下载"那条已经不成立了：那个 chunk 现在每页都要加载，这是
+  为"地图是主体"付的钱。真要把它省回来，正确的做法是让画不出东西的页面根本不渲染
+  那一列，而不是把底图换成一段文字（那正是上一版被推翻的做法）。
+
+守法仍然是同一条：`MapSurface` 用 `defineAsyncComponent` 加一个 `mounted` 守着。
+静态 import 它、或者去掉那个 `v-if`，**每一个**页面都会 500 —— 不再只是 `/route`。
 
 `SidebarNav.vue` 虽然形状来自 can-web，但把可折叠的 `children` 换成了**扁平分
 节** —— 理由见 `src/lib/nav.ts`：轨能收成图标态，而手风琴在图标态下没有讲得通
@@ -166,28 +192,56 @@ cookie 名是 **`NEXT_LOCALE`**，Next.js 时代留下来的；四个站共用�
 传进岛屿的是 `getMessages(locale, "efb")` 这一本，不是整本词典 —— 岛屿的 props
 会原样序列化进每个页面的 HTML。
 
-## 四个还是占位的页面，以及为什么
+## 还在占位的页面，以及为什么
 
-不是没写，是**没有数据源**。`Placeholder.astro` 会把缺的那一样显示出来，文案在
-`efb.placeholder.reasons.*`：
+**这一节以前写的是"四个"，现在只剩一个。** 变化本身值得记下来，因为三条各有各的
+结局：
 
-- **航图** —— 有版权的数据，网络里没有任何一处提供它。要么授权，要么自建图源。
-- **机场** —— 没有一份带跑道、频率、滑行道的机场库可读。`Sector/` 和 `Ground/`
-  里有一部分，但那是 EuroScope 的格式，要先有接口把它喂出来。
-- **性能** —— 要机型手册的数据。不在 can-api 里，也不该由这个站凭空编。
-- **检查单** —— 要按机型逐条录入，数据本身还不存在。
+- **航图 `/charts`** —— **仍然是占位**（`Placeholder.astro`，文案在
+  `efb.placeholder.reasons.charts`）。有版权的数据，网络里没有任何一处提供它。
+  要么授权，要么自建图源。
 
-**别用假数据把它们填上。** 一个摆着占位数字的仪表盘会被当成坏掉的真页面，而不
-是还没做的页面 —— 飞行员会照着它做决定。
+  注意它现在**不是一块空白**：地图挂在外壳上、每一页都在，所以打开这一页看到的是
+  左边一条占位说明、右边一张真的航路图。占位说的是"没有航图 PDF"，不是"这一页什
+  么都没有"。
+
+- **机场 `/airports`** —— **已经做了**，数据来自 can-db（`Airports.vue` +
+  `pages/api/db/[...path].ts`）。当初写的理由是"没有一份带跑道、频率、滑行道的机
+  场库可读"，而 can-db 就是后来长出来的那一份。
+- **性能 / 检查单** —— **两页删掉了**，不是还占着。理由没变（要机型手册数据、要
+  按机型逐条录入，两样都不存在），但摆一个永远打不开的入口本身就是噪音：删掉比留
+  一个占位诚实。想做的时候按〈导航是一份数据〉那节重新加回来即可。
+
+**别用假数据把剩下这一个填上。** 一个摆着占位数字的仪表盘会被当成坏掉的真页面，
+而不是还没做的页面 —— 飞行员会照着它做决定。同一条规矩也是**图层为空要说话**的由
+来，见下。
+
+## 图层没有数据的时候必须说出来
+
+这是踩过的一个坑，而且它会再来。一个按需图层有三种"没东西"，以前只有一种会说话：
+
+1. 请求失败 —— 会说（`console.error` + 退回关）
+2. 权限不够（没有 `aipAccess`，每层都 401）—— **不说**，被 `deniedThisSession` 咽掉
+3. **取回来是空的** —— **不说**，因为它根本不是错误：200 加一个空数组，
+   `toAirwayLines` 得到 0 个要素，一路顺畅地画出一张空图
+
+第 3 种正是线上真实发生过的：can-db 的航段 `level` 一列全是默认值，高空视图因此返
+回 0 条（那个仓库的 TODO 里有整节）。而这个站的航路图层**默认就开在高空**
+（`MapSurface.vue` 的 `DEFAULT_PREFS`）—— 于是打开航图，一条航路都没有，控制台一
+个字都没有，看起来像**地图坏了**而不是**这一层没有数据**。
+
+现在三种都会说话，走 `MapSurface.vue` 里的 `notice`（文案在 `map.emptyLayer.*` 和
+`map.denied`）。两条规矩：
+
+- **"空"不是"错"，所以不退回关。** 人确实点了那一层，开关就该留在那儿；退回关会
+  让人以为自己没点上。失败才退回关。
+- **权限那条压过按层的提示**：它一旦成立，每一层都会因为同一个原因空着，而把"这一
+  层没有数据"摆在最前面会让人以为换一层就好了。
 
 ## 还没做的事（按该做的顺序）
 
-1. **上线**。这个站**还没有部署** —— `efb.ceruleanavi.net` 至今不解析。清单本身不
-   缺：`deploy/k8s.yaml` 已经写好，Ingress 走 `cloudflare-tunnel`，host 就是这
-   个域。缺的是两件外部事项：把它接进 Cloudflare 隧道，确认 can-api 的会话
-   cookie 域覆盖 `.ceruleanavi.net`。**不需要**动 can-api 的 `ALLOWED_ORIGINS`
-   （浏览器从不直连它）。同网络的 can-controller 和 can-docs 已经照同样的形状
-   跑在 jyl-tyo 上，可以拿它们的部署当参照。
+1. ~~**上线**~~ —— **已经上线了。** `efb.ceruleanavi.net` 解析、`/healthz` 回
+   200、根路径按预期 302 去主站登录页。这一条以前写着"至今不解析"，是旧的。
 2. **品牌资源**。`public/favicon.svg` 现在是一块写着 EFB 的品牌色方牌，占位而
    已；轨里那块也是。正式标识到位后连同 `apple-touch-icon.png` /
    `icon-512.png` 一起补进 `BaseLayout.astro`。正式 logo 不能用
@@ -202,10 +256,32 @@ cookie 名是 **`NEXT_LOCALE`**，Next.js 时代留下来的；四个站共用�
 ```bash
 bun install
 bun run dev          # :4324；后台跑用 bunx astro dev --background
-bun run lint         # format:check + astro check + vue-tsc，CI 的门就是这个
+bun run lint         # format:check + astro check + vue-tsc + bun test，CI 的门就是这个
+bun run test         # 只跑测试
 bun run build
 PUBLIC_ORIGIN=http://localhost:4324 bun run preview   # 预览构建产物，前缀别省
 ```
+
+**这个站现在有测试了，一个文件，而且刻意只有一个。** `src/lib/atc.test.ts`
+（`bun test`，零新依赖，只多一个 `@types/bun` 让 `astro check` 认得
+`bun:test`）。
+
+从前这里写着"没有测试"，那句话对**大部分**代码仍然成立：外壳和页面错了当场看得
+见，给它们写测试买不到什么。破例的是 `lib/atc.ts` 里那几条 —— 它们**错了看不出
+来**：
+
+- `parseFeedTime` 把时间读偏一个时区，算出来仍然是一个像模像样的时长（在东八区
+  多八小时）。屏幕上没有任何异样，can-radar 就是这么踩过来的。
+- 席位顺序错了只是"排得有点怪"，而它其实是一架飞机依次要联系的顺序。
+- `atisLetter` 认错一个字母，就是让人按着上一份天气做决定。
+
+判据因此不是"重要的代码要测"，而是**"错了会不会被屏幕出卖"**：不会的那些才值得
+钉一颗钉子。护栏本身验过 —— 把 `parseFeedTime` 换成 `new Date()` 那种天真写法，
+这组测试当场变红（东京时区下 `12:34` 被读成 `03:34Z`）。
+
+**留意 Bun 的模块缓存**：紧接着改完源码就跑 `bun test`，有时会拿到上一份已转译的
+模块，于是"改坏了却仍然全绿"。要确认一次改动的效果，隔一次命令再跑，或者直接
+`bun -e 'import("./src/lib/atc.ts").then(…)'` 把值打出来看。
 
 **预览构建产物时 `PUBLIC_ORIGIN` 不能省。** 写操作要比对 Origin 头，比对的
 对象是 `lib/config.ts` 里的 `origin()`，它兜底成 `https://efb.ceruleanavi.net` ——

@@ -3,7 +3,7 @@
   "compilerOptions": {
     "jsx": "preserve",
     "verbatimModuleSyntax": false,
-    "types": ["node"],
+    "types": ["node", "bun"],
     "paths": { "@/*": ["./src/*"] }
   },
   "include": [".astro/types.d.ts", "**/*"],
