@@ -1311,7 +1311,32 @@ onMounted(() => {
             source: "traffic",
             layout: {
               "icon-image": "aircraft",
-              "icon-size": ["case", ["==", ["get", "onGround"], 1], 0.4, 0.62],
+              /* 尺寸 = 随缩放的基准 × 在不在地面。
+               *
+               * **底图是 22px 画布、`pixelRatio: 2`**，所以 `icon-size: 1` 只画出
+               * 11 CSS px。原来在飞的是 0.62，也就是**不到 7px** —— 一个三角形在
+               * 那个尺寸上基本只是个点，看不出机头朝哪儿。
+               *
+               * 随缩放变而不是给一个定值：全国视野下几十架大图标会糊成一团，而放
+               * 大到看一个机场周围时恰恰要看清朝向。三个锚点覆盖了这张图的常用范
+               * 围（4 是全国、7 是一个情报区、10 是一个终端区）。 */
+              "icon-size": [
+                "*",
+                [
+                  "interpolate",
+                  ["linear"],
+                  ["zoom"],
+                  4,
+                  0.8,
+                  7,
+                  1.05,
+                  10,
+                  1.35,
+                ],
+                // 地面上的仍然小一号 —— 理由见上面那段，它们是让位的那一批，
+                // 但 0.65 而不是从前那个 0.4/0.62 的比例，免得小到看不见。
+                ["case", ["==", ["get", "onGround"], 1], 0.65, 1],
+              ],
               "icon-rotate": ["get", "heading"],
               "icon-rotation-alignment": "map",
               "icon-allow-overlap": true,
@@ -1366,7 +1391,26 @@ onMounted(() => {
             source: "own",
             layout: {
               "icon-image": "aircraft",
-              "icon-size": 1,
+              /* 跟着 traffic 一起提，**而且必须比它大**。
+               *
+               * 这一层原来是定值 1，而 traffic 提到 z7 上的 1.05 之后，自己那架反
+               * 而会比别人小 —— 「大一号」那句话就成了假的。所以用同一条缩放曲线
+               * 乘一个固定的 1.35，无论在哪个缩放级别都保持这个比例。 */
+              "icon-size": [
+                "*",
+                [
+                  "interpolate",
+                  ["linear"],
+                  ["zoom"],
+                  4,
+                  0.8,
+                  7,
+                  1.05,
+                  10,
+                  1.35,
+                ],
+                1.35,
+              ],
               "icon-rotate": ["get", "heading"],
               "icon-rotation-alignment": "map",
               "icon-allow-overlap": true,
