@@ -40,10 +40,14 @@ const ALLOW_LIST: Record<string, Allowed> = {
   // 概览、设置：成员自己的资料。
   "pilot/data": { methods: ["GET"], who: "Settings.vue / Dashboard.vue" },
 
-  // 飞行日志。
-  // 概览页的统计。飞行日志那一页删掉之后只剩它一个调用方 —— 但接口本身还在
-  // 用，别顺手把这条也删了。
-  "pilot/flights": { methods: ["GET"], who: "Dashboard.vue" },
+  // `pilot/flights`（飞行日志统计）**删掉了，这是有意的**。它一路缩到只剩概览页
+  // 底下那两块数字，而那两块显示的是 `logbook.stats.flights` 这样的键名本身 ——
+  // 词典里的 `logbook` 命名空间在删日志页时一起没了，模板却还在调它。那块数字因
+  // 此被撤掉，这条转发也就没有调用方了。
+  //
+  // 按这份白名单自己的规矩，没有调用方的条目要删：`who` 写的是"谁在用"，一条
+  // `who` 已经不成立的转发，比没有这条更糟 —— 它会让下一个人以为有人在用。要重新
+  // 做飞行统计的时候，连同 `logbook.*` 那批词条一起加回来。
 
   // 飞行计划：读、提交、撤销。
   "pilot/flightplan": {
