@@ -99,6 +99,31 @@ const handler: APIRoute = async (context) => {
     if (value) out.set(name, value);
   }
 
+  /* 缓存。**can-db 一个 Cache-Control 都不发**（核对过它的源码），所以浏览器对这
+     几百 KB 的航路网没有任何缓存依据，每次整页刷新都要重新下载一遍。
+
+     在代理这一层补上，理由和 can-radar 给 METAR 补五分钟缓存是同一条：上游没说，
+     而我们知道这份数据多久变一次。
+
+     两个决定，都别改：
+
+     **`private` 是必须的，不是保守。** 这些是按 `aipAccess` 分级的航行资料，里面
+     有受限的官方 AIP 材料。少了 `private`，路上任何一层共享缓存（Cloudflare、企业
+     代理）都可能把 3 级成员的响应存下来发给 1 级的人 —— 那是把权限判断绕过去。
+     只有发起请求的那个浏览器可以存。
+
+     **十分钟，不是一天。** 数据本身一个 AIRAC 周期（28 天）才变，按内容算可以缓存
+     很久 —— 但**重新导入是随时可能发生的**，而且此刻正好有一次待办（航段的 level
+     一列全是默认值，高空视图因此是空的）。缓存久了，重导修好之后成员还会继续看到
+     那张空图，而且不知道为什么。十分钟拿到了绝大部分好处（同一次使用里反复刷新），
+     又让一次修复在十分钟内传到所有人。
+
+     只给成功的响应加。给 401/502 加缓存，等于让一次权限变更或一次上游抖动被记住
+     十分钟。 */
+  if (upstream.ok && !out.has("cache-control")) {
+    out.set("cache-control", "private, max-age=600");
+  }
+
   return new Response(upstream.body, { status: upstream.status, headers: out });
 };
 

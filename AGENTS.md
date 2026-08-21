@@ -90,6 +90,19 @@ cookie 转发回去。哪天有人要在这里加 Secret，先确认那件事不
 了谁在用；`/api/v1/atis` 和 `/api/v1/track` 被**特意排除**并写明了原因，加回来
 之前先读那两句。
 
+**can-db 那个代理还负责补缓存头**（`pages/api/db/[...path].ts`）。can-db 自己一个
+`Cache-Control` 都不发，所以浏览器对那几百 KB 的航路网没有任何缓存依据，每次整页刷
+新都重下一遍。补的是 `private, max-age=600`，两个词都别改：
+
+- **`private`** —— 这些是按 `aipAccess` 分级的资料，里面有受限的官方 AIP 材料。少
+  了它，路上任何一层共享缓存都可能把高级别成员的响应发给低级别的人，等于把权限判断
+  绕过去。
+- **十分钟而不是一天** —— 数据一个 AIRAC 周期才变，按内容算能缓存很久，但**重导是
+  随时可能发生的**（此刻正好欠着一次）。缓存久了，修好之后成员还会继续看那张旧图。
+
+只给成功的响应加：给 401 或 502 加缓存，等于让一次权限变更或一次上游抖动被记住十分
+钟。这和 can-radar 给 METAR 补五分钟是同一条思路 —— 上游没说，而我们知道它多久变。
+
 **会话这个站不验证，只转发。** token 的格式、密钥和有效期都是 can-api 的。
 中间件 (`src/middleware.ts`) 每个请求问一次 `/api/v1/auth/session`，答案放进
 `Astro.locals.user`。
@@ -264,7 +277,7 @@ bun install
 bun run dev          # :4324；后台跑用 bunx astro dev --background
 bun run lint         # format:check + astro check + vue-tsc + check:i18n + bun test，CI 的门就是这个
 bun run test         # 只跑测试
-bun run check:i18n   # 只查 t("…") 引用的键在不在词典里
+bun run check:i18n   # 查 t("…") 的键在不在词典里，以及四本词典对不对得齐
 bun run build
 PUBLIC_ORIGIN=http://localhost:4324 bun run preview   # 预览构建产物，前缀别省
 ```
@@ -304,8 +317,17 @@ PUBLIC_ORIGIN=http://localhost:4324 bun run preview   # 预览构建产物，前
 跟着删了，**模板却没有**。
 
 它只认**字面量**的键，拼出来的（`t(\`nav.${key}\`)`）查不了 —— 强行查会逼着大家把
-动态键写成一长串 if。所以它的承诺是"写死的键不会挂"，不是"所有键都不会挂"。也只对
-zh-cn 那本查：别的语言缺键会回退到中文，是另一回事，不该混进同一个检查。
+动态键写成一长串 if。所以它的承诺是"写死的键不会挂"，不是"所有键都不会挂"。
+
+**它还查四本词典的键对不对得齐，而这一半守的是另外三种语言。** 一开始以为"别的语
+言缺键会回退到中文"，**那是错的** —— `useTranslations` 里是
+`typeof value === "string" ? … : key`，**没有任何跨语言回退**。所以一个键只加进
+zh-cn，英文、繁体、日文三个站当场开始把键名画到屏幕上，和上面那种坏法一模一样，
+只是**中文用户永远看不到**，于是没人会报。
+
+也就是说「先加中文，翻译以后再补」不是欠一笔债，是当场就坏。四本今天是齐的（各
+211 个键），这道闸让它保持齐。多出来的键也报：那多半是改键名时漏改了一本，只查
+"缺"会看到一边缺一边多却只报一半。
 
 **预览构建产物时 `PUBLIC_ORIGIN` 不能省。** 写操作要比对 Origin 头，比对的
 对象是 `lib/config.ts` 里的 `origin()`，它兜底成 `https://efb.ceruleanavi.net` ——
