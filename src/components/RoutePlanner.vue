@@ -129,7 +129,7 @@ async function resolve() {
 <template>
   <div class="space-y-5">
     <div class="card space-y-4 p-5">
-      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div class="grid gap-4 @xs:grid-cols-2 @2xl:grid-cols-4">
         <label class="block">
           <span class="mb-1 block text-sm font-medium text-ink">{{
             t("route.departure")

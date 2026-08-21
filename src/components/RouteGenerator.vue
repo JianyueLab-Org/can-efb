@@ -103,7 +103,7 @@ function toFlightPlan() {
 
 <template>
   <section class="flex flex-col gap-4">
-    <div class="grid gap-3 sm:grid-cols-3">
+    <div class="grid gap-3 @md:grid-cols-3">
       <label class="flex flex-col gap-1">
         <span class="text-xs text-muted">{{ t("route.generate.from") }}</span>
         <input

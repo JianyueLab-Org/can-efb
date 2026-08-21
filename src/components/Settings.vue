@@ -109,7 +109,7 @@ onMounted(() => {
         {{ t("settings.account.title") }}
       </h2>
       <p class="mt-1 text-sm text-muted">{{ t("settings.account.hint") }}</p>
-      <dl class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <dl class="mt-4 grid gap-4 @xs:grid-cols-2 @2xl:grid-cols-4">
         <div>
           <dt class="text-xs uppercase tracking-wide text-faint">
             {{ t("settings.account.name") }}
