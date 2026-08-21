@@ -60,6 +60,7 @@ import {
   toTrafficPoints,
 } from "@/lib/datafeed";
 import { boundaryCodesFor, ownsAirspace } from "@/lib/atc";
+import { altitudeBand, flightLevel, isOnGround } from "@/lib/traffic";
 import type { FeatureCollection } from "geojson";
 
 const props = defineProps<{
@@ -83,7 +84,10 @@ const props = defineProps<{
     firs: string;
     navaids: string;
     mora: string;
-    live: string;
+    /** 在线机组。 */
+    traffic: string;
+    /** 在线管制。和 `ctr`/`app` 不是一回事 —— 那两个是空域划分，这个是谁在线。 */
+    atcLive: string;
     ctr: string;
     app: string;
     restricted: string;
@@ -136,7 +140,15 @@ interface LayerPrefs {
   airway: AirwayLevel | "off";
   firs: boolean;
   mora: boolean;
-  live: boolean;
+  /**
+   * 实时那两层，各存各的。
+   *
+   * `atcLive` 而不是 `atc`，是为了不和空域那三个开关里的 `ctr`/`app` 混 —— 那三个
+   * 画的是**空域的划分**（静态资料），这一个画的是**谁在线**（实时）。名字撞了迟早
+   * 有人改错一个。
+   */
+  traffic: boolean;
+  atcLive: boolean;
   navaids: boolean;
   /**
    * 空域从"单选一族"改成**三个独立开关**：区域管制、进近管制、限制区。
@@ -165,9 +177,12 @@ const DEFAULT_PREFS: LayerPrefs = {
   ctr: false,
   app: false,
   restricted: false,
-  // **默认开。** 这一层回答的是"现在谁在线、我在哪"，而那正是打开飞行包的人第
-  // 一眼想知道的；它也很轻（整张网络的实时数据一次几 KB）。
-  live: true,
+  // **两层都默认开。** 它们回答的是"现在谁在线、我在哪"，而那正是打开飞行包的人第
+  // 一眼想知道的；数据也很轻（整张网络一次几 KB，两层共用同一次取数）。
+  //
+  // 拆成两个开关是为了**能分别关掉**，不是为了默认少画一层 —— 默认行为没变。
+  traffic: true,
+  atcLive: true,
 };
 
 function readPrefs(): LayerPrefs {
@@ -373,15 +388,35 @@ let lastViewport: {
 } | null = null;
 
 /**
- * 实时：在线管制、其余在线航班、自己那架飞机。
+ * 实时数据：在线机组、在线管制、自己那架飞机。
  *
- * 一个开关管三层，因为它们是**同一份数据的三个部分** —— 拆成三个开关，关掉其中
- * 一个也省不下任何请求，只是多两颗按钮。
+ * ## 从一个开关拆成两个
+ *
+ * 这里原来是一个「实时」开关管三层，注释写的理由是「它们是同一份数据的三个部分，
+ * 拆开也省不下任何请求，只是多两颗按钮」。
+ *
+ * **那句话只算了请求，没算屏幕。** 省不省请求确实一样，但这两层在图上是完全不同的
+ * 两种噪音：一屏几十架飞机和几块铺满的管制区，想看航路的时候要关掉的往往只是其中一
+ * 样。多一颗按钮换的是"能只留下要看的那层"，那笔账是划算的。
+ *
+ * ## 自己那架跟着机组走
+ *
+ * 它是机组的一员，而且是最要紧的那一个。关掉机组这一层连它一起收掉是说得通的 ——
+ * 想只看管制的时候，图上留一架自己也是噪音。「定位到我」那颗按钮因此也跟着消失，这
+ * 是对的：按下去没反应比没有按钮更让人怀疑。
+ *
+ * ## 两个开关共用一次取数
+ *
+ * 只要有一个开着就轮询，两个都关就停。datafeed 是一份文档，取一次两层都有 —— 分两
+ * 次取才是真的浪费。
  *
  * 直接打 can-fsd 的 datafeed，不走本站反代（它公开、无鉴权、带 `ACAO: *`），理
  * 由见 lib/datafeed.ts。
  */
-const showLive = ref(false);
+const showTraffic = ref(false);
+const showAtc = ref(false);
+/** 两层里有任何一层开着，就该在轮询。 */
+const liveOn = computed(() => showTraffic.value || showAtc.value);
 const traffic = ref<FeatureCollection | null>(null);
 /** 场面席位（放行/地面/塔台），外加没能对上边界的那些。画成点。 */
 const atc = ref<FeatureCollection | null>(null);
@@ -417,7 +452,7 @@ let liveInFlight = false;
  * 眼看到的是旧位置"正是这一层最不该有的样子。
  */
 function onVisible() {
-  if (!document.hidden && showLive.value) void refreshLive();
+  if (!document.hidden && liveOn.value) void refreshLive();
 }
 
 async function refreshLive() {
@@ -430,6 +465,25 @@ async function refreshLive() {
   if (typeof document !== "undefined" && document.hidden) return;
   try {
     const feed = await fetchDatafeed();
+
+    /* 两层各自按自己的开关算。**取数只有一次** —— datafeed 是一份文档，管制和机组
+       都在里面，分两次取才是浪费。关着的那层不去算要素，省的是 CPU 不是流量。 */
+    if (showTraffic.value) {
+      traffic.value = toTrafficPoints(
+        feed,
+        props.cid,
+        altitudeBand,
+        isOnGround,
+        flightLevel,
+      );
+      const mine = ownPilot(feed, props.cid);
+      own.value = toOwnPoint(mine);
+      ownAt.value = mine
+        ? { lat: mine.latitude, lon: mine.longitude, callsign: mine.callsign }
+        : null;
+    }
+    if (!showAtc.value) return;
+
     const controllers = onlineControllers(feed);
 
     /* 区域和进近画**范围**，场面席位画点。
@@ -453,12 +507,6 @@ async function refreshLive() {
       controllers.filter((c) => !ownsAirspace(c.facility)).concat(unmatched),
     );
     atcCount.value = controllers.length;
-    traffic.value = toTrafficPoints(feed, props.cid);
-    const mine = ownPilot(feed, props.cid);
-    own.value = toOwnPoint(mine);
-    ownAt.value = mine
-      ? { lat: mine.latitude, lon: mine.longitude, callsign: mine.callsign }
-      : null;
   } catch (error) {
     // **不关掉这一层，也不清空已画的东西。** 实时数据每 30 秒重试一次，一次抖动
     // 就把飞机从图上抹掉比让它停在 30 秒前的位置糟得多 —— 后者至少是真的发生过
@@ -467,37 +515,53 @@ async function refreshLive() {
   }
 }
 
-async function toggleLive() {
+/**
+ * 机组和管制各一个开关，**共用一个定时器**。
+ *
+ * 两个都关才停轮询：datafeed 是一份文档，两层都从它来，只要还有一层开着就得继续
+ * 取。定时器只有一个，因为取一次就够两层用。
+ */
+async function toggleLive(which: "traffic" | "atc") {
   // **先翻状态再取数**，而不是取完再翻。中间那一段 await 是可以被再点一次的：
   // 「开」还在等第一份数据时又点了「关」，若状态留到 await 之后才写，关的那次
   // 会被开的那次覆盖 —— 界面显示关着，定时器却活着，而且没有任何办法再关掉它。
   if (liveInFlight) return;
-  prefs.live = !showLive.value;
+  const flag = which === "traffic" ? showTraffic : showAtc;
+  const next = !flag.value;
+  flag.value = next;
+  prefs[which === "traffic" ? "traffic" : "atcLive"] = next;
   writePrefs(prefs);
 
-  if (showLive.value) {
-    showLive.value = false;
-    if (liveTimer) clearInterval(liveTimer);
-    liveTimer = null;
-    traffic.value = null;
-    atc.value = null;
-    atcAreas.value = null;
-    own.value = null;
-    ownAt.value = null;
-    atcCount.value = 0;
+  if (!next) {
+    // 关掉的那一层清干净。自己那架跟着机组走 —— 它是机组的一员，而且只看管制的时
+    // 候，图上留一架自己也是噪音。
+    if (which === "traffic") {
+      traffic.value = null;
+      own.value = null;
+      ownAt.value = null;
+    } else {
+      atc.value = null;
+      atcAreas.value = null;
+      atcCount.value = 0;
+    }
+    // 另一层还开着就继续轮询，两个都关了才停。
+    if (!liveOn.value && liveTimer) {
+      clearInterval(liveTimer);
+      liveTimer = null;
+    }
     return;
   }
 
-  showLive.value = true;
   liveInFlight = true;
   try {
     await refreshLive();
   } finally {
     liveInFlight = false;
   }
-  // 定时器在开关打开之后才建，关掉时清掉 —— 否则关着的图层还在每 30 秒发请求。
-  if (liveTimer) clearInterval(liveTimer);
-  liveTimer = setInterval(() => void refreshLive(), LIVE_INTERVAL_MS);
+  // 定时器建一次就够两层用；已经在跑就别重建，否则第二个开关会把周期重新计时。
+  if (!liveTimer) {
+    liveTimer = setInterval(() => void refreshLive(), LIVE_INTERVAL_MS);
+  }
 }
 
 /**
@@ -776,7 +840,14 @@ onMounted(() => {
   if (saved.airway !== "off") void setAirwayLevel(saved.airway);
   if (saved.firs) void toggleFirs();
   if (saved.mora) void toggleMora();
-  if (saved.live) void toggleLive();
+  // 两层各自恢复。**不能都调一遍 toggleLive**，`liveInFlight` 会把第二次挡掉 ——
+  // 那正是它存在的目的（防连点），所以这里直接把状态摆好，取数交给一次 refresh。
+  if (saved.traffic) showTraffic.value = true;
+  if (saved.atcLive) showAtc.value = true;
+  if (liveOn.value) {
+    void refreshLive();
+    liveTimer = setInterval(() => void refreshLive(), LIVE_INTERVAL_MS);
+  }
   if (saved.navaids) void toggleNavaids();
   if (saved.ctr) void toggleAirspace("ctr");
   if (saved.app) void toggleAirspace("app");
@@ -884,14 +955,26 @@ onBeforeUnmount(() => {
       >
         {{ layerLabels.mora }}
       </button>
+      <!--
+        实时那两层各一颗按钮。角标上的数只给管制那颗：席位数是"现在有没有人管"，
+        一眼要看的；在线飞机数几十上百，摆上去只是个噪音数字。
+      -->
       <button
         type="button"
         class="map-layer-btn"
-        :class="showLive ? 'is-on' : ''"
-        @click="toggleLive"
+        :class="showTraffic ? 'is-on' : ''"
+        @click="toggleLive('traffic')"
       >
-        {{ layerLabels.live
-        }}<span v-if="showLive && atcCount" class="map-layer-count">{{
+        {{ layerLabels.traffic }}
+      </button>
+      <button
+        type="button"
+        class="map-layer-btn"
+        :class="showAtc ? 'is-on' : ''"
+        @click="toggleLive('atc')"
+      >
+        {{ layerLabels.atcLive
+        }}<span v-if="showAtc && atcCount" class="map-layer-count">{{
           atcCount
         }}</span>
       </button>

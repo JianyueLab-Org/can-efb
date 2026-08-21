@@ -287,7 +287,8 @@
         "firs": "FIRs",
         "navaids": "Navaids",
         "mora": "MORA",
-        "live": "Live",
+        "traffic": "Traffic",
+        "atcLive": "ATC",
         "ctr": "CTR",
         "app": "APP",
         "restricted": "Restricted"

@@ -287,7 +287,8 @@
         "firs": "情报区",
         "navaids": "导航台",
         "mora": "MORA",
-        "live": "实时",
+        "traffic": "机组",
+        "atcLive": "管制",
         "ctr": "区域",
         "app": "进近",
         "restricted": "限制区"
