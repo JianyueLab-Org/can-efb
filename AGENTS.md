@@ -162,10 +162,18 @@ cookie 转发回去。哪天有人要在这里加 Secret，先确认那件事不
 `/api/*`（自己有白名单，而且调用方要状态码不要 302）和 `/healthz`（探活必须能
 在 can-api 挂掉时照样回 200，否则上游一抖 kubelet 就把这边的 Pod 一起滚掉）。
 
-**没登录就跳 can-web 的登录页，而且不带 callbackUrl。** can-web 的 `/signin`
-只接受站内绝对路径，那是一道防开放重定向的检查，传一个 `https://efb…` 过去只会
-被丢掉、回落到 `/pilots`。要让成员登录完回到 EFB，得先在 can-web 那边显式放行这
-个域 —— 那是对钓鱼很敏感的改动，属于 can-web 的评审范围，不该在这里绕过去。
+**没登录就跳 can-web 的登录页，现在会带上 callbackUrl。** 这一段以前写的是「不
+带」，理由是 can-web 的 `/signin` 只接受站内绝对路径（一道防开放重定向的检查），
+跨站地址传过去只会被丢掉、回落 `/pilots`。**那个前提已经不成立**：can-web 现在有
+一份显式白名单（`src/lib/callbackUrl.ts`），这个域在名单上。
+
+线上验得到：`https://efb.ceruleanavi.net/` 未登录时 302 去
+`…/signin?callbackUrl=https%3A%2F%2Fefb.ceruleanavi.net%2F`。
+
+`signInUrl(returnTo)` 里有一条不能省：**回跳地址用 `origin()` 拼，不用
+`returnTo.origin`** —— 这个站跑在 TLS 终止的反代后面，从请求 URL 推出来的 origin
+是 `http://`，那既配不上白名单里的 `https://`（于是被拒、回落 `/pilots`，白做一
+场），也会把成员从 https 降到 http。
 
 **校验规则不在前端重写。** 飞行计划的 422 带着逐字段的 `fields`，界面只负责把
 它落到对应输入框下面。抄一份正则过来，两边迟早分叉，而分叉的方向一定是前端放行
@@ -332,8 +340,9 @@ cookie 名是 **`NEXT_LOCALE`**，Next.js 时代留下来的；四个站共用�
    已；轨里那块也是。正式标识到位后连同 `apple-touch-icon.png` /
    `icon-512.png` 一起补进 `BaseLayout.astro`。正式 logo 不能用
    `logo-full.png` —— 那张图上写的是旧名字。
-3. **登录后跳回 EFB**。见上面 can-web `callbackUrl` 那一段：要动 can-web，且是
-   一处对开放重定向敏感的改动。
+3. ~~**登录后跳回 EFB**~~ —— **做完了。** can-web 那边加了显式白名单，这个域在
+   名单上；`signInUrl(returnTo)` 会带上 callbackUrl。线上未登录访问根路径已经能
+   看到它。见上面那一段。
 4. **METAR 解码**。现在只显示原文，那是刻意的（`Weather.vue` 顶上有说明）。真
    要做，它该是一个带测试的独立模块，不是组件里的一段正则。
 
