@@ -175,8 +175,19 @@ const props = defineProps<{
   mora?: FeatureCollection | null;
   /** 其余在线航班。自己那架**不在**这里，见 own。 */
   traffic?: FeatureCollection | null;
-  /** 在线管制席位，属性里带 `callsign` 和 `frequency`。 */
+  /**
+   * 在线管制席位里**画成点**的那些：放行 / 地面 / 塔台，外加没能对上边界的。
+   * 属性里带 `callsign`、`frequency`、`facility`。
+   */
   atc?: FeatureCollection | null;
+  /**
+   * 在线管制里**画成范围**的那些：区域 / 进近 / FSS 管的那片空域。
+   *
+   * 它们管的是一块地方，不是一个点 —— datafeed 给的经纬度是管制员自己的视野中心，
+   * 既不是他管的空域也不在它中间，画成点读不出归属。几何来自随站发的边界底图，按
+   * 呼号前缀对上（见 `lib/atc.ts` 的 `boundaryCodesFor`）。
+   */
+  atcAreas?: FeatureCollection | null;
   /** 自己那架飞机，至多一个要素。 */
   own?: FeatureCollection | null;
   label: string;
@@ -620,6 +631,9 @@ function render() {
   (map.getSource("traffic") as GeoJSONSource | undefined)?.setData(
     props.traffic ?? { type: "FeatureCollection", features: [] },
   );
+  (map.getSource("atcAreas") as GeoJSONSource | undefined)?.setData(
+    props.atcAreas ?? { type: "FeatureCollection", features: [] },
+  );
   (map.getSource("atc") as GeoJSONSource | undefined)?.setData(
     props.atc ?? { type: "FeatureCollection", features: [] },
   );
@@ -744,6 +758,10 @@ onMounted(() => {
             type: "geojson",
             data: { type: "FeatureCollection", features: [] },
           },
+          atcAreas: {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+          },
           atc: {
             type: "geojson",
             data: { type: "FeatureCollection", features: [] },
@@ -787,6 +805,38 @@ onMounted(() => {
             type: "line",
             source: "grid",
             paint: { "line-color": c.grid, "line-width": 0.5 },
+          },
+          {
+            /* 有人上席的空域，**填充**。
+             *
+             * 排在情报区边界**之前**（也就是压在它下面），和所有线之下 —— 它是一
+             * 大片色块，盖在线上会把线糊掉，而它要表达的只是"这一片现在有人管"。
+             *
+             * 透明度 0.08 是刻意压得很低的：一个区域席位覆盖的是整个情报区，填得
+             * 再深一点，全图就会均匀蒙上一层，越是几个席位重叠的地方越脏。真正说
+             * 明边界在哪的是下面那条描边。
+             *
+             * 颜色按席位分，和列表、和点那一层共用 `lib/atc.ts` 的同一份色表。 */
+            id: "atc-area-fill",
+            type: "fill",
+            source: "atcAreas",
+            paint: {
+              "fill-color": facilityCircleColor() as never,
+              "fill-opacity": 0.08,
+            },
+          },
+          {
+            /* 同一块空域的描边。**这条才是"边界在哪"的答案**，填充只负责让人一眼
+             * 看到有这么一片。比情报区那条虚线粗、而且是实线 —— 两者会重叠，重叠
+             * 时该让人看出这一块和旁边没人管的不一样。 */
+            id: "atc-area-line",
+            type: "line",
+            source: "atcAreas",
+            paint: {
+              "line-color": facilityCircleColor() as never,
+              "line-width": 1.6,
+              "line-opacity": 0.9,
+            },
           },
           {
             // 情报区边界紧贴网格之上、所有内容之下 —— 它是底子。
@@ -1183,6 +1233,40 @@ onMounted(() => {
             },
           },
           {
+            /* 有人上席的空域，标上是谁、频率多少。
+             *
+             * `symbol-placement: "line"` 让字**沿着边界走**而不是堆在多边形中心：
+             * 一个区域席位覆盖整个情报区，中心那一点往往在荒无人烟的地方，而且几
+             * 个嵌套的空域中心会叠在一起。沿边走还有一个好处 —— 它天然回答了"这
+             * 条边界是谁的"。
+             *
+             * 和情报区那层的名字（`fir-labels`）用同一种放法，但排在它**之后**，
+             * 所以重叠时保留的是这一条：有人管的席位比一个静态的区名要紧。 */
+            id: "atc-area-labels",
+            type: "symbol",
+            source: "atcAreas",
+            minzoom: 4,
+            layout: {
+              "symbol-placement": "line",
+              "symbol-spacing": 500,
+              "text-field": [
+                "concat",
+                ["get", "callsign"],
+                "  ",
+                ["get", "frequency"],
+              ],
+              "text-font": ["Noto Sans Regular"],
+              "text-size": 10,
+              "text-letter-spacing": 0.08,
+              "text-max-angle": 30,
+            },
+            paint: {
+              "text-color": facilityCircleColor() as never,
+              "text-halo-color": c.ocean,
+              "text-halo-width": 1.6,
+            },
+          },
+          {
             // 其余在线航班：小三角，按航向转。**没有标注** —— 满屏呼号会把航图
             // 盖掉，而"别人在哪"这件事看点就够了。
             id: "traffic",
@@ -1391,6 +1475,7 @@ watch(
     props.airspaces,
     props.traffic,
     props.atc,
+    props.atcAreas,
     props.own,
   ],
   render,

@@ -214,6 +214,35 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 `groupStations` 里那一半地图专属的活（标牌锚点、重叠堆叠、把进近挪到它管的空域边
 界上）。
 
+### 区域和进近画的是**范围**，不是一个点
+
+datafeed 给的那个经纬度是**管制员自己的视野中心** —— 既不是他管的空域，也不在它中
+间。区域、进近、FSS 管的都是一片范围，画成一个点读不出归属：`ZBPE_CTR` 在河北上空
+一个小圆点，说不出「华北这一整片归他」。放行 / 地面 / 塔台管的确实是这一个机场，
+点是对的，没动。
+
+几何来自**随站发的那份边界底图**（VATSpy，`src/basemap/firs.json`）—— 它里面情报区
+和进近范围都有（`ZBPE` 在、`ZBAA`/`ZSSS` 也在），所以区域和进近用同一条规则就够了：
+呼号第一个下划线之前那一段。
+
+**这一层不依赖边界图层的开关。** `loadFirCache()` 独立于 `toggleFirs()` 取数，因为
+实时那层默认开着而边界那层可以被关掉。
+
+三条容易错的，都有测试钉着（`lib/atc.test.ts`）：
+
+- **习惯短码要翻译**：`HKG_W_CTR` → `VHHK`、`TPE_CTR` → `RCAA`。这不是润色 —— 拿真
+  datafeed 跑的时候 `HKG_W_CTR` 正在线，按前缀取到 `HKG`、边界表里没有，于是退回画
+  成一个点，正是要修的那个毛病。表取自 can-radar 的 `matchControllerToBoundary`。
+- **`PRC_FSS` 是一对多**，覆盖九个情报区。按前缀取到 `PRC` 什么也对不上，而把全中
+  国的飞行情报服务画成一个点比画错位置还离谱。所以 `boundaryCodesFor` 返回的是**数
+  组**。
+- **对不上边界的不能吞掉**：`toControllerAreas` 第二个返回值是「没对上」的那批，调
+  用方要把它们照旧画成点。少了这一步，一个前缀不在表里的区域席位会从图上**整个消
+  失** —— 而位置不准的点至少还说明"有人在"。
+
+**没搬 can-radar 的拆分扇区那一套**（`ADR-E`、`BIRD-N` 那 343 个）：这个站发的边界
+文件里根本没有那些要素，搬过来就是维护一张匹配不到东西的表。
+
 **这个站自己的**：外壳（`AppRail.vue`、`SidebarNav.vue`、`RailScript.astro`、
 两个 layout、`PageHeader.astro`、`Placeholder.astro`）、数据层
 （`lib/canApi.ts`、`server/canApi.ts`、`lib/config.ts`、`lib/session.ts`、
