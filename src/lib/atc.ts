@@ -107,6 +107,67 @@ export function isLocalPosition(facility: number): boolean {
 }
 
 /**
+ * 这个席位管的是**一片空域**，还是场面上的一个点。
+ *
+ * 区域（CTR）、进近（APP）、飞行情报服务（FSS）管的是一块范围 —— 把它们画成地图上
+ * 的一个点是错的：那个点是管制员自己的视野中心，既不是他管的空域，也不在它中间。
+ * 一个飞行员看到 `ZBPE_CTR` 在河北上空的一个小圆点，读不出「华北这一整片归他」。
+ *
+ * 放行 / 地面 / 塔台管的确实是这一个机场，点是对的，不动。
+ *
+ * 取自 can-radar 的 `ownsAirspace`，但**多了进近**：那边进近有一套单独的处理（把标
+ * 牌挪到它管的空域边界上），这里没有那套，而进近同样管一片范围，所以并进来一起画。
+ */
+export function ownsAirspace(facility: number): boolean {
+  return facility === 1 || facility === 5 || facility === 6;
+}
+
+/**
+ * 呼号前缀不等于边界代号的那几个。
+ *
+ * 大多数席位按前缀就对得上（`ZSHA_CTR` → `ZSHA`），因为随站发的那份边界（VATSpy，
+ * `src/basemap/firs.json`）里情报区和进近范围用的就是 ICAO 四字码。**但有几个席位
+ * 用的是习惯短码**，它们和边界代号对不上：
+ *
+ *   HKG_W_CTR  →  VHHK   香港
+ *   TPE_CTR    →  RCAA   台北
+ *
+ * 这张表逐字取自 can-radar 的 `matchControllerToBoundary`（它那份还有
+ * `lax → kzla`，不在本区域，没搬）。**这不是可选的润色**：拿真 datafeed 跑过，
+ * `HKG_W_CTR` 当时正在线，按前缀取到 `HKG`、边界表里没有，于是退回画成一个点 ——
+ * 而那正是这次要修的毛病。
+ */
+const SHORT_CODES: Record<string, string[]> = {
+  HKG: ["VHHK"],
+  TPE: ["RCAA"],
+  /**
+   * **`PRC_FSS` 一个人覆盖九个情报区**，所以它是一对多。
+   *
+   * 同样取自 can-radar（那边叫 `prcFssAreas`）。按前缀取会得到 `PRC`，边界表里没
+   * 有这个代号 —— 而把全中国的飞行情报服务画成一个点，比画错位置还离谱。
+   */
+  PRC: ["ZBPE", "ZGZU", "ZHWH", "ZJSA", "ZLHW", "ZPKM", "ZSHA", "ZWUQ", "ZYSH"],
+};
+
+/**
+ * 这个席位对应哪几块边界。
+ *
+ * **返回数组，不是单个值** —— `PRC_FSS` 覆盖九个情报区，一对一的形状表达不了它。
+ *
+ * 默认规则是呼号第一个下划线之前那一段（和 `stationAirport` 同一条）：
+ * `ZBPE_CTR` → `ZBPE`、`ZBAA_APP` → `ZBAA`、`ZSSS_1_APP` → `ZSSS`。对不上默认规
+ * 则的走上面 `SHORT_CODES`。
+ *
+ * **没有搬 can-radar 的拆分扇区那一套。** 那边要处理 `boundaries.geojson` 里 343
+ * 个扇区划分（`ADR-E`、`BIRD-N` 之类），而这个站发的边界文件里没有那些 —— 搬过来
+ * 就得连同它的映射表一起维护，而且没有对应的数据可匹配。
+ */
+export function boundaryCodesFor(callsign: string): string[] {
+  const prefix = stationAirport(callsign);
+  return SHORT_CODES[prefix] ?? [prefix];
+}
+
+/**
  * datafeed 的时间戳。
  *
  * 逐字取自 can-radar 的 `parseFeedTime`，**这一份最不能自作聪明**：

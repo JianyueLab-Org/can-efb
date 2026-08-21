@@ -54,10 +54,12 @@ import {
   fetchDatafeed,
   onlineControllers,
   ownPilot,
+  toControllerAreas,
   toControllerPoints,
   toOwnPoint,
   toTrafficPoints,
 } from "@/lib/datafeed";
+import { boundaryCodesFor, ownsAirspace } from "@/lib/atc";
 import type { FeatureCollection } from "geojson";
 
 const props = defineProps<{
@@ -339,6 +341,18 @@ const firs = ref<FeatureCollection | null>(null);
 let firCache: FeatureCollection | null = null;
 
 /**
+ * 取回边界底图并缓存，**和"要不要画边界这一层"无关**。
+ *
+ * 两个消费者：边界图层自己（`toggleFirs`），以及实时那一层 —— 它要拿边界去圈出
+ * 「这块空域现在有人管」。后者在边界图层关着的时候也需要这份数据，所以取数不能挂
+ * 在开关上。
+ */
+async function loadFirCache(): Promise<FeatureCollection> {
+  if (!firCache) firCache = await fetchFIRs();
+  return firCache;
+}
+
+/**
  * Grid MORA。**唯一一个按视野取的图层**，其余几层都是一次拉全国。
  *
  * 理由是量级：航路网全国八千段，格子光是覆盖框内就有几千个，而且它只在放大到
@@ -369,7 +383,10 @@ let lastViewport: {
  */
 const showLive = ref(false);
 const traffic = ref<FeatureCollection | null>(null);
+/** 场面席位（放行/地面/塔台），外加没能对上边界的那些。画成点。 */
 const atc = ref<FeatureCollection | null>(null);
+/** 区域 / 进近 / FSS 管的那片空域。画成范围，不是点。 */
+const atcAreas = ref<FeatureCollection | null>(null);
 const own = ref<FeatureCollection | null>(null);
 /** 在线管制席位数，给按钮上那个角标用。 */
 const atcCount = ref(0);
@@ -414,7 +431,27 @@ async function refreshLive() {
   try {
     const feed = await fetchDatafeed();
     const controllers = onlineControllers(feed);
-    atc.value = toControllerPoints(controllers);
+
+    /* 区域和进近画**范围**，场面席位画点。
+
+       以前所有席位一律画成一个点，而那个点是管制员自己的视野中心 —— 既不是他管的
+       空域，也不在它中间。`ZBPE_CTR` 在河北上空一个小圆点，读不出「华北这一整片归
+       他」，而那正是飞行员要知道的。
+
+       边界底图**按需现取**：这一层默认是开的，而边界那一层不一定（`showFirs` 可以
+       关掉）。所以这里不看 `firs.value`，直接要 `firCache` —— 两层的开关互不影响。 */
+    const boundaries = firCache ?? (await loadFirCache().catch(() => null));
+    const { areas, unmatched } = toControllerAreas(
+      controllers,
+      boundaries,
+      ownsAirspace,
+      boundaryCodesFor,
+    );
+    atcAreas.value = areas;
+    // 点这一层留给场面席位，外加**没能对上边界的那些** —— 它们不该从图上消失。
+    atc.value = toControllerPoints(
+      controllers.filter((c) => !ownsAirspace(c.facility)).concat(unmatched),
+    );
     atcCount.value = controllers.length;
     traffic.value = toTrafficPoints(feed, props.cid);
     const mine = ownPilot(feed, props.cid);
@@ -444,6 +481,7 @@ async function toggleLive() {
     liveTimer = null;
     traffic.value = null;
     atc.value = null;
+    atcAreas.value = null;
     own.value = null;
     ownAt.value = null;
     atcCount.value = 0;
@@ -543,8 +581,7 @@ async function toggleFirs() {
 
   layerBusy.value = true;
   try {
-    firCache = await fetchFIRs();
-    firs.value = firCache;
+    firs.value = await loadFirCache();
     showFirs.value = true;
   } catch (error) {
     // 这里不记 deniedThisSession：静态文件不会返回 401，而把一次网络抖动记成
@@ -782,6 +819,7 @@ onBeforeUnmount(() => {
       :mora="mora"
       :traffic="traffic"
       :atc="atc"
+      :atc-areas="atcAreas"
       :own="own"
       @viewport="onViewport"
       :airspaces="airspaces"
