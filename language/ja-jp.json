@@ -287,7 +287,8 @@
         "firs": "FIR",
         "navaids": "航法援助施設",
         "mora": "MORA",
-        "live": "リアルタイム",
+        "traffic": "航空機",
+        "atcLive": "管制",
         "ctr": "管制区",
         "app": "進入",
         "restricted": "制限区域"

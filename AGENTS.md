@@ -196,6 +196,7 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 | `src/styles/globals.css`                  | **前 957 行**逐字等于 can-radar（Leaflet 那两百行没抄）；本站新增的在末尾 `can-efb only` 一节                                                                                |
 | `src/lib/geo.ts`                          | `distanceNm` / `greatCircle` / `arc` 逐字取自 can-radar 的 `radar.ts` 与 `RadarMap.vue`                                                                                      |
 | `src/lib/atc.ts`                          | `FACILITY_COLORS` / `facilityRank` / `stationAirport` / `parseFeedTime` 逐字取自 can-radar 的 `radar.ts`；`groupControllers` 是它 `RadarMap.vue` 里 `groupStations` 的列表版 |
+| `src/lib/traffic.ts`                      | 高度色带 / `altitudeBand` / `isOnGround` / `flightLevel` 逐字取自 can-radar 的 `radar.ts`（它又源自 vatsim-radar）                                                           |
 
 前两个文件都按「上游部分在前、本站部分在末尾单独一节」切开，就是为了同步时可以
 整段替换上半截。
@@ -242,6 +243,47 @@ datafeed 给的那个经纬度是**管制员自己的视野中心** —— 既�
 
 **没搬 can-radar 的拆分扇区那一套**（`ADR-E`、`BIRD-N` 那 343 个）：这个站发的边界
 文件里根本没有那些要素，搬过来就是维护一张匹配不到东西的表。
+
+### 在线机组按高度分色（`lib/traffic.ts`）
+
+`ALTITUDE_STEPS`、两套 viridis 色带、`altitudeBand`、`isOnGround`、`flightLevel`
+同样逐字取自 can-radar（它又是从 vatsim-radar 移的）。**颜色承载高度**：一屏几十架
+同色三角只看得出"有人在"，分色之后一眼分得出谁在爬升、谁在巡航。两个站用同一套色
+带，也就是同一份读图习惯。
+
+**这套色带跟主题走，席位色不跟。** viridis 有深浅两条，切主题要一起换；而席位色是
+身份编码，两套主题下必须是同一个红。两者在 `applyTheme` 里的待遇因此相反，别顺手统
+一。
+
+三处判断有测试钉着：
+
+- **`altitudeBand` 里的 `-100` 不是笔误。** 真实巡航高度大量正好压在档位线上
+  （25000 / 30000 / 35000），少了它，几十英尺的抖动就让一架巡航中的飞机反复换色 ——
+  而屏幕上看起来只是"闪"，不像 bug。
+- **`isOnGround` 缺地速时当作在地面**，不是在飞。判错的方向有讲究：当成在地面只是画
+  小一号，当成在飞会让一架不知道状态的飞机在巡航层里显眼地标出来。
+- **`flightLevel` 一千英尺以下写整数英尺**，`FL003` 不是任何人读高度的方式，而进离
+  场阶段的低高度恰恰最值得标。
+
+地面上的飞机画小一号、压淡到 0.45，**不是隐藏**：一个大机场停着几十架全叠在一个点
+上会把周围的航路糊掉，但它们仍然在，只是让位。航班标注（呼号 + 高度层）**7 级以上才
+出现且不标地面的** —— 原来完全不标，理由是"满屏呼号会把航图盖掉"，那句话在全国视野
+下对，放大到看一个机场时就不对了，而 MapLibre 自带碰撞检测。
+
+### 实时那两层是**两个**开关
+
+`traffic`（机组）和 `atcLive`（管制）各一个，**共用一次取数和一个定时器** —— datafeed
+是一份文档，两层都从它来。两个都关才停轮询。
+
+这里原来是一个「实时」开关管三层，注释的理由是「拆开也省不下任何请求」。**那句话只
+算了请求，没算屏幕**：省不省请求确实一样，但一屏几十架飞机和几块铺满的管制区是两种
+不同的噪音，想看航路时要关掉的往往只是其中一样。
+
+**自己那架跟着机组走**（它是机组的一员），所以关掉机组时「定位到我」那颗按钮也跟着
+消失 —— 按下去没反应比没有按钮更让人怀疑。
+
+偏好键叫 `atcLive` 而不是 `atc`，是为了不和空域那三个开关里的 `ctr`/`app` 混：那三
+个画的是**空域划分**（静态资料），这一个画的是**谁在线**（实时）。
 
 **这个站自己的**：外壳（`AppRail.vue`、`SidebarNav.vue`、`RailScript.astro`、
 两个 layout、`PageHeader.astro`、`Placeholder.astro`）、数据层

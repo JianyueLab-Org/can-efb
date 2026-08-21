@@ -261,17 +261,38 @@ export function toControllerPoints(
   return { type: "FeatureCollection", features };
 }
 
-/** 其余在线航班。**自己那架排除在外** —— 它单独一层，画法不一样。 */
+/**
+ * 其余在线航班。**自己那架排除在外** —— 它单独一层，画法不一样。
+ *
+ * 要素上带的东西比从前多，都是**给画法用的**，不是备着以后可能有用：
+ *
+ * - `band` —— 高度落进第几档，地图按它取色。**在这里算好而不是把 `altitude` 丢给
+ *   地图**：分档规则是产品判断（见 `lib/traffic.ts` 里 `-100` 那一下），写成
+ *   MapLibre 的 `step` 表达式等于把它抄成第二份。
+ * - `onGround` —— 地面上的画得小而淡。一个大机场停着几十架飞机、全叠在一个点上，
+ *   会把周围的航路和航路点整片糊掉，而"谁停在机坪上"是这张图上最不需要的信息。
+ * - `level` —— `FL350` 那种写法，放大到看得清时标出来。
+ */
 export function toTrafficPoints(
   feed: Datafeed | null,
   cid: string | null,
+  bandOf: (altitude: number) => number,
+  onGroundOf: (groundspeed: number) => boolean,
+  levelOf: (altitude: number) => string,
 ): FeatureCollection {
   const features: Feature[] = [];
   for (const p of feed?.pilots ?? []) {
     if (cid && p.cid === cid) continue;
     features.push({
       type: "Feature",
-      properties: { callsign: p.callsign, heading: p.heading },
+      properties: {
+        callsign: p.callsign,
+        heading: p.heading,
+        band: bandOf(p.altitude),
+        // MapLibre 的过滤和表达式对布尔支持得别扭，用 0/1 省去一层判断。
+        onGround: onGroundOf(p.groundspeed) ? 1 : 0,
+        level: levelOf(p.altitude),
+      },
       geometry: { type: "Point", coordinates: [p.longitude, p.latitude] },
     });
   }

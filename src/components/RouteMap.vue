@@ -47,6 +47,26 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import type { Feature, FeatureCollection } from "geojson";
 import { arc, type LatLon } from "@/lib/geo";
 import { FACILITY_COLORS } from "@/lib/atc";
+import { altitudeRamp } from "@/lib/traffic";
+
+/**
+ * 航班按高度档取色的 MapLibre 表达式。
+ *
+ * 要素上带的是 `band`（第几档），分档规则在 `lib/traffic.ts` 里算好 —— 这里只做
+ * 「第几档 → 什么颜色」这一步查表。分档是产品判断，写成 `step` 表达式等于把它抄成
+ * 第二份。
+ *
+ * **和席位色不同，这一套跟主题走**：viridis 有深浅两条，切主题时要一起换（见
+ * `applyTheme`）。席位色是身份编码所以不换，高度色是读数所以要在两种底色上都读得
+ * 出来。
+ */
+function altitudeBandColor() {
+  const ramp = altitudeRamp(isDark() ? "dark" : "light");
+  const cases: (string | number)[] = [];
+  ramp.forEach((color, band) => cases.push(band, color));
+  // 兜底取最低那一档：`band` 缺失时给一个真的颜色，而不是让整条表达式失效。
+  return ["match", ["get", "band"], ...cases, ramp[0]];
+}
 
 /**
  * 管制点按 `facility` 分色的 MapLibre 表达式。
@@ -577,7 +597,15 @@ function applyPalette() {
   // 变一个色"。描边和光晕仍然跟主题，它们是为了在底色上压得住，不是编码。
   map.setPaintProperty("atc", "circle-stroke-color", c.ocean);
   map.setPaintProperty("atc-labels", "text-halo-color", c.ocean);
-  map.setPaintProperty("traffic", "icon-color", c.traffic);
+  // 高度色带**跟主题走**（viridis 有深浅两条），和席位色不一样 —— 后者是身份编码，
+  // 两套主题下必须同一个红；这一套是读数，要在两种底色上都读得出来。
+  map.setPaintProperty("traffic", "icon-color", altitudeBandColor() as never);
+  map.setPaintProperty(
+    "traffic-labels",
+    "text-color",
+    altitudeBandColor() as never,
+  );
+  map.setPaintProperty("traffic-labels", "text-halo-color", c.ocean);
   map.setPaintProperty("own", "icon-color", c.own);
   map.setPaintProperty("own", "text-color", c.own);
   map.setPaintProperty("own", "text-halo-color", c.ocean);
@@ -1269,17 +1297,67 @@ onMounted(() => {
           {
             // 其余在线航班：小三角，按航向转。**没有标注** —— 满屏呼号会把航图
             // 盖掉，而"别人在哪"这件事看点就够了。
+            /* 其余在线航班。
+             *
+             * **按高度分色**（`lib/traffic.ts` 的 viridis 色带，和 can-radar 同一
+             * 套）。以前整层是一个颜色，只看得出"有人在"；分色之后一眼分得出谁在爬
+             * 升、谁在巡航 —— 而那正是看这一层的目的。
+             *
+             * **地面上的画小一号、压淡。** 一个大机场停着几十架飞机全叠在一个点
+             * 上，会把周围的航路和航路点整片糊掉，而"谁停在机坪上"是这张图上最不需
+             * 要的信息。不是隐藏：它们仍然在，只是让位。 */
             id: "traffic",
             type: "symbol",
             source: "traffic",
             layout: {
               "icon-image": "aircraft",
-              "icon-size": 0.6,
+              "icon-size": ["case", ["==", ["get", "onGround"], 1], 0.4, 0.62],
               "icon-rotate": ["get", "heading"],
               "icon-rotation-alignment": "map",
               "icon-allow-overlap": true,
             },
-            paint: { "icon-color": c.traffic },
+            paint: {
+              "icon-color": altitudeBandColor() as never,
+              "icon-opacity": [
+                "case",
+                ["==", ["get", "onGround"], 1],
+                0.45,
+                1,
+              ] as never,
+            },
+          },
+          {
+            /* 航班标注：呼号加高度层。
+             *
+             * **放大到 7 级才出现**，而且地面上的不标。以前这一层完全没有标注，理由
+             * 是"满屏呼号会把航图盖掉" —— 那句话在全国视野下是对的，但放大到看一个
+             * 机场周围的时候，"那架是谁、在什么高度"恰恰是要知道的，而 MapLibre 自
+             * 带碰撞检测，密的地方它会自己让位。
+             *
+             * `icon-allow-overlap` 只给了图标，没给文字：飞机符号该全画出来（它是位
+             * 置），标注可以互相挤掉（它是补充）。 */
+            id: "traffic-labels",
+            type: "symbol",
+            source: "traffic",
+            minzoom: 7,
+            filter: ["!=", ["get", "onGround"], 1],
+            layout: {
+              "text-field": [
+                "concat",
+                ["get", "callsign"],
+                "  ",
+                ["get", "level"],
+              ],
+              "text-font": ["Noto Sans Regular"],
+              "text-size": 9,
+              "text-offset": [0, 1.2],
+              "text-anchor": "top",
+            },
+            paint: {
+              "text-color": altitudeBandColor() as never,
+              "text-halo-color": c.ocean,
+              "text-halo-width": 1.4,
+            },
           },
           {
             // 自己那架。大一号、最亮、**永远画在最上面**，而且带呼号高度地速。

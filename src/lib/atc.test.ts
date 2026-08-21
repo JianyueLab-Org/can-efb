@@ -29,6 +29,13 @@ import {
   parseFeedTime,
   stationAirport,
 } from "@/lib/atc";
+import {
+  ALTITUDE_STEPS,
+  altitudeBand,
+  altitudeColor,
+  flightLevel,
+  isOnGround,
+} from "@/lib/traffic";
 import type { DatafeedController } from "@/lib/datafeed";
 
 function station(
@@ -277,5 +284,63 @@ describe("boundaryCodesFor", () => {
   test("认不出来的原样返回，让调用方去退回画点", () => {
     // 返回空数组会让调用方以为"这个席位不用画"，而正确行为是退回画点。
     expect(boundaryCodesFor("XXXX_CTR")).toEqual(["XXXX"]);
+  });
+});
+
+describe("altitudeBand", () => {
+  test("**巡航高度稳定落档，不在两个颜色之间跳**", () => {
+    // 这是 `-100` 那一下的全部意义。真实巡航高度大量正好压在档位线上
+    // （25000 / 30000 / 35000），少了它，几十英尺的抖动就会让一架巡航中的
+    // 飞机反复换色 —— 而屏幕上看起来只是"闪"，不像 bug。
+    expect(altitudeBand(35000)).toBe(altitudeBand(34950));
+    expect(altitudeBand(30000)).toBe(altitudeBand(29980));
+  });
+
+  test("越高档位越大，而颜色表是按档取的", () => {
+    expect(altitudeBand(1000)).toBeLessThan(altitudeBand(10000));
+    expect(altitudeBand(10000)).toBeLessThan(altitudeBand(35000));
+  });
+
+  test("地面和异常值落进第 0 档，不是 undefined", () => {
+    // 档位会被当作颜色表的下标，返回 undefined 就是一整层没有颜色。
+    expect(altitudeBand(0)).toBe(0);
+    expect(altitudeBand(null)).toBe(0);
+    expect(altitudeBand(undefined)).toBe(0);
+    expect(altitudeBand(-500)).toBe(0);
+  });
+
+  test("超出最高一档的仍然落在表内", () => {
+    // 65000 比最后一档还高；返回的下标必须仍然取得到颜色。
+    const band = altitudeBand(65000);
+    expect(band).toBe(ALTITUDE_STEPS.length - 1);
+    expect(altitudeColor(65000, "dark")).toBeTruthy();
+  });
+});
+
+describe("isOnGround", () => {
+  test("地速 40 节以内算在地面", () => {
+    expect(isOnGround(0)).toBe(true);
+    expect(isOnGround(40)).toBe(true);
+    expect(isOnGround(41)).toBe(false);
+    expect(isOnGround(450)).toBe(false);
+  });
+
+  test("缺地速当作在地面，而不是当作在飞", () => {
+    // 判错的方向是有讲究的：当成在地面只是画小一号，当成在飞会让一架不知
+    // 道状态的飞机在巡航层里显眼地标出来。
+    expect(isOnGround(null)).toBe(true);
+    expect(isOnGround(undefined)).toBe(true);
+  });
+});
+
+describe("flightLevel", () => {
+  test("一千英尺以上写 FL，补足三位", () => {
+    expect(flightLevel(35000)).toBe("FL350");
+    expect(flightLevel(9000)).toBe("FL090");
+  });
+
+  test("**一千以下写整数英尺**，FL003 不是任何人读高度的方式", () => {
+    expect(flightLevel(300)).toBe("300");
+    expect(flightLevel(0)).toBe("0");
   });
 });
