@@ -67,10 +67,26 @@ async function loadMetar(icao: string) {
   metars.value[icao] = result.ok ? result.data.metar : null;
 }
 
+/**
+ * 计划**没取到**，和**没有计划**，是两件事。
+ *
+ * 以前这里失败是静默 return —— `plan` 留在 null，于是这一段显示「还没有提交飞行
+ * 计划」，而那是一句**假话**：成员可能明明交了，只是这一次没读上。按钮跟着变成
+ * 「去提交」，于是它还在**劝人再交一份**。
+ *
+ * 和地图那些空图层是同一类坏法：**把失败画成了「没有」**。区别是这一处更贵 ——
+ * 地图上少一层线是看得出来的，而「你没有计划」是一句读起来完全正常的话。
+ */
+const planFailed = ref(false);
+
 async function loadPlan() {
   const result = await api<Plan | null>("/api/v1/pilot/flightplan");
   planLoading.value = false;
-  if (!result.ok) return;
+  if (!result.ok) {
+    planFailed.value = true;
+    return;
+  }
+  planFailed.value = false;
   plan.value = result.data ?? null;
   if (plan.value) {
     void loadMetar(plan.value.departure);
@@ -152,12 +168,27 @@ onMounted(() => {
         <h2 class="text-sm font-semibold text-ink">
           {{ t("dashboard.plan.title") }}
         </h2>
+        <!--
+          没读到计划时按钮说「查看 / 修改」而不是「去提交」。
+          我们不知道他有没有计划，而「去提交」是在替他假设没有 —— 那正是可能让他
+          交出第二份的那句话。「查看 / 修改」在两种情形下都说得通。
+        -->
         <a href="/flightplan" class="link text-sm">{{
-          plan ? t("dashboard.plan.edit") : t("dashboard.plan.file")
+          plan || planFailed
+            ? t("dashboard.plan.edit")
+            : t("dashboard.plan.file")
         }}</a>
       </div>
 
       <p v-if="planLoading" class="skeleton mt-3 h-6 w-2/3"></p>
+
+      <!--
+        **失败要排在「没有」前面。** 两句话占同一个位置，而如果先判 `!plan`，读取
+        失败会落进「还没有提交飞行计划」—— 那正是要修的那句假话。
+      -->
+      <p v-else-if="planFailed" class="mt-3 text-sm text-danger">
+        {{ t("dashboard.plan.failed") }}
+      </p>
 
       <p v-else-if="!plan" class="mt-3 text-sm text-muted">
         {{ t("dashboard.plan.none") }}

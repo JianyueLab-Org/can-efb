@@ -37,7 +37,14 @@ async function loadSimbrief() {
     "/api/v1/pilot/simbrief",
   );
   loading.value = false;
-  if (result.ok) simbriefId.value = result.data.simbriefId ?? null;
+  if (result.ok) {
+    simbriefId.value = result.data.simbriefId ?? null;
+    return;
+  }
+  // **读失败不等于没绑定。** 静默 return 会让 simbriefId 留在 null，界面因此显示
+  // 成「未绑定」并摆出输入框 —— 而那是一句假话，可能让人以为绑定掉了、再绑一次。
+  // 和概览页那条「还没有提交飞行计划」是同一类坏法：把失败画成了「没有」。
+  notice.value = { kind: "error", text: result.message };
 }
 
 async function link() {

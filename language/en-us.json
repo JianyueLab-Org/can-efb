@@ -220,6 +220,7 @@
       "plan": {
         "title": "Current flight plan",
         "none": "No flight plan filed yet.",
+        "failed": "Could not load your flight plan. Reload to try again — until it loads, do not assume you have none filed.",
         "file": "File one",
         "edit": "View / amend",
         "alternate": "ALTN",
