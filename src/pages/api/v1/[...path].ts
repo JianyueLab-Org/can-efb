@@ -75,7 +75,9 @@ const ALLOW_LIST: Record<string, Allowed> = {
   // 位置来自 can-fsd 的 datafeed（公开、无鉴权、带 `ACAO: *`，岛屿直连，见
   // `lib/datafeed.ts`）。两者不是一回事，datafeed 到位并不意味着需要这一条。
   // 哪天真要画"这架飞机刚才飞过哪里"再加。
-  metar: { methods: ["GET"], who: "Weather.vue / Dashboard.vue" },
+  // 起降两地的 METAR。**Weather.vue 那一页删掉之后只剩 Dashboard 一个消费者** ——
+  // 它是飞行计划简报的一部分（`v-if="plan"`），不是一个通用的查站工具。
+  metar: { methods: ["GET"], who: "Dashboard.vue 的起降天气" },
   route: { methods: ["GET"], who: "RoutePlanner.vue" },
 };
 

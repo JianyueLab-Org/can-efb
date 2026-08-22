@@ -31,9 +31,7 @@
       "dashboard": "概览",
       "flightplan": "飞行计划",
       "route": "航路",
-      "charts": "航图",
       "airports": "机场",
-      "weather": "气象",
       "settings": "设置"
     },
     "links": {
@@ -55,17 +53,9 @@
         "title": "航路",
         "description": "航路规划与校验。"
       },
-      "charts": {
-        "title": "航图",
-        "description": "机场图、进离场与进近程序。"
-      },
       "airports": {
         "title": "机场",
         "description": "跑道、频率、滑行道与停机位。"
-      },
-      "weather": {
-        "title": "气象",
-        "description": "METAR、TAF 与显著天气。"
       },
       "settings": {
         "title": "设置",
@@ -75,9 +65,7 @@
     "placeholder": {
       "title": "这一页还没有内容",
       "body": "先落地的是框架：外壳、导航、主题与多语言已经就位。页面内容要等接上 can-api 之后再填。",
-      "reasons": {
-        "charts": "航图是有版权的数据，网络里现在没有任何一处提供它 —— 这一页要等有了图源（自建或者授权）之后才能做。"
-      }
+      "reasons": {}
     },
     "common": {
       "loading": "载入中…",
@@ -159,15 +147,6 @@
           "arrival": "落地机场"
         }
       }
-    },
-    "weather": {
-      "placeholder": "输入 ICAO 代码",
-      "addLabel": "添加机场",
-      "add": "添加",
-      "remove": "移除",
-      "empty": "还没有添加机场。输入一个四字母 ICAO 代码开始。",
-      "noReport": "这个机场当前没有 METAR 报文。",
-      "invalidIcao": "要一个四字母 ICAO 代码。"
     },
     "route": {
       "departure": "起飞机场",

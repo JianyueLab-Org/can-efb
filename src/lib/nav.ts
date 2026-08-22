@@ -55,12 +55,16 @@ const SECTIONS: NavSectionSpec[] = [
     ],
   },
   {
+    /* 「简报」这一节现在只剩机场。
+     *
+     * 航图（`/charts`）从来只是一个 `Placeholder` —— 一个点下去只有占位的入口会
+     * 被当成坏掉的页面，而不是还没做的页面，所以撤掉而不是留着占位。
+     *
+     * 气象（`/weather`）那一页是按站查 METAR 的浏览器。起降两地的 METAR 仍然
+     * 在，长在 Dashboard 的飞行计划简报里（`v-if="plan"`）—— 那一块回答的是
+     * 「我这趟飞的两头天气如何」，和一个通用的查站工具不是一件事。 */
     labelKey: "sections.briefing",
-    items: [
-      { key: "charts", href: "/charts", icon: "documentText" },
-      { key: "airports", href: "/airports", icon: "buildingOffice" },
-      { key: "weather", href: "/weather", icon: "cloud" },
-    ],
+    items: [{ key: "airports", href: "/airports", icon: "buildingOffice" }],
   },
   {
     items: [{ key: "settings", href: "/settings", icon: "cog6Tooth" }],
