@@ -1272,7 +1272,13 @@ onMounted(() => {
             id: "runways",
             type: "line",
             source: "runways",
-            minzoom: 9,
+            /* **z7 起**。那个尺度上一条三公里的跑道是三个像素 —— 不是"看清跑道"，
+             * 是"这个机场朝哪个方向"，而那正是缩到那么远时会问的问题。再早一级只有
+             * 一个像素，画出来和一粒点没区别。
+             *
+             * 敢提这么早是因为这一层便宜：整库 966 条、34 kB，覆盖全部 415 个机
+             * 场，一次取完。地面那一份是按机场取的，提不了这么早。 */
+            minzoom: 7,
             filter: ["==", ["get", "kind"], "runway"] as never,
             paint: {
               "line-color": c.groundRunway,
@@ -1368,8 +1374,9 @@ onMounted(() => {
             id: "ground-labels-runway",
             type: "symbol",
             source: "runways",
-            // 跑道号跟着跑道走，比地面早一档。
-            minzoom: 10,
+            /* 跑道号比跑道本身晚两级：z7 上跑道才三个像素，旁边挂一个两位数只会把
+             * 它盖住。z9 上跑道十二个像素，号码才有地方站。 */
+            minzoom: 9,
             filter: ["==", ["get", "kind"], "runway_end"] as never,
             layout: {
               "symbol-placement": "point",
