@@ -48,6 +48,7 @@ import type { Feature, FeatureCollection } from "geojson";
 import { arc, type LatLon } from "@/lib/geo";
 import { FACILITY_COLORS } from "@/lib/atc";
 import { altitudeRamp } from "@/lib/traffic";
+import { legKey } from "@/lib/airways";
 import { GROUND_MIN_ZOOM } from "@/lib/ground";
 
 /**
@@ -185,6 +186,12 @@ const props = defineProps<{
   airports?: FeatureCollection | null;
   /** 全库跑道（线加端点），来自 can-db 的 `/aip/runways`。见 lib/runways.ts。 */
   runways?: FeatureCollection | null;
+  /**
+   * 计划里**真正在航路网上点亮了**的那些腿。这一层据此跳过它们，不重复画线。
+   *
+   * 是「标到的」而不是「有 via 的」—— 见 routeLines 上面那段。
+   */
+  highlightedLegs?: Set<string> | null;
   ground?: FeatureCollection | null;
   /**
    * 随数据变化的额外署名，例如 OSM 的 ODbL 那一行。
@@ -471,12 +478,33 @@ function graticule(): FeatureCollection {
   return { type: "FeatureCollection", features };
 }
 
-/** 航路线：相邻两点之间走大圆弧。 */
-function routeLines(points: Point[]): FeatureCollection {
+/**
+ * 航路线：相邻两点之间走大圆弧。
+ *
+ * **已经在航路网上点亮了的那些腿不画。** 那正是「不要另加元素」的做法：沿航路飞的
+ * 部分由航段本身高亮表达，这一层只补上**没有航路可点亮**的那些 —— DCT、SID/STAR，
+ * 以及航段虽然在计划里、却不在当前这份航路集合里的（图层关着、被高低空过滤掉、端
+ * 点解析不出坐标）。
+ *
+ * `suppressed` 是**真正标到的那些键**，不是「有 via 的那些」。这个区别是要紧的：假
+ * 设有 via 就一定被点亮了的话，没点上的腿会从图上消失，而**航路断在中间看不出来**
+ * —— 剩下的线本身都对。
+ */
+function routeLines(
+  points: Point[],
+  suppressed?: Set<string> | null,
+): FeatureCollection {
   const features: Feature[] = [];
   const isProcedure = (p: Point) => p.kind === "sid" || p.kind === "star";
 
   for (let i = 1; i < points.length; i++) {
+    const via = points[i].via;
+    if (
+      via &&
+      suppressed?.has(legKey(via, points[i - 1].ident, points[i].ident))
+    ) {
+      continue;
+    }
     const from: LatLon = [points[i - 1].lat, points[i - 1].lon];
     const to: LatLon = [points[i].lat, points[i].lon];
     features.push({
@@ -883,7 +911,7 @@ function render() {
   const markers = props.markers ?? [];
 
   (map.getSource("route") as GeoJSONSource | undefined)?.setData(
-    routeLines(points),
+    routeLines(points, props.highlightedLegs),
   );
   (map.getSource("markers") as GeoJSONSource | undefined)?.setData(
     // 航路上的点打个标记，好让标注那一层只挑它们，见 pointFeatures。
@@ -1616,7 +1644,19 @@ onMounted(() => {
             type: "line",
             source: "airways",
             paint: {
-              "line-color": airwayColor(c) as never,
+              /* **计划走过的那几段就地点亮**，不另画一条线压在上面。
+               *
+               * 从前是在航路网之上再画一条亮线 —— 于是沿着航路那一段有两条线叠着，
+               * 一粗一细、一亮一暗，看着杂乱。而这张图上本来就已经有那条航段了，要
+               * 表达「这一段我要飞」，把它本身点亮比在它旁边再放一条更直接。
+               *
+               * 高亮的段还要**加粗**：只换颜色的话，在八千条线里仍然认不出来。 */
+              "line-color": [
+                "case",
+                ["==", ["get", "onRoute"], 1],
+                c.route,
+                airwayColor(c),
+              ] as never,
               /* **随缩放变粗变实**，不是一个定值。
                *
                * 覆盖框内是八千多个航段。在开图那个视野（z3，全国）上，八千条
@@ -1629,22 +1669,17 @@ onMounted(() => {
               /* 淡入曲线跟着 minzoom 挪到 6 起 —— 原来是 3 起，而 3–6 那一段现在
                * 根本不画，留着就是一段死表达式，下一个人会以为它还在生效。 */
               "line-width": [
-                "interpolate",
-                ["linear"],
-                ["zoom"],
-                6,
-                0.5,
-                9,
-                1.1,
+                "case",
+                ["==", ["get", "onRoute"], 1],
+                ["interpolate", ["linear"], ["zoom"], 6, 2.2, 9, 3.4],
+                ["interpolate", ["linear"], ["zoom"], 6, 0.5, 9, 1.1],
               ] as never,
+              // 高亮的段不跟着淡入：它是你正在看的东西，不是背景参考。
               "line-opacity": [
-                "interpolate",
-                ["linear"],
-                ["zoom"],
-                6,
-                0.45,
-                9,
-                0.85,
+                "case",
+                ["==", ["get", "onRoute"], 1],
+                1,
+                ["interpolate", ["linear"], ["zoom"], 6, 0.45, 9, 0.85],
               ] as never,
             },
           },
@@ -2256,6 +2291,7 @@ watch(
     props.ground,
     props.airports,
     props.runways,
+    props.highlightedLegs,
     props.navaids,
     props.firs,
     props.mora,

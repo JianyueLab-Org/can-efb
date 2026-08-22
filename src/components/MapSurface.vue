@@ -41,6 +41,8 @@ import {
   fetchAirways,
   toAirwayLines,
   toAirwayFixes,
+  routeLegKeys,
+  markRouteOnAirways,
   type AirwayLevel,
 } from "@/lib/airways";
 import {
@@ -314,6 +316,7 @@ async function setAirwayLevel(level: AirwayLevel | "off") {
   if (cached) {
     airways.value = cached.lines;
     airwayFixes.value = cached.fixes;
+    refreshHighlight();
     // 缓存命中也要判一次空：空的那一层缓存的正是"空"，而提示不该只在第一次出现。
     if (cached.lines.features.length) clearNotice("airways");
     else setNotice("airways", props.t.emptyAirways);
@@ -329,6 +332,7 @@ async function setAirwayLevel(level: AirwayLevel | "off") {
     const fixes = toAirwayFixes(graph);
     airwayCache.set(level, { lines, fixes });
     airways.value = lines;
+    refreshHighlight();
     airwayFixes.value = fixes;
 
     // **取回来是空的，不是失败。** 所以不退回"关"：开关停在这一层是对的，人确实
@@ -343,6 +347,7 @@ async function setAirwayLevel(level: AirwayLevel | "off") {
     airwayLevel.value = "off";
     airways.value = null;
     airwayFixes.value = null;
+    highlightedLegs.value = null;
   } finally {
     airwayBusy.value = false;
   }
@@ -411,6 +416,15 @@ const mora = ref<FeatureCollection | null>(null);
  * 缩放阶梯上它排在情报区之后、航路之前：缩到最小只剩情报区，放一级先看到「这一片
  * 有哪些机场」。出不出现由图层的 minzoom 管，这里只负责把点备好。
  */
+/**
+ * 计划里**真正被点亮**的那些航段。
+ *
+ * 传给地图，让它跳过这些腿不再另画线 —— 沿航路飞的部分由航段本身高亮表达，那正是
+ * 「不要另加元素」。是「标到的」而不是「有 via 的」：没点上的腿仍然要画，否则航路会
+ * 断在中间，而断掉在图上看不出来。
+ */
+const highlightedLegs = ref<Set<string> | null>(null);
+
 const airports = ref<FeatureCollection | null>(null);
 /**
  * 全库跑道。**整份取一次，不按视野裁** —— 34 kB，而缩放阶梯要它在比例尺 20 公里那
@@ -1035,9 +1049,30 @@ async function loadPlanRoute() {
   if (!resolved.length) return;
 
   points.value = resolved;
+  // 计划到了，把它在航路网上点亮。航路网可能还没加载好 —— 那边加载完也会再算一次。
+  refreshHighlight();
   label.value = props.t.planOnMap
     .replace("{from}", departure)
     .replace("{to}", arrival);
+}
+
+/**
+ * 重算高亮。**航路网变了要算，计划变了也要算**，所以两处都调它。
+ *
+ * 漏掉任何一边的后果都是安静的：切了图层级别之后高亮消失，或者换了一条计划之后旧
+ * 的还亮着。
+ */
+function refreshHighlight() {
+  const collection = airways.value;
+  if (!collection) {
+    highlightedLegs.value = null;
+    return;
+  }
+  const marked = markRouteOnAirways(collection, routeLegKeys(points.value));
+  highlightedLegs.value = marked;
+  /* 换一个新对象，否则 Vue 的 watch 看不出变化 —— `markRouteOnAirways` 改的是里面
+     那些 feature 的属性，集合本身还是同一个引用。 */
+  airways.value = { ...collection, features: [...collection.features] };
 }
 
 let unsubscribe: (() => void) | null = null;
@@ -1085,6 +1120,8 @@ onMounted(() => {
   unsubscribe = subscribeToMap((payload) => {
     panelPublished = true;
     points.value = payload.points ?? [];
+    // 面板换了一条航路：旧的高亮必须撤掉，否则图上会同时亮着两条。
+    refreshHighlight();
     markers.value = payload.markers ?? [];
     focus.value = payload.focus ?? null;
     // 面板可以覆盖角标；没给就沿用外壳传进来的那一份。
@@ -1118,6 +1155,7 @@ onBeforeUnmount(() => {
       :airway-fixes="airwayFixes"
       :airports="airports"
       :runways="runways"
+      :highlighted-legs="highlightedLegs"
       :ground="ground"
       :extra-attribution="groundAttribution"
       :navaids="navaids"
