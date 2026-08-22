@@ -274,7 +274,8 @@
         "webgl": "This browser has no working WebGL, so the map cannot be drawn. Enable hardware acceleration in your browser settings and try again."
       },
       "denied": "Your account does not have read access to the aeronautical database yet, so airways, navaids and airspace cannot be loaded. Ask an administrator for aipAccess.",
-      "groundAccuracy": "Airport ground is traced from charts and sits within about {m} m — it looks like a diagram, but do not read coordinates off it."
+      "groundAccuracy": "Airport ground is traced from charts and sits within about {m} m — it looks like a diagram, but do not read coordinates off it.",
+      "planOnMap": "Filed flight plan {from} → {to}"
     },
     "airports": {
       "search": "Search by ICAO, name or FIR",
@@ -289,7 +290,9 @@
         "title": "Aeronautical data is temporarily unavailable",
         "body": "The aeronautical database did not answer. This is a fault rather than a permissions problem — try again shortly."
       },
-      "mapLabel": "All airports"
+      "mapLabel": "All airports",
+      "prompt": "Search by code, name or FIR. {count} airports in the database.",
+      "truncated": "Showing {shown} of {total} matches — type more to narrow it down."
     }
   }
 }

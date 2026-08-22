@@ -14,7 +14,7 @@
  * 点某一行时**不重推整层**，只多带一个 `focus`：地图把镜头对过去，不重新框住全
  * 国 —— 否则用户刚才的缩放会被每一次点击丢掉一遍。
  */
-import { computed, onMounted, ref } from "vue";
+import { computed, ref } from "vue";
 import { createTranslator } from "@/lib/i18n";
 import { publishToMap } from "@/lib/mapBus";
 
@@ -39,15 +39,43 @@ const t = createTranslator(props.messages);
 const query = ref("");
 const selected = ref<string | null>(null);
 
+/** 一次最多列这么多条。见 `filtered`。 */
+const MAX_RESULTS = 12;
+
+/**
+ * **不打字就不列。**
+ *
+ * 从前空查询返回的是全量 433 个机场，于是这一页打开就是一面墙 —— 要找一个场得先
+ * 滚过几百张卡片，而搜索框本来就是为这件事存在的。现在空查询给空列表，输入才出
+ * 结果，并且截到 12 条：再多就又变回那面墙了，而超过 12 条通常意味着该多打一个
+ * 字母，不是该往下滚。
+ *
+ * 截断要**说出来**（见模板里那句），否则「我搜的场明明有，怎么不在里面」是查不
+ * 出原因的 —— 悄悄截断和没有那条数据在屏幕上长得一模一样。
+ */
 const filtered = computed(() => {
   const q = query.value.trim().toUpperCase();
-  if (!q) return props.airports;
+  if (!q) return [];
+  return props.airports
+    .filter(
+      (a) =>
+        a.icao.includes(q) ||
+        (a.name ?? "").toUpperCase().includes(q) ||
+        (a.fir ?? "").toUpperCase().includes(q),
+    )
+    .slice(0, MAX_RESULTS);
+});
+
+/** 命中总数，用来判断有没有被截断。 */
+const matchCount = computed(() => {
+  const q = query.value.trim().toUpperCase();
+  if (!q) return 0;
   return props.airports.filter(
     (a) =>
       a.icao.includes(q) ||
       (a.name ?? "").toUpperCase().includes(q) ||
       (a.fir ?? "").toUpperCase().includes(q),
-  );
+  ).length;
 });
 
 /** 机场 → 地图上的一个点。`kind` 决定 RouteMap 把它画成方块而不是小圆点。 */
@@ -61,30 +89,25 @@ function toMarker(airport: Airport) {
 }
 
 /**
- * 推给地图的是**全量**，不是筛选后的结果。
+ * 挑中一个机场：**只推那一个**，不铺全量。
  *
- * 搜索框是用来在列表里找一行的，不是用来筛地图的 —— 边打字边让地图上的机场一批
- * 批消失，会让人以为数据在丢。真要做「只看某个 FIR」那种筛选，应该是一个明确的
- * 图层开关，不是搜索框的副作用。
+ * 从前这里推的是 433 个机场的全量点集，而且一进页面就推。两个后果：地图变成一片
+ * 麻点，看不出任何东西；更要紧的是它**盖掉了成员自己那条飞行计划** —— 地图是常
+ * 驻的，打开机场页等于把手上正在飞的那件事从图上抹掉。
+ *
+ * 现在这一页不主动往图上放任何东西。选中一个机场才推它一个，并把视野对过去。
  */
-function publishAll(focus?: Airport) {
+function showOnMap(airport: Airport) {
   publishToMap({
-    markers: props.airports.map(toMarker),
-    focus: focus ? toMarker(focus) : undefined,
-    label: focus
-      ? focus.name
-        ? `${focus.icao} · ${focus.name}`
-        : focus.icao
-      : t("airports.mapLabel"),
+    markers: [toMarker(airport)],
+    focus: toMarker(airport),
+    label: airport.name ? `${airport.icao} · ${airport.name}` : airport.icao,
   });
 }
 
-// 进页面就把机场铺上去，不用等用户点。这一页的主体就是那张图。
-onMounted(() => publishAll());
-
 function show(airport: Airport) {
   selected.value = airport.icao;
-  publishAll(airport);
+  showOnMap(airport);
 }
 </script>
 
@@ -102,11 +125,24 @@ function show(airport: Airport) {
       class="input"
     />
 
-    <p v-if="!filtered.length" class="text-sm text-muted">
+    <p v-if="!query.trim()" class="text-sm text-muted">
+      {{ t("airports.prompt", { count: String(props.airports.length) }) }}
+    </p>
+
+    <p v-else-if="!filtered.length" class="text-sm text-muted">
       {{ t("airports.none") }}
     </p>
 
-    <ul v-else class="flex flex-col gap-2">
+    <p v-if="matchCount > filtered.length" class="text-xs text-faint">
+      {{
+        t("airports.truncated", {
+          shown: String(filtered.length),
+          total: String(matchCount),
+        })
+      }}
+    </p>
+
+    <ul v-if="filtered.length" class="flex flex-col gap-2">
       <li v-for="airport in filtered" :key="airport.icao">
         <button
           type="button"

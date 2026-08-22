@@ -78,6 +78,7 @@ import {
 import { boundaryCodesFor, ownsAirspace } from "@/lib/atc";
 import { altitudeBand, flightLevel, isOnGround } from "@/lib/traffic";
 import type { FeatureCollection } from "geojson";
+import { api } from "@/lib/canApi";
 
 const props = defineProps<{
   /** 地图角上的说明，已翻译。 */
@@ -116,6 +117,8 @@ const props = defineProps<{
     emptyGeneric: string;
     /** 画的是航图线画时那一句，`{m}` 是精度米数。 */
     groundAccuracy: string;
+    /** 地图上画着已提交计划时的角标，`{from}`/`{to}` 是起降机场。 */
+    planOnMap: string;
   };
   /** 地图整个起不来时那两句，转交给 RouteMap。 */
   failureText: { init: string; webgl: string };
@@ -955,6 +958,55 @@ const skippedTotal = computed(
   () => skipped.value.ctr + skipped.value.app + skipped.value.restricted,
 );
 
+/* 面板发过东西没有。**发过就不要再被计划盖掉** —— 计划是异步取的，而面板可能在它
+   回来之前就已经推了自己的内容（航路规划器一进页面就推）。没有这道闸，「打开 /route
+   画好一条航路，两秒后被自己的飞行计划顶掉」是一定会发生的。 */
+let panelPublished = false;
+
+/**
+ * 把成员**已提交的飞行计划**画在地图上，作为默认内容。
+ *
+ * 以前这块地图的默认内容是「上一个面板推过来的东西」，而在没人推之前是空的 ——
+ * 打开 EFB 第一眼是一张只有底图的图。可他手上正好有一件事：那条已经交了的计划。
+ *
+ * 走的是**展开**而不是**生成**：`/api/v1/route` 把计划里那串航路字符串解析成点
+ * （`lib/routePlan.ts` 顶上分得很清楚，两条路都在，别弄混）。生成是"还没有计划时
+ * 该怎么飞"，这里已经有计划了。
+ *
+ * 画成 `points` 而不是 `markers`，于是它自动拿到航路那套高亮配色（亮线加一条深色
+ * 衬线）—— **那就是「高亮」**，不需要再发明第二种强调样式。
+ *
+ * 失败一律安静：地图上没有那条线，和这个成员本来就没交计划，在屏幕上是同一回事，
+ * 而为此弹一个错误框会把一个常态说成故障。真正要说话的是 Dashboard，它已经在说了
+ * （`planFailed` 那一段专门讲了「把失败画成没有」为什么更贵）。
+ */
+async function loadPlanRoute() {
+  const plan = await api<{
+    departure?: string;
+    arrival?: string;
+    route?: string;
+  } | null>("/api/v1/pilot/flightplan");
+  if (!plan.ok || !plan.data) return;
+  if (panelPublished) return;
+
+  const { departure, arrival, route } = plan.data;
+  if (!departure || !arrival) return;
+
+  const params = new URLSearchParams({
+    departure,
+    arrival,
+    route: route ?? "",
+  });
+  const expanded = await api<{ points: MapPoint[] }>(`/api/v1/route?${params}`);
+  if (!expanded.ok || panelPublished) return;
+  if (!expanded.data.points?.length) return;
+
+  points.value = expanded.data.points;
+  label.value = props.t.planOnMap
+    .replace("{from}", departure)
+    .replace("{to}", arrival);
+}
+
 let unsubscribe: (() => void) | null = null;
 
 onMounted(() => {
@@ -982,7 +1034,11 @@ onMounted(() => {
   if (saved.ctr) void toggleAirspace("ctr");
   if (saved.app) void toggleAirspace("app");
   if (saved.restricted) void toggleAirspace("restricted");
+  // 计划那条线不 await：地图不该等它回来才出现，和航路网是同一条道理。
+  void loadPlanRoute();
+
   unsubscribe = subscribeToMap((payload) => {
+    panelPublished = true;
     points.value = payload.points ?? [];
     markers.value = payload.markers ?? [];
     focus.value = payload.focus ?? null;
