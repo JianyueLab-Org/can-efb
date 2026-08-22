@@ -64,10 +64,11 @@ export interface Ground {
  * **门槛存在的理由是流量，不是观感。** 首都一张图是五千多条线、两万多个点，一兆
  * 多的几何；在看得见半个中国的比例尺上取它，既画不出东西也白花那一兆。
  *
- * 12 级在 40°N 大约是 38 米/像素，一个四公里见方的机场占一百来个像素 —— 到了这个
- * 尺度，跑道和滑行道才刚好开始有形状可言。再早一级取，多花一倍的钱换一团糊。
+ * 11 级在 40°N 大约是 76 米/像素，一个四公里见方的机场占五十来个像素 —— 跑道到这个
+ * 尺度才刚好有形状可言，而缩放阶梯上**跑道正是地面里最先出现的那一层**（其余要
+ * 到 12，滑行道代号 13，机位号 15）。再早一级取，多花一倍的钱换一团糊。
  */
-export const GROUND_MIN_ZOOM = 12;
+export const GROUND_MIN_ZOOM = 11;
 
 /**
  * 一次最多同时取几个机场的地面。
@@ -155,6 +156,7 @@ export function toGroundDrawing(grounds: Ground[]): GroundDrawing {
 
   for (const g of grounds) {
     icaos.push(g.icao);
+    const longest = longestRunways(g);
 
     if (g.features.length) {
       // 有分好类的就用它，`lines` 整份不画 —— 见文件头。
@@ -176,8 +178,14 @@ export function toGroundDrawing(grounds: Ground[]): GroundDrawing {
 
         /* 跑道额外出两个**点**要素，一头一个号 —— 见 runwayEnds 上面那段。
          *
-         * 是额外而不是替代：跑道那条线本身仍然要画，这两个点只是标注的锚。 */
-        if (f.kind === "runway" && f.name) {
+         * 是额外而不是替代：跑道那条线本身仍然要画，这两个点只是标注的锚。
+         *
+         * **只标同名要素里最长的那一条**，见 longestRunways。 */
+        if (
+          f.kind === "runway" &&
+          f.name &&
+          longest.get(g.icao + "/" + f.name) === f
+        ) {
           for (const end of runwayEndLabels(f.name, f.points)) {
             features.push(end);
           }
@@ -318,6 +326,39 @@ function widthMetres(kind: string, published?: number): number {
     default:
       return 23;
   }
+}
+
+/**
+ * 每条跑道**只留最长的那个要素**，键是 `ICAO/跑道名`。
+ *
+ * 一条跑道在源数据里可能是好几个要素，而且同名。ZBTJ 有两个 `16R/34L`：一个 16 个
+ * 顶点、覆盖两个权威入口之间的全长，另一个只有 6 个顶点、是北头一截 350 米的短段
+ * （内移入口/停止道那一类）。ZBAA 之外还有 `RCBS 06/24` 的 11 顶点和 2 顶点两条。
+ *
+ * 给每个要素都标两头的后果是**同一个跑道号在图上出现两次**，其中一对落在离真入口
+ * 几百米的地方 —— 对着它对跑道的人会对错。全量核过：不去重时 975 个端点里 19 个落
+ * 在错的位置，全部是这一类，**没有一个是方向判反**。
+ *
+ * 取最长的那条，因为跑道号标的是整条跑道的两端，而短段按定义标不出真正的两端。
+ */
+function longestRunways(g: Ground): Map<string, GroundFeature> {
+  const best = new Map<string, GroundFeature>();
+  const spanOf = (f: GroundFeature) => {
+    const ends = runwayEnds(f.points);
+    if (!ends) return 0;
+    const [a, b] = ends;
+    return (
+      (a[0] - b[0]) ** 2 +
+      ((a[1] - b[1]) * Math.cos((a[0] * Math.PI) / 180)) ** 2
+    );
+  };
+  for (const f of g.features) {
+    if (f.kind !== "runway" || !f.name) continue;
+    const key = g.icao + "/" + f.name;
+    const held = best.get(key);
+    if (!held || spanOf(f) > spanOf(held)) best.set(key, f);
+  }
+  return best;
 }
 
 /**

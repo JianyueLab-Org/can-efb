@@ -214,6 +214,46 @@ describe("跑道号写在两头", () => {
     expect(endsOf("", northSouth)).toHaveLength(0);
   });
 
+  /**
+   * **一条跑道在源数据里可能是好几个同名要素。**
+   *
+   * ZBTJ 有两个 `16R/34L`：一个覆盖两个权威入口之间的全长，另一个只有北头一截
+   * 350 米（内移入口/停止道那一类）。给每个都标两头的后果是同一个跑道号在图上出现
+   * 两次，其中一对落在离真入口几百米的地方 —— 对着它对跑道的人会对错。
+   *
+   * 全量对照 `current_runway` 的权威入口核过：不去重时 975 个端点里 19 个落错，
+   * 全部是这一类；去重之后 452 对**方向全部正确、一对没反**。
+   */
+  test("同名跑道只标最长的那一条", () => {
+    const long: [number, number][] = [
+      [40.1, 116.0],
+      [40.0, 116.0],
+    ];
+    // 北头一截短段，同名。
+    const stub: [number, number][] = [
+      [40.11, 116.0],
+      [40.1, 116.0],
+    ];
+    const d = toGroundDrawing([
+      ground({
+        features: [
+          { kind: "runway", source: "sector", name: "18/36", points: stub },
+          { kind: "runway", source: "sector", name: "18/36", points: long },
+        ],
+      }),
+    ]);
+    const ends = d.collection.features.filter(
+      (f) => f.properties?.kind === "runway_end",
+    );
+    expect(ends).toHaveLength(2);
+    // 标在长的那条上：北端应该是 40.1，不是短段的 40.11。
+    const lats = ends
+      .map((f) => (f.geometry as { coordinates: number[] }).coordinates[1])
+      .sort();
+    expect(lats[0]).toBeCloseTo(40.0, 3);
+    expect(lats[1]).toBeCloseTo(40.1, 3);
+  });
+
   /** `ZGUH` 用的是 `16-34`，短横也要认。 */
   test("短横分隔的也认", () => {
     expect(endsOf("16-34", northSouth)).toHaveLength(2);
