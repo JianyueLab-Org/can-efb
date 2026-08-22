@@ -328,6 +328,10 @@ const PALETTE = {
      *
      * 和航路网那几色刻意错开色相：地面和航路会在同一个画面里同时出现，同色系会
      * 让「这条是滑行道还是航路」变成一道需要思考的题。 */
+    /* 机场。**自己一个色相，和别的符号全都错开** —— 航路点、导航台是白线画，航路
+     * 是蓝灰，Grid MORA 绿，自己那架琥珀，管制席位橙。紫留给机场：挤在一起时颜色
+     * 就够分辨，不用先看清是三角还是齿轮。 */
+    airport: "#b9a3e8",
     groundRunway: "#cdd8e0",
     groundTaxiway: "#7d8f9c",
     groundApron: "#3a4854",
@@ -355,6 +359,7 @@ const PALETTE = {
     own: "#b8860b",
     traffic: "#6b8395",
     atc: "#b8622a",
+    airport: "#6b4fa8",
     groundRunway: "#4a5b68",
     groundTaxiway: "#8fa0ad",
     groundApron: "#c4cdd4",
@@ -714,15 +719,24 @@ function registerIcons() {
    *
    * 中间那个孔用 `destination-out` 挖掉而不是画一个底色圆 —— 底色圆在深浅两套主题
    * 下只能对一套。 */
+  /* **和航路点的三角形同尺寸**（同一个 `size`，同样 pixelRatio 2、icon-size 1）。
+   * 先前是 20px 画布再乘 0.32–0.55，画出来只有三到五个像素 —— 那个尺度上它不像齿
+   * 轮，像一粒脏点。同尺寸之后两个符号在图上是一样大的一对，靠形状和颜色区分。 */
   const gear = document.createElement("canvas");
-  const gsize = 20;
+  const gsize = size;
   gear.width = gear.height = gsize;
   const gx = gear.getContext("2d");
   if (!gx) return;
+  /* 齿数和齿深是照**这个尺寸**调的，不是照好看调的。
+   *
+   * 8 个浅齿（rIn 0.74）在 8 个 CSS 像素上糊成一粒点 —— 每个齿不到一个像素。6 个
+   * 深齿读得出轮廓，而中心孔放大到 0.48 让它成为一个**环**：这一页其余的静态符号
+   * （三角形、圆套方）都是空心线画，实心齿轮会比它们重一档，而实心是留给自己那架
+   * 飞机的强调手段。 */
   const gc = gsize / 2;
-  const teeth = 8;
+  const teeth = 6;
   const rOut = gc - 1;
-  const rIn = rOut * 0.74;
+  const rIn = rOut * 0.62;
   gx.fillStyle = "#ffffff";
   gx.beginPath();
   for (let i = 0; i < teeth * 2; i++) {
@@ -737,7 +751,7 @@ function registerIcons() {
   gx.fill();
   gx.globalCompositeOperation = "destination-out";
   gx.beginPath();
-  gx.arc(gc, gc, rOut * 0.36, 0, Math.PI * 2);
+  gx.arc(gc, gc, rOut * 0.48, 0, Math.PI * 2);
   gx.fill();
 
   map.addImage("airport-gear", gx.getImageData(0, 0, gsize, gsize), {
@@ -778,8 +792,8 @@ function applyPalette() {
    *
    * 航图线画那一层（`ground-lines`）**不在这里**，而且不该在：它用的是图上的原色
    * （`["get","rgb"]`），那是数据不是主题。 */
-  map.setPaintProperty("airport-gear", "icon-color", c.marker);
-  map.setPaintProperty("airport-labels", "text-color", c.marker);
+  map.setPaintProperty("airport-gear", "icon-color", c.airport);
+  map.setPaintProperty("airport-labels", "text-color", c.airport);
   map.setPaintProperty("airport-labels", "text-halo-color", c.ocean);
   map.setPaintProperty("ground-runways", "line-color", c.groundRunway);
   map.setPaintProperty(
@@ -1448,18 +1462,11 @@ onMounted(() => {
             minzoom: 5,
             layout: {
               "icon-image": "airport-gear",
-              "icon-size": [
-                "interpolate",
-                ["linear"],
-                ["zoom"],
-                5,
-                0.32,
-                10,
-                0.55,
-              ] as never,
+              // 和 `airway-fixes` 的三角形一样：1。两个符号一样大。
+              "icon-size": 1,
               "icon-allow-overlap": true,
             },
-            paint: { "icon-color": c.marker as never },
+            paint: { "icon-color": c.airport as never },
           },
           {
             id: "airport-labels",
@@ -1483,7 +1490,7 @@ onMounted(() => {
               "text-letter-spacing": 0.05,
             },
             paint: {
-              "text-color": c.marker,
+              "text-color": c.airport,
               "text-halo-color": c.ocean,
               "text-halo-width": 1.4,
             },
