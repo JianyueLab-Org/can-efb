@@ -71,6 +71,10 @@ const ALLOW_LIST: Record<string, Allowed> = {
   // 域、MORA、地面全走 can-db）—— 拿不到的成员看到的本来就是一张空底图，所以这
   // 条不多挡任何人。
   "aip/resolve": { methods: ["GET"], who: "MapSurface.vue 画已提交的飞行计划" },
+  // 全库跑道，整份 34 kB。**不是**按机场那条的批量版：地图在比例尺 20 公里那一档
+  // （约 z9）就要画跑道，而那个视野三百公里宽、十几个机场 —— 按机场拉地面等于拉十
+  // 几兆。而且它按**端**给权威入口坐标，跑道号因此不用从几何里推。
+  "aip/runways": { methods: ["GET"], who: "lib/runways.ts，图上的跑道层" },
 };
 
 /**

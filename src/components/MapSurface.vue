@@ -70,6 +70,7 @@ import {
   airportsInView,
   toAirportPoints,
 } from "@/lib/airports";
+import { fetchRunways, toRunwayFeatures } from "@/lib/runways";
 import {
   fetchDatafeed,
   onlineControllers,
@@ -411,6 +412,11 @@ const mora = ref<FeatureCollection | null>(null);
  * 有哪些机场」。出不出现由图层的 minzoom 管，这里只负责把点备好。
  */
 const airports = ref<FeatureCollection | null>(null);
+/**
+ * 全库跑道。**整份取一次，不按视野裁** —— 34 kB，而缩放阶梯要它在比例尺 20 公里那
+ * 一档就出现，那个视野里有十几个机场。出不出现由图层的 minzoom 管。
+ */
+const runways = ref<FeatureCollection | null>(null);
 const ground = ref<FeatureCollection | null>(null);
 const groundAttribution = ref<string[]>([]);
 const groundAccuracyM = ref(0);
@@ -1070,6 +1076,12 @@ onMounted(() => {
     if (pins.length) airports.value = toAirportPoints(pins);
   });
 
+  /* 跑道。和机场索引一样整份取一次 —— 34 kB，比按机场取地面便宜三个数量级，而且它
+     带的是权威入口坐标，跑道号不用推。 */
+  void fetchRunways().then((list) => {
+    if (list.length) runways.value = toRunwayFeatures(list);
+  });
+
   unsubscribe = subscribeToMap((payload) => {
     panelPublished = true;
     points.value = payload.points ?? [];
@@ -1105,6 +1117,7 @@ onBeforeUnmount(() => {
       :airways="airways"
       :airway-fixes="airwayFixes"
       :airports="airports"
+      :runways="runways"
       :ground="ground"
       :extra-attribution="groundAttribution"
       :navaids="navaids"

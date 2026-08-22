@@ -183,6 +183,8 @@ const props = defineProps<{
    * **底图的一部分** —— 缩放到一定程度就该有，不需要谁去点。
    */
   airports?: FeatureCollection | null;
+  /** 全库跑道（线加端点），来自 can-db 的 `/aip/runways`。见 lib/runways.ts。 */
+  runways?: FeatureCollection | null;
   ground?: FeatureCollection | null;
   /**
    * 随数据变化的额外署名，例如 OSM 的 ODbL 那一行。
@@ -809,7 +811,7 @@ function applyPalette() {
   map.setPaintProperty("airport-gear", "icon-color", c.airport);
   map.setPaintProperty("airport-labels", "text-color", c.airport);
   map.setPaintProperty("airport-labels", "text-halo-color", c.ocean);
-  map.setPaintProperty("ground-runways", "line-color", c.groundRunway);
+  map.setPaintProperty("runways", "line-color", c.groundRunway);
   map.setPaintProperty(
     "ground-features",
     "line-color",
@@ -889,6 +891,9 @@ function render() {
       ...markers,
       ...points.map((p) => ({ ...p, onRoute: true })),
     ]),
+  );
+  (map.getSource("runways") as GeoJSONSource | undefined)?.setData(
+    props.runways ?? { type: "FeatureCollection", features: [] },
   );
   (map.getSource("airports") as GeoJSONSource | undefined)?.setData(
     props.airports ?? { type: "FeatureCollection", features: [] },
@@ -1095,6 +1100,10 @@ onMounted(() => {
             type: "geojson",
             data: { type: "FeatureCollection", features: [] },
           },
+          runways: {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+          },
           airwayFixes: {
             type: "geojson",
             data: { type: "FeatureCollection", features: [] },
@@ -1224,23 +1233,32 @@ onMounted(() => {
             },
           },
           {
-            /* 跑道，**地面里最先出现的那一层**。
+            /* 跑道。**来自 can-db 的 `/aip/runways`，不是地面数据。**
              *
-             * 缩放阶梯：情报区 → 机场齿轮 → 航路 → **跑道** → 其余地面 → 代号。
-             * 到了看得清跑道形状的尺度，跑道本身就是那张图的骨架；滑行道和机坪再
-             * 早一级只会把它埋掉。 */
-            id: "ground-runways",
+             * 缩放阶梯上它比地面早一档：比例尺 20 公里（约 z9）就该看得到跑道，而
+             * 那个视野有三百公里宽、十几个机场 —— 按机场拉地面等于拉十几兆。整库跑
+             * 道才 34 kB，一次取完。
+             *
+             * 线宽在这个尺度上按像素给而不是按米：z9 上一条 45 米宽的跑道是 0.2 个
+             * 像素，画出来等于没画。真实宽度到 z12 之后才接管。 */
+            id: "runways",
             type: "line",
-            source: "ground",
-            minzoom: GROUND_MIN_ZOOM,
-            filter: [
-              "all",
-              ["!", ["has", "rgb"]],
-              ["==", ["get", "kind"], "runway"],
-            ] as never,
+            source: "runways",
+            minzoom: 9,
+            filter: ["==", ["get", "kind"], "runway"] as never,
             paint: {
               "line-color": c.groundRunway,
-              "line-width": groundWidth(45),
+              "line-width": [
+                "interpolate",
+                ["exponential", 2],
+                ["zoom"],
+                9,
+                1.4,
+                12,
+                4,
+                18,
+                90,
+              ] as never,
               "line-opacity": 0.95,
             },
           },
@@ -1321,12 +1339,13 @@ onMounted(() => {
              * 东西，宁可让它压住一条滑行道代号。 */
             id: "ground-labels-runway",
             type: "symbol",
-            source: "ground",
-            minzoom: GROUND_MIN_ZOOM,
+            source: "runways",
+            // 跑道号跟着跑道走，比地面早一档。
+            minzoom: 10,
             filter: ["==", ["get", "kind"], "runway_end"] as never,
             layout: {
               "symbol-placement": "point",
-              "text-field": ["get", "name"] as never,
+              "text-field": ["get", "ident"] as never,
               "text-font": ["Noto Sans Regular"],
               "text-size": 13,
               "text-letter-spacing": 0.1,
@@ -2236,6 +2255,7 @@ watch(
     props.airwayFixes,
     props.ground,
     props.airports,
+    props.runways,
     props.navaids,
     props.firs,
     props.mora,
