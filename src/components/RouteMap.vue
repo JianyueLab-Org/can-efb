@@ -902,6 +902,50 @@ let lastFocus: unknown = null;
 /** 上一次真的框选过的那批点的签名。见 render() 结尾。 */
 let lastFitted = "";
 
+/**
+ * 空集合。**一个共享常量，不是每次现造一个。**
+ *
+ * `?? { type: "FeatureCollection", features: [] }` 每次求值都得到一个新对象，于是
+ * 下面那道「引用没变就不重传」的闸对所有空图层永远失效 —— 而关着的图层正是最常处
+ * 于空状态的那些。
+ */
+const EMPTY: FeatureCollection = { type: "FeatureCollection", features: [] };
+
+/** 上一次真正灌给每个 source 的那份数据，按 source id。见 setSource。 */
+const lastData = new Map<string, unknown>();
+
+/**
+ * 灌数据，**引用没变就跳过**。
+ *
+ * `render()` 一次要碰十八个 source，而它是被一个包含实时图层的 watch 触发的 ——
+ * 那三层每 30 秒换一次。也就是说从前**每半分钟就把八千多条航段和十几万条地面线重
+ * 新上传一遍**，尽管它们一个字都没改。MapLibre 收到 `setData` 就会重新解析并重建
+ * 那一层的瓦片，几十万个点的重建是看得见的一顿。
+ *
+ * 判据用**引用相等**而不是深比较：上游那些集合是算好之后整个换掉的（`airways.value
+ * = lines`），没有原地改的写法 —— 唯一一处原地改属性的是航段高亮，而它改完会显式
+ * 换一个新对象，正是为了让这道闸放行。深比较十几万个点比重传还贵。
+ */
+function setSource(id: string, data: FeatureCollection | null | undefined) {
+  const next = data ?? EMPTY;
+  if (lastData.get(id) === next) return;
+  lastData.set(id, next);
+  (map?.getSource(id) as GeoJSONSource | undefined)?.setData(next);
+}
+
+/* 这两份是**算出来的**，每次 render 都会得到新对象，引用相等那道闸拦不住它们。
+ * 所以按输入记一份：输入没变就直接返回上次算好的那个，连带让 setSource 也跳过。 */
+let routeMemo: {
+  points: unknown;
+  legs: unknown;
+  out: FeatureCollection;
+} | null = null;
+let markerMemo: {
+  markers: unknown;
+  points: unknown;
+  out: FeatureCollection;
+} | null = null;
+
 /** 把当前 props 灌进 source。source 已经在，只换数据 —— 不重建图层。 */
 function render() {
   if (!map || !map.isStyleLoaded()) return;
@@ -909,55 +953,49 @@ function render() {
   const points = props.points ?? [];
   const markers = props.markers ?? [];
 
-  (map.getSource("route") as GeoJSONSource | undefined)?.setData(
-    routeLines(points, props.highlightedLegs),
-  );
-  (map.getSource("markers") as GeoJSONSource | undefined)?.setData(
-    // 航路上的点打个标记，好让标注那一层只挑它们，见 pointFeatures。
-    pointFeatures([
-      ...markers,
-      ...points.map((p) => ({ ...p, onRoute: true })),
-    ]),
-  );
-  (map.getSource("runways") as GeoJSONSource | undefined)?.setData(
-    props.runways ?? { type: "FeatureCollection", features: [] },
-  );
-  (map.getSource("airports") as GeoJSONSource | undefined)?.setData(
-    props.airports ?? { type: "FeatureCollection", features: [] },
-  );
-  (map.getSource("ground") as GeoJSONSource | undefined)?.setData(
-    props.ground ?? { type: "FeatureCollection", features: [] },
-  );
-  (map.getSource("airways") as GeoJSONSource | undefined)?.setData(
-    props.airways ?? { type: "FeatureCollection", features: [] },
-  );
-  (map.getSource("airwayFixes") as GeoJSONSource | undefined)?.setData(
-    props.airwayFixes ?? { type: "FeatureCollection", features: [] },
-  );
-  (map.getSource("navaids") as GeoJSONSource | undefined)?.setData(
-    props.navaids ?? { type: "FeatureCollection", features: [] },
-  );
-  (map.getSource("airspaces") as GeoJSONSource | undefined)?.setData(
-    props.airspaces ?? { type: "FeatureCollection", features: [] },
-  );
-  (map.getSource("firs") as GeoJSONSource | undefined)?.setData(
-    props.firs ?? { type: "FeatureCollection", features: [] },
-  );
-  (map.getSource("mora") as GeoJSONSource | undefined)?.setData(
-    props.mora ?? { type: "FeatureCollection", features: [] },
-  );
-  (map.getSource("traffic") as GeoJSONSource | undefined)?.setData(
-    props.traffic ?? { type: "FeatureCollection", features: [] },
-  );
-  (map.getSource("atcAreas") as GeoJSONSource | undefined)?.setData(
-    props.atcAreas ?? { type: "FeatureCollection", features: [] },
-  );
-  (map.getSource("atc") as GeoJSONSource | undefined)?.setData(
-    props.atc ?? { type: "FeatureCollection", features: [] },
-  );
-  (map.getSource("own") as GeoJSONSource | undefined)?.setData(
-    props.own ?? { type: "FeatureCollection", features: [] },
-  );
+  if (
+    !routeMemo ||
+    routeMemo.points !== props.points ||
+    routeMemo.legs !== props.highlightedLegs
+  ) {
+    routeMemo = {
+      points: props.points,
+      legs: props.highlightedLegs,
+      out: routeLines(points, props.highlightedLegs),
+    };
+  }
+  setSource("route", routeMemo.out);
+
+  if (
+    !markerMemo ||
+    markerMemo.markers !== props.markers ||
+    markerMemo.points !== props.points
+  ) {
+    markerMemo = {
+      markers: props.markers,
+      points: props.points,
+      // 航路上的点打个标记，好让标注那一层只挑它们，见 pointFeatures。
+      out: pointFeatures([
+        ...markers,
+        ...points.map((p) => ({ ...p, onRoute: true })),
+      ]),
+    };
+  }
+  setSource("markers", markerMemo.out);
+
+  setSource("runways", props.runways);
+  setSource("airports", props.airports);
+  setSource("ground", props.ground);
+  setSource("airways", props.airways);
+  setSource("airwayFixes", props.airwayFixes);
+  setSource("navaids", props.navaids);
+  setSource("airspaces", props.airspaces);
+  setSource("firs", props.firs);
+  setSource("mora", props.mora);
+  setSource("traffic", props.traffic);
+  setSource("atcAreas", props.atcAreas);
+  setSource("atc", props.atc);
+  setSource("own", props.own);
 
   /* 视野：focus 优先 —— 「在一堆点里挑一个看」不该把用户刚才的缩放丢掉。
    *

@@ -1097,16 +1097,36 @@ async function loadPlanRoute() {
  * 漏掉任何一边的后果都是安静的：切了图层级别之后高亮消失，或者换了一条计划之后旧
  * 的还亮着。
  */
+/** 上一次算出来的那批高亮键，拼成一个串用来比。见 refreshHighlight。 */
+let highlightSignature = "";
+
 function refreshHighlight() {
   const collection = airways.value;
   if (!collection) {
     highlightedLegs.value = null;
+    highlightSignature = "";
     return;
   }
-  const marked = markRouteOnAirways(collection, routeLegKeys(points.value));
+
+  const legs = routeLegKeys(points.value);
+
+  /* **航路没变就什么都不做。**
+   *
+   * 这个函数在四处被调（航路网加载完两条路、计划解析完、面板推来新航路），其中好
+   * 几次的航路其实是同一条。而它每次都要遍历八千多条航段、再换一个新集合对象 ——
+   * 换对象会让下游把整份重新上传给 MapLibre，那是一次看得见的顿。
+   *
+   * 比的是**算出来的键**而不是 `points` 的引用：面板可能推来一份内容相同的新数组
+   * （重新解析同一条计划就是这样），那时候不该重传。 */
+  const signature = [...legs].sort().join("|");
+  if (signature === highlightSignature && highlightedLegs.value) return;
+  highlightSignature = signature;
+
+  const marked = markRouteOnAirways(collection, legs);
   highlightedLegs.value = marked;
   /* 换一个新对象，否则 Vue 的 watch 看不出变化 —— `markRouteOnAirways` 改的是里面
-     那些 feature 的属性，集合本身还是同一个引用。 */
+     那些 feature 的属性，集合本身还是同一个引用。这也是上面那道闸存在的理由：这一
+     步不便宜。 */
   airways.value = { ...collection, features: [...collection.features] };
 }
 
