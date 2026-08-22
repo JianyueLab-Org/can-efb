@@ -122,6 +122,52 @@ describe("画哪一份", () => {
   });
 });
 
+describe("线宽", () => {
+  const widthOf = (kind: string, widthM?: number) => {
+    const d = toGroundDrawing([
+      ground({
+        features: [
+          {
+            kind,
+            source: "sector",
+            widthM,
+            points: [
+              [40, 116],
+              [40.1, 116],
+            ],
+          },
+        ],
+      }),
+    ]);
+    return d.collection.features[0].properties?.widthM as number;
+  };
+
+  /**
+   * 缺席的宽度**不能当成 0**。
+   *
+   * 线宽是按真实米数换算成像素画的，0 米出来就是一条画不出来的线 —— 而手工那份里
+   * 多数机位和等待位置本来就没有宽度。这一条踩过：地面「没有显示」的真实原因就是
+   * 线细到看不见，不报错、不缺数据。
+   */
+  test("没有宽度的要素按类别兜底，不落到 0", () => {
+    expect(widthOf("taxiway")).toBeGreaterThan(0);
+    expect(widthOf("parking_position")).toBeGreaterThan(0);
+    expect(widthOf("holding_position")).toBeGreaterThan(0);
+    expect(widthOf("something_new_from_the_source")).toBeGreaterThan(0);
+  });
+
+  test("跑道比滑行道宽", () => {
+    expect(widthOf("runway")).toBeGreaterThan(widthOf("taxiway"));
+  });
+
+  /** 真实宽度只要有就一定优先 —— 兜底只是缺席时的排版数字，不是航行数据。 */
+  test("源数据给了宽度就用它", () => {
+    expect(widthOf("taxiway", 42)).toBe(42);
+    // 0 是「没有」而不是「零米宽」，所以仍然走兜底。
+    expect(widthOf("taxiway", 0)).toBeGreaterThan(0);
+  });
+});
+
 describe("署名", () => {
   /**
    * OSM 那份是 ODbL，**署名是许可条款不是礼貌**。它由数据决定 —— 写死一句会让纯
