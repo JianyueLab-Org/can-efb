@@ -22,16 +22,18 @@
  * 限制和空域**只摆原文，不做判断**：它们的生效时间是散文（「byNOTAM」「每日
  * 0700-0830」），一个自作主张读懂了的规划器比一个把原文摆出来的危险得多。
  */
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { createTranslator } from "@/lib/i18n";
 import { publishToMap } from "@/lib/mapBus";
 import { saveDraft } from "@/lib/planDraft";
 import {
+  planEnroutePoints,
   planRoute,
   planToMapPoints,
   RoutePlanError,
   type RoutePlan,
 } from "@/lib/routePlan";
+import ProcedurePicker from "@/components/ProcedurePicker.vue";
 
 const props = defineProps<{ messages: Record<string, unknown> }>();
 const t = createTranslator(props.messages);
@@ -43,6 +45,39 @@ const level = ref("");
 const busy = ref(false);
 const plan = ref<RoutePlan | null>(null);
 const error = ref<string | null>(null);
+
+/**
+ * 可以填的那串航路。
+ *
+ * **和 `plan.route` 分开一个 ref**，不是直接改 `plan.route`：选择器换一条 SID
+ * 时要拿「规划器原本挑的那条」去判断首尾那个记号是不是程序名（见
+ * lib/procedures.ts 的 rewriteRoute）。就地改掉的话第二次改写就没有底了 —— 它会
+ * 拿上一次改写的结果当原始值，于是换第二次 SID 时删不掉第一次插进去的那条。
+ */
+const route = ref("");
+const enroute = computed(() =>
+  plan.value ? planEnroutePoints(plan.value) : [],
+);
+const departurePoint = computed(() =>
+  plan.value
+    ? {
+        ident: plan.value.from,
+        lat: plan.value.fromLat,
+        lon: plan.value.fromLon,
+        kind: "airport",
+      }
+    : null,
+);
+const arrivalPoint = computed(() =>
+  plan.value
+    ? {
+        ident: plan.value.to,
+        lat: plan.value.toLat,
+        lon: plan.value.toLon,
+        kind: "airport",
+      }
+    : null,
+);
 
 async function generate() {
   const a = from.value.trim().toUpperCase();
@@ -56,6 +91,7 @@ async function generate() {
   try {
     const result = await planRoute(a, b, Number(level.value) || undefined);
     plan.value = result;
+    route.value = result.route;
     publishToMap({
       points: planToMapPoints(result),
       label: `${result.from} → ${result.to}`,
@@ -93,7 +129,9 @@ function toFlightPlan() {
   const ok = saveDraft({
     departure: plan.value.from,
     arrival: plan.value.to,
-    route: plan.value.route,
+    // **交改写后的那串**，不是规划器原本那串 —— 换了跑道和程序却填进去一条旧的，
+    // 是这个功能最容易犯的错，而它一路到管制员那边才看得出来。
+    route: route.value || plan.value.route,
     source: plan.value.source,
   });
   // 存不下就别跳 —— 跳过去什么都没填才是真的莫名其妙。
@@ -162,7 +200,7 @@ function toFlightPlan() {
 
       <!-- 可以直接填的那串。等宽、可选中 —— 它是拿来复制的。 -->
       <p class="card break-all p-3 font-mono text-sm text-ink">
-        {{ plan.route }}
+        {{ route || plan.route }}
       </p>
 
       <button
@@ -172,6 +210,20 @@ function toFlightPlan() {
       >
         {{ t("route.generate.toFlightPlan") }}
       </button>
+
+      <!-- 跑道与进离场程序。规划器挑的那两条是它的默认值，见组件顶上。 -->
+      <ProcedurePicker
+        :messages="messages"
+        :departure="plan.from"
+        :arrival="plan.to"
+        :enroute="enroute"
+        :route="plan.route"
+        :plan-sid="plan.sid"
+        :plan-star="plan.star"
+        :departure-point="departurePoint"
+        :arrival-point="arrivalPoint"
+        @update:route="route = $event"
+      />
 
       <div class="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted">
         <span>

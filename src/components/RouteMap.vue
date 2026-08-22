@@ -516,7 +516,11 @@ function routeLines(
   onAirway?: Set<string> | null,
 ): FeatureCollection {
   const features: Feature[] = [];
-  const isProcedure = (p: Point) => p.kind === "sid" || p.kind === "star";
+  // 进近和 SID/STAR 一样画虚线：它们都是「按图走」的部分，和航路段不是一回事。
+  // 加进来而不是另开一类，是因为图上要表达的区别只有「按图走 vs 沿航路飞」这一
+  // 条 —— 三种程序各给一种线型，读的人得先学会一套图例。
+  const isProcedure = (p: Point) =>
+    p.kind === "sid" || p.kind === "star" || p.kind === "approach";
 
   for (let i = 1; i < points.length; i++) {
     const via = points[i].via;

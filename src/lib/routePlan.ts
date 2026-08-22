@@ -159,3 +159,18 @@ export function planToMapPoints(plan: RoutePlan): MapPoint[] {
   }
   return points;
 }
+
+/**
+ * 只要**航路段**的点：两端机场之外的那些。
+ *
+ * 进离场程序的选择器需要它 —— 它要把 SID 的腿接在出发机场之后、航路段之前，而
+ * `planToMapPoints` 给的序列头尾正是那两个机场。
+ *
+ * 用 `slice(1, -1)` 而不是按 `kind === "airport"` 过滤：中途经过的点里可能**就
+ * 有**机场（航路点和机场同代号，或者真的从某个机场上空过），按 kind 滤会把它们
+ * 一并吃掉，而那是航路的一部分。头尾两个的身份是构造出来的，不用猜。
+ */
+export function planEnroutePoints(plan: RoutePlan): MapPoint[] {
+  const all = planToMapPoints(plan);
+  return all.length <= 2 ? [] : all.slice(1, -1);
+}
