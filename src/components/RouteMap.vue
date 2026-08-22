@@ -1037,19 +1037,15 @@ onMounted(() => {
               "all",
               ["has", "name"],
               ["!=", ["get", "name"], ""],
-              ["match", ["get", "kind"], ["taxiway", "runway"], true, false],
+              // **跑道不在这一层。** 它的号写在两头（`ground-labels-runway`），
+              // 沿线重复是滑行道的画法。
+              ["match", ["get", "kind"], ["taxiway"], true, false],
             ] as never,
             layout: {
               "symbol-placement": "line",
               "text-field": ["get", "name"] as never,
               "text-font": ["Noto Sans Regular"],
-              /* 跑道号比滑行道大一档：放到这个尺度上，读图的人先找的是跑道。 */
-              "text-size": [
-                "case",
-                ["==", ["get", "kind"], "runway"],
-                12,
-                10,
-              ] as never,
+              "text-size": 10,
               "text-letter-spacing": 0.05,
               // 滑行道很长，一条上重复几次才不用为了看代号来回平移。
               "symbol-spacing": 220,
@@ -1059,6 +1055,35 @@ onMounted(() => {
               // 描边不是装饰：地面线本身密，没有这一圈底色代号会糊进线里。
               "text-halo-color": c.ocean,
               "text-halo-width": 1.4,
+            },
+          },
+          {
+            /* 跑道号，**写在跑道两头**，和航图一样。
+             *
+             * 那两个点是数据层按几何算出来的（`runwayEndLabels`）：取相距最远的一
+             * 对顶点当两端 —— 库里的跑道要素不都是中线，有些是跑道面的轮廓，首尾两
+             * 点挨在一起 —— 再按方位角决定哪一头写哪个号。
+             *
+             * 比别的标注大一档、加粗：放到这个尺度上，读图的人先找的就是它。
+             * `text-allow-overlap` 开着 —— 跑道号是这张图上最不该被别的标注挤掉的
+             * 东西，宁可让它压住一条滑行道代号。 */
+            id: "ground-labels-runway",
+            type: "symbol",
+            source: "ground",
+            minzoom: GROUND_MIN_ZOOM,
+            filter: ["==", ["get", "kind"], "runway_end"] as never,
+            layout: {
+              "symbol-placement": "point",
+              "text-field": ["get", "name"] as never,
+              "text-font": ["Noto Sans Regular"],
+              "text-size": 13,
+              "text-letter-spacing": 0.1,
+              "text-allow-overlap": true,
+            },
+            paint: {
+              "text-color": c.groundRunway,
+              "text-halo-color": c.ocean,
+              "text-halo-width": 1.8,
             },
           },
           {

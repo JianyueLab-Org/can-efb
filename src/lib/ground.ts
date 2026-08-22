@@ -173,6 +173,15 @@ export function toGroundDrawing(grounds: Ground[]): GroundDrawing {
             source: f.source,
           },
         });
+
+        /* 跑道额外出两个**点**要素，一头一个号 —— 见 runwayEnds 上面那段。
+         *
+         * 是额外而不是替代：跑道那条线本身仍然要画，这两个点只是标注的锚。 */
+        if (f.kind === "runway" && f.name) {
+          for (const end of runwayEndLabels(f.name, f.points)) {
+            features.push(end);
+          }
+        }
       }
       if (g.attribution) attributions.add(g.attribution);
       continue;
@@ -207,6 +216,84 @@ export function toGroundDrawing(grounds: Ground[]): GroundDrawing {
 }
 
 /**
+ * 跑道号写在**跑道两头**，不沿线重复。
+ *
+ * 航图就是这么画的：`18L` 在北头、`36R` 在南头，而那两个数字各自就是从那一头起飞
+ * 的磁航向。沿线重复是滑行道的画法 —— 跑道那样画既不像图纸，也丢掉了「哪一头是哪
+ * 个号」这个唯一要紧的信息。
+ *
+ * ## 取的是相距最远的两个点，不是首尾
+ *
+ * 库里的跑道要素**不都是中线**：`RCBS 06/24` 有 11 个顶点，那是跑道面的轮廓，首尾
+ * 两点挨在一起。相距最远的那一对在两种形状下都是跑道的两端，代价只是一个 O(n²)，
+ * 而 n 是几个到几十个。
+ *
+ * ## 哪一头写哪个号，按航向定
+ *
+ * 代号的数字乘十就是那一头的磁航向（`06` = 60°）。算出 A→B 的方位角，和它相差在
+ * 90° 以内的那个号属于 A —— 因为你是从 A 起飞朝 B 飞的。
+ *
+ * **反过来放的后果在图上看不出来**：两个号都在跑道上、位置也对，只是左右调了个
+ * 个。而一个照着它对跑道的人会滑到错误的一头。
+ */
+function runwayEnds(
+  points: [number, number][],
+): [[number, number], [number, number]] | null {
+  if (points.length < 2) return null;
+  let best: [[number, number], [number, number]] | null = null;
+  let bestD = 0;
+  for (let i = 0; i < points.length; i++) {
+    for (let j = i + 1; j < points.length; j++) {
+      const d =
+        (points[i][0] - points[j][0]) ** 2 +
+        ((points[i][1] - points[j][1]) *
+          Math.cos((points[i][0] * Math.PI) / 180)) **
+          2;
+      if (d > bestD) {
+        bestD = d;
+        best = [points[i], points[j]];
+      }
+    }
+  }
+  return best;
+}
+
+/** 方位角，度。只用来判断朝向，所以用平面近似就够。 */
+function bearing(from: [number, number], to: [number, number]): number {
+  const dLat = to[0] - from[0];
+  const dLon =
+    (to[1] - from[1]) * Math.cos(((from[0] + to[0]) / 2) * (Math.PI / 180));
+  return ((Math.atan2(dLon, dLat) * 180) / Math.PI + 360) % 360;
+}
+
+/**
+ * 把 `18L/36R` 这样的名字拆成两个代号。
+ *
+ * 分隔符收 `/` 和 `-` 两种（库里 537/541 用斜杠，`ZGUH` 用的是 `16-34`）。拆不出正
+ * 好两个就返回 null —— 那批是 `11`、`35` 这种只写了一头的，以及 `RJTJ` 这种把 ICAO
+ * 当名字的脏数据。**宁可不标**：猜一个号写在跑道上，比不写危险得多。
+ */
+function splitDesignators(name: string): [string, string] | null {
+  const parts = name
+    .split(/[/-]/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+  if (parts.length !== 2) return null;
+  if (
+    !/^\d{1,2}[LRClrc]?$/.test(parts[0]) ||
+    !/^\d{1,2}[LRClrc]?$/.test(parts[1])
+  ) {
+    return null;
+  }
+  return [parts[0], parts[1]];
+}
+
+/** 代号 → 磁航向，度。`06` → 60，`36R` → 360。 */
+function designatorHeading(designator: string): number {
+  return (parseInt(designator, 10) % 36) * 10;
+}
+
+/**
  * 这一类地面要素画多宽，**米**。
  *
  * 源数据里宽度常常缺（手工那份多数机位和等待位置没有），而缺席不能当成 0 —— 线宽
@@ -231,6 +318,32 @@ function widthMetres(kind: string, published?: number): number {
     default:
       return 23;
   }
+}
+
+/**
+ * 一条跑道的两个端点标注。拆不出两个代号、或者点不够，就一个都不出。
+ */
+function runwayEndLabels(name: string, points: [number, number][]): Feature[] {
+  const pair = splitDesignators(name);
+  const ends = runwayEnds(points);
+  if (!pair || !ends) return [];
+
+  const [a, b] = ends;
+  const abBearing = bearing(a, b);
+  // 和 A→B 方位角相差 90° 以内的那个号属于 A：你是从 A 起飞朝 B 飞的。
+  const diff = Math.abs(
+    ((designatorHeading(pair[0]) - abBearing + 540) % 360) - 180,
+  );
+  const [atA, atB] = diff < 90 ? pair : [pair[1], pair[0]];
+
+  return [
+    { end: a, designator: atA },
+    { end: b, designator: atB },
+  ].map(({ end, designator }) => ({
+    type: "Feature" as const,
+    geometry: { type: "Point" as const, coordinates: [end[1], end[0]] },
+    properties: { kind: "runway_end", name: designator },
+  }));
 }
 
 /**
