@@ -67,6 +67,21 @@ export async function fetchAirportPins(): Promise<AirportPin[]> {
 }
 
 /**
+ * 判定时把视野**向外放**这么多公里。
+ *
+ * **一个机场是一片地方，不是一个点**，而 `AirportPin` 只有基准点。放大到一定程度之
+ * 后视野比机场还小 —— z15 在北纬 40° 大约只有两三公里，而首都东西向四公里 —— 于是
+ * 你凑近跑道看的时候，基准点落到了框外。
+ *
+ * 不放的后果是**整片地面突然消失**：`loadGroundFor` 拿到空清单就清空图层。而它发生
+ * 在越看越近的时候，正好和「地图坏了」长得一模一样。
+ *
+ * 15 公里照最大的机场留余量（浦东东西向约 5 公里，再加上贴着边缘看），而它同时是
+ * **取数的上限**：更远的机场不会被拉进来，所以放大之后不会反而多下载。
+ */
+const VIEW_PAD_KM = 15;
+
+/**
  * 视野里的机场，按离视野中心由近及远。
  *
  * 排序是给取数配额用的（`GROUND_MAX_AIRPORTS`）：视野里有四个场而只取三个时，该
@@ -81,13 +96,20 @@ export function airportsInView(
 ): AirportPin[] {
   const cLat = (v.south + v.north) / 2;
   const cLon = (v.west + v.east) / 2;
+
+  /* 纬度方向一度约 111 公里；经度方向随纬度收窄，所以按视野中心的纬度换算。高纬度
+   * 不换算会让经度方向的余量不够，而这个网络最北到漠河附近。 */
+  const padLat = VIEW_PAD_KM / 111;
+  const padLon =
+    VIEW_PAD_KM / (111 * Math.max(0.2, Math.cos((cLat * Math.PI) / 180)));
+
   return pins
     .filter(
       (p) =>
-        p.lat >= v.south &&
-        p.lat <= v.north &&
-        p.lon >= v.west &&
-        p.lon <= v.east,
+        p.lat >= v.south - padLat &&
+        p.lat <= v.north + padLat &&
+        p.lon >= v.west - padLon &&
+        p.lon <= v.east + padLon,
     )
     .sort(
       (a, b) =>

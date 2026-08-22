@@ -122,6 +122,104 @@ describe("画哪一份", () => {
   });
 });
 
+describe("跑道号写在两头", () => {
+  const endsOf = (name: string, points: [number, number][]) => {
+    const d = toGroundDrawing([
+      ground({
+        features: [{ kind: "runway", source: "sector", name, points }],
+      }),
+    ]);
+    return d.collection.features
+      .filter((f) => f.properties?.kind === "runway_end")
+      .map((f) => ({
+        name: f.properties?.name as string,
+        lat: (f.geometry as { coordinates: number[] }).coordinates[1],
+        lon: (f.geometry as { coordinates: number[] }).coordinates[0],
+      }));
+  };
+
+  // 一条正南北的跑道：北端在上，南端在下。18 是朝南飞，所以 18 写在**北**端。
+  const northSouth: [number, number][] = [
+    [40.1, 116.0],
+    [40.0, 116.0],
+  ];
+
+  test("一条跑道出两个端点标注", () => {
+    expect(endsOf("18/36", northSouth)).toHaveLength(2);
+  });
+
+  /**
+   * **哪一头写哪个号，反了在图上看不出来。**
+   *
+   * 两个号都在跑道上、位置也对，只是左右调了个个 —— 而一个照着它对跑道的人会滑到
+   * 错误的一头。所以这一条单独钉住。
+   */
+  test("18 在北头，36 在南头", () => {
+    const ends = endsOf("18/36", northSouth);
+    const n = ends.find((e) => e.name === "18");
+    const s = ends.find((e) => e.name === "36");
+    expect(n?.lat).toBeCloseTo(40.1, 3);
+    expect(s?.lat).toBeCloseTo(40.0, 3);
+  });
+
+  test("名字里的顺序反过来也放对", () => {
+    const ends = endsOf("36/18", northSouth);
+    expect(ends.find((e) => e.name === "18")?.lat).toBeCloseTo(40.1, 3);
+    expect(ends.find((e) => e.name === "36")?.lat).toBeCloseTo(40.0, 3);
+  });
+
+  test("带 L/R 后缀的照样认", () => {
+    const ends = endsOf("18L/36R", northSouth);
+    expect(ends.find((e) => e.name === "18L")?.lat).toBeCloseTo(40.1, 3);
+  });
+
+  /**
+   * 库里的跑道要素**不都是中线**：`RCBS 06/24` 有 11 个顶点，那是跑道面的轮廓，首
+   * 尾两点挨在一起。取相距最远的那一对，两种形状都对。
+   */
+  test("跑道面轮廓也能取到真正的两端，不是首尾", () => {
+    // 一个闭合的细长矩形，首尾点相同且都在北端。
+    const outline: [number, number][] = [
+      [40.1, 116.0],
+      [40.1, 116.001],
+      [40.0, 116.001],
+      [40.0, 116.0],
+      [40.1, 116.0],
+    ];
+    const ends = endsOf("18/36", outline);
+    expect(ends).toHaveLength(2);
+    const lats = ends.map((e) => e.lat).sort();
+    expect(lats[0]).toBeCloseTo(40.0, 2);
+    expect(lats[1]).toBeCloseTo(40.1, 2);
+  });
+
+  /** 东西向的跑道：09 朝东飞，所以 09 在**西**头。 */
+  test("东西向跑道也放对", () => {
+    const ew: [number, number][] = [
+      [40.0, 116.0],
+      [40.0, 116.1],
+    ];
+    const ends = endsOf("09/27", ew);
+    expect(ends.find((e) => e.name === "09")?.lon).toBeCloseTo(116.0, 3);
+    expect(ends.find((e) => e.name === "27")?.lon).toBeCloseTo(116.1, 3);
+  });
+
+  /**
+   * 拆不出两个代号就一个都不出。**宁可不标** —— 猜一个号写在跑道上比不写危险得多。
+   * 库里这一类有四条：`11`、`35`（只写了一头）、`RJTJ`（把 ICAO 当名字）。
+   */
+  test("认不出的名字不出标注", () => {
+    expect(endsOf("11", northSouth)).toHaveLength(0);
+    expect(endsOf("RJTJ", northSouth)).toHaveLength(0);
+    expect(endsOf("", northSouth)).toHaveLength(0);
+  });
+
+  /** `ZGUH` 用的是 `16-34`，短横也要认。 */
+  test("短横分隔的也认", () => {
+    expect(endsOf("16-34", northSouth)).toHaveLength(2);
+  });
+});
+
 describe("代号", () => {
   const nameOf = (kind: string, name?: string) => {
     const d = toGroundDrawing([
