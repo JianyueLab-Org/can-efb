@@ -79,6 +79,7 @@ import { boundaryCodesFor, ownsAirspace } from "@/lib/atc";
 import { altitudeBand, flightLevel, isOnGround } from "@/lib/traffic";
 import type { FeatureCollection } from "geojson";
 import { api } from "@/lib/canApi";
+import { unwrapList } from "@/lib/aip";
 
 const props = defineProps<{
   /** 地图角上的说明，已翻译。 */
@@ -997,11 +998,26 @@ async function loadPlanRoute() {
     arrival,
     route: route ?? "",
   });
-  const expanded = await api<{ points: MapPoint[] }>(`/api/v1/route?${params}`);
-  if (!expanded.ok || panelPublished) return;
-  if (!expanded.data.points?.length) return;
 
-  points.value = expanded.data.points;
+  /* **走 can-db 的 `/aip/resolve`，不走 can-api 的 `/api/v1/route`。**
+   *
+   * 两条都做展开，而 can-api 那条还不要 `aipAccess`，看着更宽 —— 但它读的是**全
+   * 球** navdata，消歧只有「离上一个点最近的同名点」一条规则，而那是**链式的**：
+   * 前一个解错，后一个的「最近」就从错的位置起算。实际见过一条浙江境内的航路因此
+   * 一路走到俄罗斯（`FK` 这个代号全球有好几个，浙江那个在 28.6N/121.5E）。
+   *
+   * can-db 这一份的点表只覆盖本网络 12 个情报区，**压根没有别处那个同名点**，所
+   * 以这不是加一道启发式闸去猜哪个点不合理，而是从来就没有可猜的余地。
+   *
+   * 它要 `aipAccess >= 1`，但这张图上**每一个航行图层本来就都要**（航路、导航
+   * 台、空域、MORA、地面全走 can-db）—— 拿不到的成员看到的本来就是一张空底图，
+   * 所以这里不多挡任何人。 */
+  const response = await fetch(`/api/db/aip/resolve?${params}`);
+  if (!response.ok || panelPublished) return;
+  const resolved = unwrapList<MapPoint>(await response.json());
+  if (!resolved.length) return;
+
+  points.value = resolved;
   label.value = props.t.planOnMap
     .replace("{from}", departure)
     .replace("{to}", arrival);
