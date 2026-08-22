@@ -1719,18 +1719,36 @@ onMounted(() => {
                * z6（一度约 91px）恢复成正常的航图线宽。 */
               /* 淡入曲线跟着 minzoom 挪到 6 起 —— 原来是 3 起，而 3–6 那一段现在
                * 根本不画，留着就是一段死表达式，下一个人会以为它还在生效。 */
+              /* **`interpolate` 必须在最外层，`case` 放进 stop 里。**
+               *
+               * 反过来写（`case` 外、`interpolate` 内）MapLibre 会拒绝整条 paint：
+               *
+               *     Only one zoom-based "step" or "interpolate" subexpression
+               *     may be used in an expression.
+               *
+               * 而拒绝的后果是**整个图层加载失败** —— 航路网一条线都不画，控制台
+               * 里一行错，图上什么也没有。规格里那条限制是「zoom 只能作为顶层
+               * step/interpolate 的输入」，两种写法在 JS 里长得几乎一样，但只有这
+               * 一种是合法的。 */
               "line-width": [
-                "case",
-                ["==", ["get", "onRoute"], 1],
-                ["interpolate", ["linear"], ["zoom"], 6, 2.2, 9, 3.4],
-                ["interpolate", ["linear"], ["zoom"], 6, 0.5, 9, 1.1],
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                6,
+                ["case", ["==", ["get", "onRoute"], 1], 2.2, 0.5],
+                9,
+                ["case", ["==", ["get", "onRoute"], 1], 3.4, 1.1],
               ] as never,
               // 高亮的段不跟着淡入：它是你正在看的东西，不是背景参考。
+              // 同上：zoom 在外层，case 在 stop 里。
               "line-opacity": [
-                "case",
-                ["==", ["get", "onRoute"], 1],
-                1,
-                ["interpolate", ["linear"], ["zoom"], 6, 0.45, 9, 0.85],
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                6,
+                ["case", ["==", ["get", "onRoute"], 1], 1, 0.45],
+                9,
+                ["case", ["==", ["get", "onRoute"], 1], 1, 0.85],
               ] as never,
             },
           },
