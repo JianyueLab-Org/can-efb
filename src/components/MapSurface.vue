@@ -2,21 +2,29 @@
 /**
  * 常驻的显示面。轨在最左，中间是当前菜单项的面板，这一块占住右边。
  *
- * **它和 `RouteMap.vue` 不是一回事。** RouteMap 是画图的那一层（Leaflet、底图、
- * 大圆弧、主题跟随）；这一层负责订阅面板发来的点、在没有点的时候把「为什么还
- * 没东西」说出来，以及守住 Leaflet 那条唯一不能松的规矩。
+ * **它和 `RouteMap.vue` 不是一回事。** RouteMap 是画图的那一层（MapLibre、底图、
+ * 大圆弧、主题跟随）；这一层负责取数据、管图层开关、订阅面板发来的点，以及守住
+ * 那条唯一不能松的规矩（见最后一段）。
  *
- * **底图始终在。** 第一版不是这样：没有航路时整块地图被一段文字替掉，理由是
- * 「一张画不出东西的空地图会被当成坏掉的地图」。那个理由站不住 —— 底图本身是
- * 真实的地理数据，不是编出来的占位数字，显示它并不违反那条不填假数据的规矩；
- * 而把整块显示面换成一段文字，恰恰破坏了这一版外壳的前提（右边就是地图）。所
- * 以现在改成：底图永远画，说明缩成压在角上的一个小提示。
+ * **底图始终在，而且不再解释自己。** 这块地方经历过两版：
  *
- * 代价写在这里，别当它不存在：**Leaflet 那 152 KB 现在每一页都要加载**，不再是
- * 「解出航路才下载」。这是为「地图是主体」付的钱。如果哪天要把它省回来，正确的
- * 做法是让不可能画出东西的页面根本不渲染这一列，而不是把底图换成文字。
+ * 第一版没有航路时把整块地图换成一段文字，理由是「一张画不出东西的空地图会被当成
+ * 坏掉的地图」。那条被推翻了 —— 底图本身是真实的地理数据，不是编出来的占位数字，
+ * 而把整块显示面换成文字恰恰破坏了这一版外壳的前提（右边就是地图）。
  *
- * 仍然不能松的那一条：**绝不服务端渲染 Leaflet。** 它在模块顶层就摸 `window`。
+ * 第二版把那段话缩成压在右上角的一个小提示。**那块提示现在也删了**：它的文案说
+ * 「这个网络今天只有航路一个地理数据源」，而地图上早就有航路、航路点、导航台、空
+ * 域、Grid MORA、情报区边界、在线机组和在线管制 —— 一句已经变成假话的说明，比没
+ * 有说明更糟。
+ *
+ * 真正需要解释的那几种情形各自有自己的话，而且说得准：图层取回来是空的、没有
+ * `aipAccess`、地图整个起不来（分别见 `notice` 和 RouteMap 的 `failure`）。
+ *
+ * 代价写在这里，别当它不存在：**MapLibre 那个 chunk 现在每一页都要加载**，不再是
+ * 「解出航路才下载」。这是为「地图是主体」付的钱。如果哪天要把它省回来，正确的做
+ * 法是让不可能画出东西的页面根本不渲染这一列，而不是把底图换成文字。
+ *
+ * 仍然不能松的那一条：**绝不服务端渲染 MapLibre。** 它在模块顶层就摸 `window`。
  * 所以这里用 `defineAsyncComponent` 引 RouteMap，并且用 `mounted` 守住 —— 改成
  * 静态 import、或者去掉 `v-if`，每一个页面都会 500（不再只是 `/route`，因为这
  * 块地图现在挂在外壳上）。
@@ -66,10 +74,6 @@ import type { FeatureCollection } from "geojson";
 const props = defineProps<{
   /** 地图角上的说明，已翻译。 */
   label: string;
-  /** 没东西可画时那条提示的标题，已翻译。 */
-  emptyTitle: string;
-  /** 没东西可画时那条提示的正文，已翻译。 */
-  emptyBody: string;
   /** 航路图层开关的三个文案（关 / 高空 / 低空），已翻译。 */
   airwayLabels: { off: string; high: string; low: string };
   /**
@@ -259,11 +263,6 @@ const points = ref<MapPoint[]>([]);
 const markers = ref<MapPoint[]>([]);
 const focus = ref<MapPoint | null>(null);
 const label = ref(props.label);
-
-/** 有任何一种可画的东西，就不该再显示那条「还没有东西」的提示。 */
-const hasPoints = computed(
-  () => points.value.length > 0 || markers.value.length > 0,
-);
 
 /**
  * 航路图层：关 / 高空 / 低空。
@@ -1043,10 +1042,5 @@ onBeforeUnmount(() => {
       <span aria-hidden="true">✈</span>
       <span class="font-mono">{{ ownAt.callsign }}</span>
     </button>
-
-    <div v-if="!hasPoints" class="map-hint card">
-      <p class="font-medium text-ink">{{ emptyTitle }}</p>
-      <p class="mt-1 text-muted">{{ emptyBody }}</p>
-    </div>
   </section>
 </template>
