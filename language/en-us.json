@@ -31,9 +31,7 @@
       "dashboard": "Overview",
       "flightplan": "Flight plan",
       "route": "Route",
-      "charts": "Charts",
       "airports": "Airports",
-      "weather": "Weather",
       "settings": "Settings"
     },
     "links": {
@@ -55,17 +53,9 @@
         "title": "Route",
         "description": "Route planning and validation."
       },
-      "charts": {
-        "title": "Charts",
-        "description": "Airport diagrams, SIDs, STARs and approaches."
-      },
       "airports": {
         "title": "Airports",
         "description": "Runways, frequencies, taxiways and stands."
-      },
-      "weather": {
-        "title": "Weather",
-        "description": "METAR, TAF and significant weather."
       },
       "settings": {
         "title": "Settings",
@@ -75,9 +65,7 @@
     "placeholder": {
       "title": "Nothing here yet",
       "body": "The frame lands first: shell, navigation, theme and languages are in place. The content waits on can-api being wired up.",
-      "reasons": {
-        "charts": "Charts are copyrighted data and nothing on the network serves them today. This page waits on a source — licensed or our own."
-      }
+      "reasons": {}
     },
     "common": {
       "loading": "Loading…",
@@ -159,15 +147,6 @@
           "arrival": "arrival"
         }
       }
-    },
-    "weather": {
-      "placeholder": "ICAO code",
-      "addLabel": "Add an airport",
-      "add": "Add",
-      "remove": "Remove",
-      "empty": "No airports yet. Enter a four-letter ICAO code to start.",
-      "noReport": "No METAR is available for this station.",
-      "invalidIcao": "Needs a four-letter ICAO code."
     },
     "route": {
       "departure": "Departure",

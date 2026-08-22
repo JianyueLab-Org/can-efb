@@ -31,9 +31,7 @@
       "dashboard": "概要",
       "flightplan": "フライトプラン",
       "route": "ルート",
-      "charts": "チャート",
       "airports": "空港",
-      "weather": "気象",
       "settings": "設定"
     },
     "links": {
@@ -55,17 +53,9 @@
         "title": "ルート",
         "description": "ルートの計画と検証。"
       },
-      "charts": {
-        "title": "チャート",
-        "description": "空港図、SID、STAR、進入方式。"
-      },
       "airports": {
         "title": "空港",
         "description": "滑走路、周波数、誘導路、スポット。"
-      },
-      "weather": {
-        "title": "気象",
-        "description": "METAR、TAF、悪天情報。"
       },
       "settings": {
         "title": "設定",
@@ -75,9 +65,7 @@
     "placeholder": {
       "title": "このページはまだ空です",
       "body": "先に組み上げたのは枠組みです — シェル、ナビゲーション、テーマ、多言語。中身は can-api に接続してから入ります。",
-      "reasons": {
-        "charts": "チャートは著作権のあるデータで、ネットワーク内のどこも提供していません。ライセンスか自作の図源が用意できてからのページです。"
-      }
+      "reasons": {}
     },
     "common": {
       "loading": "読み込み中…",
@@ -159,15 +147,6 @@
           "arrival": "到着空港"
         }
       }
-    },
-    "weather": {
-      "placeholder": "ICAO コード",
-      "addLabel": "空港を追加",
-      "add": "追加",
-      "remove": "削除",
-      "empty": "空港がまだありません。4 文字の ICAO コードを入力してください。",
-      "noReport": "この空港の METAR はありません。",
-      "invalidIcao": "4 文字の ICAO コードが必要です。"
     },
     "route": {
       "departure": "出発空港",
