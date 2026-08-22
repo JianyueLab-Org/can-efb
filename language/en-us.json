@@ -269,10 +269,6 @@
       }
     },
     "map": {
-      "empty": {
-        "title": "Nothing on the map yet",
-        "body": "Resolve a route and it will be drawn here. Routes are the only geographic data this network has today — weather is raw METAR text, live traffic lives on the radar site, and charts are licensed data."
-      },
       "emptyLayer": {
         "airways": "The aeronautical database has no segments at this level. Until the data is re-imported the upper network is empty — switch to low to see the full route network.",
         "navaids": "The aeronautical database has no navaid data.",
