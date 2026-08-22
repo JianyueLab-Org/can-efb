@@ -122,6 +122,65 @@ describe("画哪一份", () => {
   });
 });
 
+describe("代号", () => {
+  const nameOf = (kind: string, name?: string) => {
+    const d = toGroundDrawing([
+      ground({
+        features: [
+          {
+            kind,
+            source: "sector",
+            name,
+            points: [
+              [40, 116],
+              [40.1, 116],
+            ],
+          },
+        ],
+      }),
+    ]);
+    return d.collection.features[0].properties?.name;
+  };
+
+  /** 有代号就带出去 —— 标注层靠这个字段渲染跑道号、滑行道代号和机位号。 */
+  test("代号原样带到要素属性上", () => {
+    expect(nameOf("taxiway", "W9")).toBe("W9");
+    expect(nameOf("runway", "18L/36R")).toBe("18L/36R");
+    expect(nameOf("parking_position", "N103")).toBe("N103");
+  });
+
+  /**
+   * 没代号的要素给空串，**不是省略**。
+   *
+   * 标注层的过滤是 `has(name)` 加 `name != ""`：两条都要。库里多数要素本来就没有
+   * 代号（滑行道 26421 条里 6927 条有），空串让它们被第二条挡掉；而航图线画那一份
+   * 一个 `name` 字段都没有，被第一条整份挡掉 —— 少了 `has` 那一条，`get("name")`
+   * 对它求值是 null，而 `!= ""` 对 null 成立，满图会是空标签占着避让位。
+   */
+  test("没代号的给空串", () => {
+    expect(nameOf("taxiway")).toBe("");
+  });
+
+  test("航图线画根本没有 name 这个字段", () => {
+    const d = toGroundDrawing([
+      ground({
+        lines: [
+          {
+            rgb: "#4d4d4d",
+            widthM: 2,
+            points: [
+              [40, 116],
+              [40.1, 116],
+            ],
+          },
+        ],
+        accuracyM: 20,
+      }),
+    ]);
+    expect(d.collection.features[0].properties).not.toHaveProperty("name");
+  });
+});
+
 describe("线宽", () => {
   const widthOf = (kind: string, widthM?: number) => {
     const d = toGroundDrawing([
