@@ -71,6 +71,70 @@ export async function fetchAirways(level: AirwayLevel): Promise<AirwayGraph> {
  * 端点查不到坐标的航段**直接丢掉**，不画半条：`fixes` 是这张图自己的点集，查不
  * 到意味着数据不一致，而画一条从已知点通向 `[0,0]` 的线，比不画糟得多。
  */
+/**
+ * 一条航段的键，**和方向无关**。
+ *
+ * 航段在库里存成哪个朝向是导入时那一段碰巧的存法，而一条计划可能反着飞过去 ——
+ * 认朝向的话，反着飞的那半条航路就点不亮，而**图上看不出来**：线还在，只是没高亮。
+ * can-db 的航路限制匹配踩过同一个坑，那边的结论也是不看朝向。
+ */
+export function legKey(airway: string, a: string, b: string): string {
+  return a < b ? `${airway}|${a}|${b}` : `${airway}|${b}|${a}`;
+}
+
+/**
+ * 把一条已解析的航路变成航段键的集合。
+ *
+ * `via` 是**走这条腿用的航路代号**，属于到达的那个点。没有 `via`、或者它是 `DCT`，
+ * 就说明这条腿不在任何航路上 —— 那种腿没有可点亮的东西，得自己画线。
+ */
+export function routeLegKeys(
+  points: { ident: string; via?: string }[],
+): Set<string> {
+  const out = new Set<string>();
+  for (let i = 1; i < points.length; i++) {
+    const via = points[i].via;
+    if (!via || via === "DCT") continue;
+    out.add(legKey(via, points[i - 1].ident, points[i].ident));
+  }
+  return out;
+}
+
+/**
+ * 在航路网上把计划走过的那几段**标出来**，返回真正标到的那些键。
+ *
+ * ## 为什么要返回「真正标到的」
+ *
+ * 不是每条腿都点得亮：航路图层可能关着，某个航段可能因为高低空过滤不在这份集合
+ * 里，端点也可能解析不出坐标而被丢掉。调用方要拿这个结果去决定**哪几条腿仍然得自
+ * 己画线** —— 假设「有 via 就一定被点亮了」的话，那些没点上的腿会从图上消失，而航
+ * 路断在中间是看不出来的：剩下的线本身都对。
+ *
+ * ## 每次都重写 `onRoute`
+ *
+ * 航路集合是按 level 缓存的（`airwayCache`），同一份对象会被反复使用。只加不清的
+ * 话，上一条计划的高亮会留在上面 —— 换一条航路，图上会同时亮着两条。
+ */
+export function markRouteOnAirways(
+  collection: FeatureCollection,
+  legs: Set<string>,
+): Set<string> {
+  const marked = new Set<string>();
+  for (const f of collection.features) {
+    const props = f.properties ?? {};
+    const key = legKey(
+      String(props.airway ?? ""),
+      String(props.from ?? ""),
+      String(props.to ?? ""),
+    );
+    const on = legs.has(key);
+    props.onRoute = on ? 1 : 0;
+    f.properties = props;
+    if (on) marked.add(key);
+  }
+  return marked;
+}
+
 export function toAirwayLines(graph: AirwayGraph): FeatureCollection {
   const features: Feature[] = [];
   let dropped = 0;
@@ -89,6 +153,11 @@ export function toAirwayLines(graph: AirwayGraph): FeatureCollection {
         airway: seg.airway,
         locType: meta?.locType ?? "",
         minAlt: seg.minAlt ?? 0,
+        /* 两端代号带上，`markRouteOnAirways` 靠它算键。**属性里没有它就点不亮** ——
+         * 而那不会报错，只会让高亮一条都不出现。 */
+        from: seg.from,
+        to: seg.to,
+        onRoute: 0,
       },
       geometry: {
         type: "LineString",
