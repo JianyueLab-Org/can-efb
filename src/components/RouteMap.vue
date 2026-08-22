@@ -270,6 +270,11 @@ const props = defineProps<{
  * 上给 `/_astro/*` 加一条 Cache Rule，那是控制台里的事，不在这个仓库里。
  */
 import LAND_URL from "@/basemap/land-50m.json?url";
+/* 细一档的陆地和国界，**放大之后才拉**（见 loadDetail）。由
+ * `scripts/build-basemap.mjs` 从 Natural Earth 1:10m 生成，裁到本网络覆盖的那一
+ * 块并取整到四位小数 —— 全球那份是 15 MB，而缩到最小时那些细节一个像素都看不出。 */
+import LAND_DETAIL_URL from "@/basemap/land-10m.json?url";
+import BORDERS_URL from "@/basemap/borders-10m.json?url";
 
 /**
  * 两套配色。深色那套按航路图来：**陆地纯黑、海洋深蓝**，线条压到刚好看得见。
@@ -282,6 +287,9 @@ const PALETTE = {
     land: "#000000",
     landLine: "#1b2836",
     grid: "#1e2a38",
+    /* 国界。比海岸线暗一档、而且画成虚线 —— 政治边界在航图上从来不是主角，它只
+     * 负责回答「这是哪个国家」。实线会和海岸线抢，而两者常常挨着走。 */
+    border: "#2b3a4a",
     /* 生成出来的航路。**必须比航路网亮一个量级**：以前它是 #7ab8e0，而航路网
      * 的高空色是 #6fa8cc —— 同一个色系、亮度也接近，只有一倍宽度差，压在八千段
      * 网上根本认不出哪条是自己刚算出来的那条。
@@ -343,6 +351,7 @@ const PALETTE = {
     land: "#f4f5f3",
     landLine: "#c8d2d8",
     grid: "#cbd5db",
+    border: "#b3bfc7",
     route: "#0b5f96",
     routeCasing: "#ffffff",
     marker: "#1d4e70",
@@ -531,6 +540,8 @@ function updateCorners() {
  */
 function emitViewport() {
   if (!map) return;
+  // 视野一变就看看够不够格拉细节。它自己会挡住重复调用。
+  void loadDetail();
   const b = map.getBounds();
   emit("viewport", {
     south: b.getSouth(),
@@ -767,6 +778,9 @@ function applyPalette() {
   map.setPaintProperty("land", "fill-color", c.land);
   map.setPaintProperty("land-outline", "line-color", c.landLine);
   map.setPaintProperty("grid", "line-color", c.grid);
+  map.setPaintProperty("land-detail", "fill-color", c.land);
+  map.setPaintProperty("land-detail-outline", "line-color", c.landLine);
+  map.setPaintProperty("borders", "line-color", c.border);
   map.setPaintProperty("airways", "line-color", airwayColor(c) as never);
   for (const id of ["airway-labels", "airway-fixes"]) {
     map.setPaintProperty(id, "text-color", c.label);
@@ -958,6 +972,46 @@ function render() {
   map.fitBounds(bounds, { padding: 48, maxZoom: 8, duration: 0 });
 }
 
+/**
+ * 细节底图（10m 陆地 + 国界）**只在放大到用得上时才拉**，而且只拉一次。
+ *
+ * 两个文件加起来约 2 MB。开图那个视野（z3，全国）上它们一个像素都体现不出来 ——
+ * 在那儿拉等于让每一次首屏都为看不见的东西付两兆。
+ *
+ * 门槛 4：国界从 z4 开始画，陆地细节 z5。**按最早需要的那一层定**，否则会出现「层
+ * 该显示了、数据还没到」的一两秒空窗。
+ *
+ * `detailPending` 挡的是并发：`moveend` 会连着触发，没有它第一次放大就会同时飞出
+ * 去好几个一样的请求。失败不写 `detailLoaded`，所以下次移动会再试。
+ */
+let detailLoaded = false;
+let detailPending = false;
+
+async function loadDetail() {
+  if (detailLoaded || detailPending || !map) return;
+  if (map.getZoom() < 4) return;
+  detailPending = true;
+  try {
+    const [land, borders] = await Promise.all([
+      fetch(LAND_DETAIL_URL).then((r) => (r.ok ? r.json() : null)),
+      fetch(BORDERS_URL).then((r) => (r.ok ? r.json() : null)),
+    ]);
+    if (!map) return;
+    if (land) {
+      (map.getSource("landDetail") as GeoJSONSource | undefined)?.setData(land);
+    }
+    if (borders) {
+      (map.getSource("borders") as GeoJSONSource | undefined)?.setData(borders);
+    }
+    if (land && borders) detailLoaded = true;
+  } catch (error) {
+    // 和底图同一条：静默降级成没有细节，但日志里留一行。
+    console.error("[efb] 细节底图加载失败:", error);
+  } finally {
+    detailPending = false;
+  }
+}
+
 async function loadLand() {
   try {
     if (!landCache) {
@@ -1021,6 +1075,14 @@ onMounted(() => {
             data: { type: "FeatureCollection", features: [] },
           },
           grid: { type: "geojson", data: graticule() },
+          landDetail: {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+          },
+          borders: {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+          },
           airways: {
             type: "geojson",
             data: { type: "FeatureCollection", features: [] },
@@ -1094,10 +1156,43 @@ onMounted(() => {
             paint: { "fill-color": c.land },
           },
           {
+            /* 50m 的海岸线。**到 z5 就交棒**给下面那条 10m 的 —— 两条分辨率不同的
+             * 海岸线叠在一起会画出一圈毛边，而那看起来像渲染坏了。 */
             id: "land-outline",
             type: "line",
             source: "land",
+            maxzoom: 5,
             paint: { "line-color": c.landLine, "line-width": 0.6 },
+          },
+          {
+            // 细一档的陆地，盖在 50m 那层上。数据到 z5 才拉，见 loadDetail。
+            id: "land-detail",
+            type: "fill",
+            source: "landDetail",
+            minzoom: 5,
+            paint: { "fill-color": c.land },
+          },
+          {
+            id: "land-detail-outline",
+            type: "line",
+            source: "landDetail",
+            minzoom: 5,
+            paint: { "line-color": c.landLine, "line-width": 0.7 },
+          },
+          {
+            /* 国界。**只有国与国之间那条**，海岸线不在里面（生成时就滤掉了）。
+             *
+             * 虚线：政治边界在航图上不是主角，而它常常和海岸线、和情报区边界挨着
+             * 走 —— 三条实线并排谁也读不出来。 */
+            id: "borders",
+            type: "line",
+            source: "borders",
+            minzoom: 4,
+            paint: {
+              "line-color": c.border,
+              "line-width": 0.8,
+              "line-dasharray": [3, 2] as never,
+            },
           },
           {
             id: "grid",
