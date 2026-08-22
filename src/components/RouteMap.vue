@@ -176,6 +176,13 @@ const props = defineProps<{
    * 那个取舍在 `lib/ground.ts` 里，理由也写在那儿：两份并排画等于把同一条滑行道
    * 画两遍、位置差十几米，读图的人无法判断该信哪条。
    */
+  /**
+   * 全部机场，画成齿轮加 ICAO。
+   *
+   * 和 `markers` 不是一回事：`markers` 是「面板挑出来给你看的那几个」，这一层是
+   * **底图的一部分** —— 缩放到一定程度就该有，不需要谁去点。
+   */
+  airports?: FeatureCollection | null;
   ground?: FeatureCollection | null;
   /**
    * 随数据变化的额外署名，例如 OSM 的 ODbL 那一行。
@@ -530,6 +537,40 @@ function emitViewport() {
 }
 
 /**
+ * 分好类的地面要素按 `kind` 分色。
+ *
+ * 抽成函数是因为样式里和 `applyPalette` 里各要一份 —— 两处写两遍的话，换主题时其
+ * 中一处迟早停在旧配色上，而那是看得见却查不出的那种毛病。
+ */
+function groundFeatureColor(c: ReturnType<typeof palette>): unknown {
+  return [
+    "match",
+    ["get", "kind"],
+    "runway",
+    c.groundRunway,
+    "apron",
+    c.groundApron,
+    "terminal",
+    c.groundApron,
+    "parking_position",
+    c.groundStand,
+    "holding_position",
+    c.groundHold,
+    c.groundTaxiway,
+  ];
+}
+
+function groundPointColor(c: ReturnType<typeof palette>): unknown {
+  return [
+    "match",
+    ["get", "kind"],
+    "holding_position",
+    c.groundHold,
+    c.groundStand,
+  ];
+}
+
+/**
  * 地面线宽：**把真实米数换算成像素**，随缩放走。
  *
  * 这一层从前写的是几乎不变的像素值（z12 是 0.5px、z18 才 1px）—— 线确实画出来了，
@@ -662,6 +703,47 @@ function registerIcons() {
     pixelRatio: 2,
     sdf: true,
   });
+
+  /* 机场：**齿轮**。
+   *
+   * 图上已经有三角形（航路点）、圆套方（VOR/DME）和实心飞机，齿轮和它们没有一处
+   * 轮廓相似 —— 挤在一起时一眼分得开，那是这几个符号唯一要满足的事。
+   *
+   * 按 **SDF** 注册，和飞机一样：这样颜色能跟着主题走。非 SDF 的图标 MapLibre 会
+   * 原样贴上去、`icon-color` 被**静默忽略**，深色底上就是一块白疙瘩。
+   *
+   * 中间那个孔用 `destination-out` 挖掉而不是画一个底色圆 —— 底色圆在深浅两套主题
+   * 下只能对一套。 */
+  const gear = document.createElement("canvas");
+  const gsize = 20;
+  gear.width = gear.height = gsize;
+  const gx = gear.getContext("2d");
+  if (!gx) return;
+  const gc = gsize / 2;
+  const teeth = 8;
+  const rOut = gc - 1;
+  const rIn = rOut * 0.74;
+  gx.fillStyle = "#ffffff";
+  gx.beginPath();
+  for (let i = 0; i < teeth * 2; i++) {
+    const angle = (i / (teeth * 2)) * Math.PI * 2 - Math.PI / 2;
+    const r = i % 2 === 0 ? rOut : rIn;
+    const x = gc + Math.cos(angle) * r;
+    const y = gc + Math.sin(angle) * r;
+    if (i === 0) gx.moveTo(x, y);
+    else gx.lineTo(x, y);
+  }
+  gx.closePath();
+  gx.fill();
+  gx.globalCompositeOperation = "destination-out";
+  gx.beginPath();
+  gx.arc(gc, gc, rOut * 0.36, 0, Math.PI * 2);
+  gx.fill();
+
+  map.addImage("airport-gear", gx.getImageData(0, 0, gsize, gsize), {
+    pixelRatio: 2,
+    sdf: true,
+  });
 }
 
 function applyPalette() {
@@ -687,6 +769,46 @@ function applyPalette() {
   map.setPaintProperty("route-labels", "text-halo-color", c.routeCasing);
   map.setPaintProperty("markers", "circle-color", c.marker);
   map.setPaintProperty("markers", "circle-stroke-color", c.marker);
+
+  /* 机场和地面那几层也要跟着换主题。
+   *
+   * **这一段是补的漏**：地面图层加进来的时候没有登记到这里，于是深浅色一切换它们
+   * 就停在上一套配色里 —— 而那和「这一层没画出来」在浅色主题上长得很像（浅底上一
+   * 条浅灰线基本看不见）。
+   *
+   * 航图线画那一层（`ground-lines`）**不在这里**，而且不该在：它用的是图上的原色
+   * （`["get","rgb"]`），那是数据不是主题。 */
+  map.setPaintProperty("airport-gear", "icon-color", c.marker);
+  map.setPaintProperty("airport-labels", "text-color", c.marker);
+  map.setPaintProperty("airport-labels", "text-halo-color", c.ocean);
+  map.setPaintProperty("ground-runways", "line-color", c.groundRunway);
+  map.setPaintProperty(
+    "ground-features",
+    "line-color",
+    groundFeatureColor(c) as never,
+  );
+  map.setPaintProperty(
+    "ground-points",
+    "circle-color",
+    groundPointColor(c) as never,
+  );
+  for (const id of [
+    "ground-labels-way",
+    "ground-labels-area",
+    "ground-labels-runway",
+    "ground-labels-spot",
+  ]) {
+    map.setPaintProperty(
+      id,
+      "text-color",
+      id === "ground-labels-runway"
+        ? c.groundRunway
+        : id === "ground-labels-spot"
+          ? c.groundStand
+          : c.label,
+    );
+    map.setPaintProperty(id, "text-halo-color", c.ocean);
+  }
 
   // 实时那三层也要跟着换主题，否则深浅色一切换它们就留在上一套配色里。
   //
@@ -739,6 +861,9 @@ function render() {
       ...markers,
       ...points.map((p) => ({ ...p, onRoute: true })),
     ]),
+  );
+  (map.getSource("airports") as GeoJSONSource | undefined)?.setData(
+    props.airports ?? { type: "FeatureCollection", features: [] },
   );
   (map.getSource("ground") as GeoJSONSource | undefined)?.setData(
     props.ground ?? { type: "FeatureCollection", features: [] },
@@ -890,6 +1015,10 @@ onMounted(() => {
             type: "geojson",
             data: { type: "FeatureCollection", features: [] },
           },
+          airports: {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+          },
           airwayFixes: {
             type: "geojson",
             data: { type: "FeatureCollection", features: [] },
@@ -974,7 +1103,7 @@ onMounted(() => {
             id: "ground-lines",
             type: "line",
             source: "ground",
-            minzoom: GROUND_MIN_ZOOM,
+            minzoom: GROUND_MIN_ZOOM + 1,
             paint: {
               "line-color": [
                 "coalesce",
@@ -986,6 +1115,27 @@ onMounted(() => {
             },
           },
           {
+            /* 跑道，**地面里最先出现的那一层**。
+             *
+             * 缩放阶梯：情报区 → 机场齿轮 → 航路 → **跑道** → 其余地面 → 代号。
+             * 到了看得清跑道形状的尺度，跑道本身就是那张图的骨架；滑行道和机坪再
+             * 早一级只会把它埋掉。 */
+            id: "ground-runways",
+            type: "line",
+            source: "ground",
+            minzoom: GROUND_MIN_ZOOM,
+            filter: [
+              "all",
+              ["!", ["has", "rgb"]],
+              ["==", ["get", "kind"], "runway"],
+            ] as never,
+            paint: {
+              "line-color": c.groundRunway,
+              "line-width": groundWidth(45),
+              "line-opacity": 0.95,
+            },
+          },
+          {
             /* 机场地面 —— **分好类**的那份（扇区包手工做的或 OSM）。
              *
              * 按 `kind` 分色。跑道最亮：放到这个尺度上，读图的人找的就是它。
@@ -994,24 +1144,17 @@ onMounted(() => {
             id: "ground-features",
             type: "line",
             source: "ground",
-            minzoom: GROUND_MIN_ZOOM,
-            filter: ["!", ["has", "rgb"]] as never,
+            /* **跑道不在这一层**，它在 `ground-runways`、早一级出现 —— 缩放阶梯上
+             * 「机场跑道」排在「机场地面」前面。一个图层只有一个 minzoom，所以这是
+             * 两层。 */
+            minzoom: GROUND_MIN_ZOOM + 1,
+            filter: [
+              "all",
+              ["!", ["has", "rgb"]],
+              ["!=", ["get", "kind"], "runway"],
+            ] as never,
             paint: {
-              "line-color": [
-                "match",
-                ["get", "kind"],
-                "runway",
-                c.groundRunway,
-                "apron",
-                c.groundApron,
-                "terminal",
-                c.groundApron,
-                "parking_position",
-                c.groundStand,
-                "holding_position",
-                c.groundHold,
-                c.groundTaxiway,
-              ] as never,
+              "line-color": groundFeatureColor(c) as never,
               "line-width": groundWidth(23),
               "line-opacity": 0.9,
             },
@@ -1032,7 +1175,7 @@ onMounted(() => {
             id: "ground-labels-way",
             type: "symbol",
             source: "ground",
-            minzoom: GROUND_MIN_ZOOM + 1,
+            minzoom: GROUND_MIN_ZOOM + 2,
             filter: [
               "all",
               ["has", "name"],
@@ -1098,7 +1241,7 @@ onMounted(() => {
             id: "ground-labels-area",
             type: "symbol",
             source: "ground",
-            minzoom: GROUND_MIN_ZOOM + 1,
+            minzoom: GROUND_MIN_ZOOM + 2,
             filter: [
               "all",
               ["has", "name"],
@@ -1131,7 +1274,7 @@ onMounted(() => {
             id: "ground-labels-spot",
             type: "symbol",
             source: "ground",
-            minzoom: GROUND_MIN_ZOOM + 3,
+            minzoom: GROUND_MIN_ZOOM + 4,
             filter: [
               "all",
               ["has", "name"],
@@ -1166,7 +1309,7 @@ onMounted(() => {
             id: "ground-points",
             type: "circle",
             source: "ground",
-            minzoom: GROUND_MIN_ZOOM + 1,
+            minzoom: GROUND_MIN_ZOOM + 2,
             filter: ["==", ["geometry-type"], "Point"] as never,
             paint: {
               "circle-radius": [
@@ -1178,13 +1321,7 @@ onMounted(() => {
                 17,
                 4,
               ] as never,
-              "circle-color": [
-                "match",
-                ["get", "kind"],
-                "holding_position",
-                c.groundHold,
-                c.groundStand,
-              ] as never,
+              "circle-color": groundPointColor(c) as never,
               "circle-opacity": 0.9,
             },
           },
@@ -1297,8 +1434,64 @@ onMounted(() => {
             },
           },
           {
+            /* 机场：齿轮加 ICAO。
+             *
+             * **缩放阶梯上它排在情报区之后、航路之前**（见 ZOOM 那段注释）：把地图
+             * 缩到最小时只剩情报区，再放一级才是「这一片有哪些机场」—— 那是从大往
+             * 小看时第一个有用的问题，而航路网在那个尺度上只是一团灰雾。
+             *
+             * 齿轮和文字分两层：z5 先出符号，z6 才出代号。四百多个机场的代号在 z5
+             * 上根本排不下，而「这儿有个机场」本身已经是信息。 */
+            id: "airport-gear",
+            type: "symbol",
+            source: "airports",
+            minzoom: 5,
+            layout: {
+              "icon-image": "airport-gear",
+              "icon-size": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                5,
+                0.32,
+                10,
+                0.55,
+              ] as never,
+              "icon-allow-overlap": true,
+            },
+            paint: { "icon-color": c.marker as never },
+          },
+          {
+            id: "airport-labels",
+            type: "symbol",
+            source: "airports",
+            minzoom: 6,
+            layout: {
+              "text-field": ["get", "icao"] as never,
+              "text-font": ["Noto Sans Regular"],
+              "text-size": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                6,
+                9,
+                11,
+                12,
+              ] as never,
+              "text-offset": [0, 1.1],
+              "text-anchor": "top",
+              "text-letter-spacing": 0.05,
+            },
+            paint: {
+              "text-color": c.marker,
+              "text-halo-color": c.ocean,
+              "text-halo-width": 1.4,
+            },
+          },
+          {
             // 航路网压在计划航路**之下**：它是背景参考，不该盖住你正在看的那条。
             id: "airways",
+            minzoom: 6,
             type: "line",
             source: "airways",
             paint: {
@@ -1312,14 +1505,14 @@ onMounted(() => {
                * 但也不该在低缩放直接藏掉：「这一带有航路网」本身就是信息，而且
                * 藏了之后放大时会突然长出一张网。所以让它淡下去而不是消失，到
                * z6（一度约 91px）恢复成正常的航图线宽。 */
+              /* 淡入曲线跟着 minzoom 挪到 6 起 —— 原来是 3 起，而 3–6 那一段现在
+               * 根本不画，留着就是一段死表达式，下一个人会以为它还在生效。 */
               "line-width": [
                 "interpolate",
                 ["linear"],
                 ["zoom"],
-                3,
-                0.4,
                 6,
-                0.7,
+                0.5,
                 9,
                 1.1,
               ] as never,
@@ -1327,10 +1520,10 @@ onMounted(() => {
                 "interpolate",
                 ["linear"],
                 ["zoom"],
-                3,
-                0.35,
                 6,
-                0.8,
+                0.45,
+                9,
+                0.85,
               ] as never,
             },
           },
@@ -1341,7 +1534,7 @@ onMounted(() => {
             id: "airway-labels",
             type: "symbol",
             source: "airways",
-            minzoom: 5,
+            minzoom: 8,
             layout: {
               "symbol-placement": "line",
               "text-field": ["get", "airway"],
@@ -1370,7 +1563,7 @@ onMounted(() => {
             id: "airway-fixes",
             type: "symbol",
             source: "airwayFixes",
-            minzoom: 5,
+            minzoom: 8,
             layout: {
               "icon-image": "fix-triangle",
               "icon-size": 1,
@@ -1940,6 +2133,7 @@ watch(
     props.airways,
     props.airwayFixes,
     props.ground,
+    props.airports,
     props.navaids,
     props.firs,
     props.mora,

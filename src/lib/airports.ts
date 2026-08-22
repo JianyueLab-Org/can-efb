@@ -9,6 +9,8 @@
  * 内存里，一次刷新自然重来。反代那一层已经给了十分钟的 `private` 缓存，整页刷新
  * 的代价本来就不高。
  */
+import type { FeatureCollection } from "geojson";
+
 export interface AirportPin {
   icao: string;
   name: string | null;
@@ -80,6 +82,24 @@ export async function fetchAirportPins(): Promise<AirportPin[]> {
  * **取数的上限**：更远的机场不会被拉进来，所以放大之后不会反而多下载。
  */
 const VIEW_PAD_KM = 15;
+
+/**
+ * 机场索引 → 地图上的齿轮点。
+ *
+ * **整份都给，不按视野裁。** 433 个点对 MapLibre 是小数目，而按视野裁意味着每次
+ * 平移都要重算一遍 GeoJSON 并 `setData` —— 那比让它一直画着贵得多。出不出现由图层
+ * 的 `minzoom` 管，那是渲染的事。
+ */
+export function toAirportPoints(pins: AirportPin[]): FeatureCollection {
+  return {
+    type: "FeatureCollection",
+    features: pins.map((p) => ({
+      type: "Feature",
+      geometry: { type: "Point", coordinates: [p.lon, p.lat] },
+      properties: { icao: p.icao, name: p.name ?? "" },
+    })),
+  };
+}
 
 /**
  * 视野里的机场，按离视野中心由近及远。

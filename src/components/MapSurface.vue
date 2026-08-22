@@ -65,7 +65,11 @@ import {
   GROUND_MAX_AIRPORTS,
   type Ground,
 } from "@/lib/ground";
-import { fetchAirportPins, airportsInView } from "@/lib/airports";
+import {
+  fetchAirportPins,
+  airportsInView,
+  toAirportPoints,
+} from "@/lib/airports";
 import {
   fetchDatafeed,
   onlineControllers,
@@ -400,6 +404,13 @@ const mora = ref<FeatureCollection | null>(null);
  *   - `groundAccuracyM` 只在画**航图线画**那份时有值。那一份位置只能信到 5–20
  *     米；分好类的那份是米级的，给它标精度反而误导。
  */
+/**
+ * 全部机场的齿轮点。**没有开关，也不按视野裁** —— 见 lib/airports.ts。
+ *
+ * 缩放阶梯上它排在情报区之后、航路之前：缩到最小只剩情报区，放一级先看到「这一片
+ * 有哪些机场」。出不出现由图层的 minzoom 管，这里只负责把点备好。
+ */
+const airports = ref<FeatureCollection | null>(null);
 const ground = ref<FeatureCollection | null>(null);
 const groundAttribution = ref<string[]>([]);
 const groundAccuracyM = ref(0);
@@ -1053,6 +1064,12 @@ onMounted(() => {
   // 计划那条线不 await：地图不该等它回来才出现，和航路网是同一条道理。
   void loadPlanRoute();
 
+  /* 机场齿轮。和地面用的是同一份索引（`fetchAirportPins` 整趟会话只取一次），所以
+     这一层不额外花一次请求。取不到就没有齿轮 —— 和别的图层一样安静降级。 */
+  void fetchAirportPins().then((pins) => {
+    if (pins.length) airports.value = toAirportPoints(pins);
+  });
+
   unsubscribe = subscribeToMap((payload) => {
     panelPublished = true;
     points.value = payload.points ?? [];
@@ -1087,6 +1104,7 @@ onBeforeUnmount(() => {
       :focus="focus"
       :airways="airways"
       :airway-fixes="airwayFixes"
+      :airports="airports"
       :ground="ground"
       :extra-attribution="groundAttribution"
       :navaids="navaids"
