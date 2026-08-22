@@ -1017,6 +1017,123 @@ onMounted(() => {
             },
           },
           {
+            /* 滑行道和跑道的**代号**，贴着线走。
+             *
+             * `symbol-placement: "line"` 让它跟随走向，MapLibre 的标签避让会自动
+             * 把挤在一起的那些藏掉 —— 和航路代号那一层同一个做法。
+             *
+             * **只标有名字的。** 手工那份 30710 条要素里 6820 条带代号，OSM 那份
+             * 5271 条带 `ref`；其余是真的没有名字，不是这里漏了。而航图线画那一份
+             * **一个名字都没有**（它只有颜色和线宽），所以 `has` 那一条同时把它整
+             * 份挡在外面 —— 不加的话 `["get","name"]` 对它求值是 null，而
+             * `!= ""` 对 null 成立，于是满图都是空标签占着避让位。
+             *
+             * z13 才出：z12 刚够看出跑道形状，这时候铺一层代号只会盖住几何本身。 */
+            id: "ground-labels-way",
+            type: "symbol",
+            source: "ground",
+            minzoom: GROUND_MIN_ZOOM + 1,
+            filter: [
+              "all",
+              ["has", "name"],
+              ["!=", ["get", "name"], ""],
+              ["match", ["get", "kind"], ["taxiway", "runway"], true, false],
+            ] as never,
+            layout: {
+              "symbol-placement": "line",
+              "text-field": ["get", "name"] as never,
+              "text-font": ["Noto Sans Regular"],
+              /* 跑道号比滑行道大一档：放到这个尺度上，读图的人先找的是跑道。 */
+              "text-size": [
+                "case",
+                ["==", ["get", "kind"], "runway"],
+                12,
+                10,
+              ] as never,
+              "text-letter-spacing": 0.05,
+              // 滑行道很长，一条上重复几次才不用为了看代号来回平移。
+              "symbol-spacing": 220,
+            },
+            paint: {
+              "text-color": c.label,
+              // 描边不是装饰：地面线本身密，没有这一圈底色代号会糊进线里。
+              "text-halo-color": c.ocean,
+              "text-halo-width": 1.4,
+            },
+          },
+          {
+            /* 机坪和航站楼的名字。**单独一层，因为它们是地标不是编号。**
+             *
+             * 分开的理由是**出现的时机**：机坪和航站楼各只有几百个、块头大，是「我
+             * 在机场的哪一头」这个问题的答案，所以该和滑行道代号一起早早出现；机位
+             * 号有四千个，早出一级就是一片数字糊在停机坪上。一个图层只有一个
+             * `minzoom`，所以这是两件事，不是一件事的两种样式。
+             *
+             * 线上带名字的：机坪 406、航站楼 329。 */
+            id: "ground-labels-area",
+            type: "symbol",
+            source: "ground",
+            minzoom: GROUND_MIN_ZOOM + 1,
+            filter: [
+              "all",
+              ["has", "name"],
+              ["!=", ["get", "name"], ""],
+              ["match", ["get", "kind"], ["apron", "terminal"], true, false],
+            ] as never,
+            layout: {
+              "symbol-placement": "point",
+              "text-field": ["get", "name"] as never,
+              "text-font": ["Noto Sans Regular"],
+              "text-size": 11,
+              "text-letter-spacing": 0.08,
+              "text-transform": "uppercase",
+            },
+            paint: {
+              "text-color": c.label,
+              "text-halo-color": c.ocean,
+              "text-halo-width": 1.4,
+            },
+          },
+          {
+            /* 机位号和等待位置代号，**贴着那个位置**而不是沿线走。
+             *
+             * 用 `"point"` 而不是 `"line"`：这两类里既有真的单点（等待位置、一部分
+             * 机位），也有画成短线的机位 —— 沿线排一个两位数的机位号既排不下也读不
+             * 出方向。
+             *
+             * z15 才出，比滑行道晚两级：首都 352 个机位，早出一级就是一片数字糊在
+             * 停机坪上。真要一个个看，那个尺度本来也已经凑得很近了。 */
+            id: "ground-labels-spot",
+            type: "symbol",
+            source: "ground",
+            minzoom: GROUND_MIN_ZOOM + 3,
+            filter: [
+              "all",
+              ["has", "name"],
+              ["!=", ["get", "name"], ""],
+              [
+                "match",
+                ["get", "kind"],
+                ["parking_position", "holding_position"],
+                true,
+                false,
+              ],
+            ] as never,
+            layout: {
+              "symbol-placement": "point",
+              "text-field": ["get", "name"] as never,
+              "text-font": ["Noto Sans Regular"],
+              "text-size": 10,
+              // 机位号密，允许它被挤掉而不是彼此叠着画。
+              "text-allow-overlap": false,
+            },
+            paint: {
+              "text-color": c.groundStand,
+              "text-halo-color": c.ocean,
+              "text-halo-width": 1.4,
+            },
+          },
+          {
             /* 单点要素：等待位置和一部分机位本来就是一个点，不是退化的线。
              *
              * 扇区包那份里有 733 个等待位置是点 —— 只画线的话它们会整批消失，而
