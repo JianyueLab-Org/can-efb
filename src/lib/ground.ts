@@ -64,11 +64,14 @@ export interface Ground {
  * **门槛存在的理由是流量，不是观感。** 首都一张图是五千多条线、两万多个点，一兆
  * 多的几何；在看得见半个中国的比例尺上取它，既画不出东西也白花那一兆。
  *
- * 11 级在 40°N 大约是 76 米/像素，一个四公里见方的机场占五十来个像素 —— 跑道到这个
- * 尺度才刚好有形状可言，而缩放阶梯上**跑道正是地面里最先出现的那一层**（其余要
- * 到 12，滑行道代号 13，机位号 15）。再早一级取，多花一倍的钱换一团糊。
+ * **门槛按比例尺定，不按缩放数字定**：z10 上比例尺读数正好是 10 公里，而那是「我在
+ * 看一个机场」的尺度。跑道更早（比例尺 20 公里，z9），但跑道走的是另一条路 ——
+ * `lib/runways.ts` 那份整库 34 kB 的权威数据，不需要按机场取。
+ *
+ * 这一份是**按机场取的重数据**（首都一张图五千多条线、一兆多），所以它的门槛必须比
+ * 跑道晚：z9 的视野有三百公里宽、十几个机场，在那儿按机场拉地面等于拉十几兆。
  */
-export const GROUND_MIN_ZOOM = 11;
+export const GROUND_MIN_ZOOM = 10;
 
 /**
  * 一次最多同时取几个机场的地面。
@@ -156,7 +159,6 @@ export function toGroundDrawing(grounds: Ground[]): GroundDrawing {
 
   for (const g of grounds) {
     icaos.push(g.icao);
-    const longest = longestRunways(g);
 
     if (g.features.length) {
       // 有分好类的就用它，`lines` 整份不画 —— 见文件头。
@@ -175,21 +177,6 @@ export function toGroundDrawing(grounds: Ground[]): GroundDrawing {
             source: f.source,
           },
         });
-
-        /* 跑道额外出两个**点**要素，一头一个号 —— 见 runwayEnds 上面那段。
-         *
-         * 是额外而不是替代：跑道那条线本身仍然要画，这两个点只是标注的锚。
-         *
-         * **只标同名要素里最长的那一条**，见 longestRunways。 */
-        if (
-          f.kind === "runway" &&
-          f.name &&
-          longest.get(g.icao + "/" + f.name) === f
-        ) {
-          for (const end of runwayEndLabels(f.name, f.points)) {
-            features.push(end);
-          }
-        }
       }
       if (g.attribution) attributions.add(g.attribution);
       continue;
@@ -223,83 +210,11 @@ export function toGroundDrawing(grounds: Ground[]): GroundDrawing {
   };
 }
 
-/**
- * 跑道号写在**跑道两头**，不沿线重复。
- *
- * 航图就是这么画的：`18L` 在北头、`36R` 在南头，而那两个数字各自就是从那一头起飞
- * 的磁航向。沿线重复是滑行道的画法 —— 跑道那样画既不像图纸，也丢掉了「哪一头是哪
- * 个号」这个唯一要紧的信息。
- *
- * ## 取的是相距最远的两个点，不是首尾
- *
- * 库里的跑道要素**不都是中线**：`RCBS 06/24` 有 11 个顶点，那是跑道面的轮廓，首尾
- * 两点挨在一起。相距最远的那一对在两种形状下都是跑道的两端，代价只是一个 O(n²)，
- * 而 n 是几个到几十个。
- *
- * ## 哪一头写哪个号，按航向定
- *
- * 代号的数字乘十就是那一头的磁航向（`06` = 60°）。算出 A→B 的方位角，和它相差在
- * 90° 以内的那个号属于 A —— 因为你是从 A 起飞朝 B 飞的。
- *
- * **反过来放的后果在图上看不出来**：两个号都在跑道上、位置也对，只是左右调了个
- * 个。而一个照着它对跑道的人会滑到错误的一头。
- */
-function runwayEnds(
-  points: [number, number][],
-): [[number, number], [number, number]] | null {
-  if (points.length < 2) return null;
-  let best: [[number, number], [number, number]] | null = null;
-  let bestD = 0;
-  for (let i = 0; i < points.length; i++) {
-    for (let j = i + 1; j < points.length; j++) {
-      const d =
-        (points[i][0] - points[j][0]) ** 2 +
-        ((points[i][1] - points[j][1]) *
-          Math.cos((points[i][0] * Math.PI) / 180)) **
-          2;
-      if (d > bestD) {
-        bestD = d;
-        best = [points[i], points[j]];
-      }
-    }
-  }
-  return best;
-}
-
-/** 方位角，度。只用来判断朝向，所以用平面近似就够。 */
-function bearing(from: [number, number], to: [number, number]): number {
-  const dLat = to[0] - from[0];
-  const dLon =
-    (to[1] - from[1]) * Math.cos(((from[0] + to[0]) / 2) * (Math.PI / 180));
-  return ((Math.atan2(dLon, dLat) * 180) / Math.PI + 360) % 360;
-}
-
-/**
- * 把 `18L/36R` 这样的名字拆成两个代号。
- *
- * 分隔符收 `/` 和 `-` 两种（库里 537/541 用斜杠，`ZGUH` 用的是 `16-34`）。拆不出正
- * 好两个就返回 null —— 那批是 `11`、`35` 这种只写了一头的，以及 `RJTJ` 这种把 ICAO
- * 当名字的脏数据。**宁可不标**：猜一个号写在跑道上，比不写危险得多。
- */
-function splitDesignators(name: string): [string, string] | null {
-  const parts = name
-    .split(/[/-]/)
-    .map((x) => x.trim())
-    .filter(Boolean);
-  if (parts.length !== 2) return null;
-  if (
-    !/^\d{1,2}[LRClrc]?$/.test(parts[0]) ||
-    !/^\d{1,2}[LRClrc]?$/.test(parts[1])
-  ) {
-    return null;
-  }
-  return [parts[0], parts[1]];
-}
-
-/** 代号 → 磁航向，度。`06` → 60，`36R` → 360。 */
-function designatorHeading(designator: string): number {
-  return (parseInt(designator, 10) % 36) * 10;
-}
+/* 跑道号从前在这里从几何里推：取相距最远的两个顶点当两端、按方位角分配代号，外加
+ * 同名要素去重。**整套删掉了** —— can-db 的 `/aip/runways` 按端给权威入口坐标，见
+ * `lib/runways.ts`。那套推算暴露过它自己的一类错：同一条跑道在源数据里可能是好几个
+ * 同名要素，每个都被标了两头，跑道号于是在图上出现两次、其中一对落在离真入口几百米
+ * 的地方。 */
 
 /**
  * 这一类地面要素画多宽，**米**。
@@ -326,65 +241,6 @@ function widthMetres(kind: string, published?: number): number {
     default:
       return 23;
   }
-}
-
-/**
- * 每条跑道**只留最长的那个要素**，键是 `ICAO/跑道名`。
- *
- * 一条跑道在源数据里可能是好几个要素，而且同名。ZBTJ 有两个 `16R/34L`：一个 16 个
- * 顶点、覆盖两个权威入口之间的全长，另一个只有 6 个顶点、是北头一截 350 米的短段
- * （内移入口/停止道那一类）。ZBAA 之外还有 `RCBS 06/24` 的 11 顶点和 2 顶点两条。
- *
- * 给每个要素都标两头的后果是**同一个跑道号在图上出现两次**，其中一对落在离真入口
- * 几百米的地方 —— 对着它对跑道的人会对错。全量核过：不去重时 975 个端点里 19 个落
- * 在错的位置，全部是这一类，**没有一个是方向判反**。
- *
- * 取最长的那条，因为跑道号标的是整条跑道的两端，而短段按定义标不出真正的两端。
- */
-function longestRunways(g: Ground): Map<string, GroundFeature> {
-  const best = new Map<string, GroundFeature>();
-  const spanOf = (f: GroundFeature) => {
-    const ends = runwayEnds(f.points);
-    if (!ends) return 0;
-    const [a, b] = ends;
-    return (
-      (a[0] - b[0]) ** 2 +
-      ((a[1] - b[1]) * Math.cos((a[0] * Math.PI) / 180)) ** 2
-    );
-  };
-  for (const f of g.features) {
-    if (f.kind !== "runway" || !f.name) continue;
-    const key = g.icao + "/" + f.name;
-    const held = best.get(key);
-    if (!held || spanOf(f) > spanOf(held)) best.set(key, f);
-  }
-  return best;
-}
-
-/**
- * 一条跑道的两个端点标注。拆不出两个代号、或者点不够，就一个都不出。
- */
-function runwayEndLabels(name: string, points: [number, number][]): Feature[] {
-  const pair = splitDesignators(name);
-  const ends = runwayEnds(points);
-  if (!pair || !ends) return [];
-
-  const [a, b] = ends;
-  const abBearing = bearing(a, b);
-  // 和 A→B 方位角相差 90° 以内的那个号属于 A：你是从 A 起飞朝 B 飞的。
-  const diff = Math.abs(
-    ((designatorHeading(pair[0]) - abBearing + 540) % 360) - 180,
-  );
-  const [atA, atB] = diff < 90 ? pair : [pair[1], pair[0]];
-
-  return [
-    { end: a, designator: atA },
-    { end: b, designator: atB },
-  ].map(({ end, designator }) => ({
-    type: "Feature" as const,
-    geometry: { type: "Point" as const, coordinates: [end[1], end[0]] },
-    properties: { kind: "runway_end", name: designator },
-  }));
 }
 
 /**
