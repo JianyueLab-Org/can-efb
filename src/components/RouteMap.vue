@@ -840,11 +840,10 @@ function applyPalette() {
   map.setPaintProperty("airport-labels", "text-color", c.airport);
   map.setPaintProperty("airport-labels", "text-halo-color", c.ocean);
   map.setPaintProperty("runways", "line-color", c.groundRunway);
-  map.setPaintProperty(
-    "ground-features",
-    "line-color",
-    groundFeatureColor(c) as never,
-  );
+  // 地面按上下分成三层（航站楼与机坪 / 停机位 / 滑行道），配色同一份。
+  for (const id of ["ground-terminals", "ground-stands", "ground-taxiways"]) {
+    map.setPaintProperty(id, "line-color", groundFeatureColor(c) as never);
+  }
   map.setPaintProperty(
     "ground-points",
     "circle-color",
@@ -1261,6 +1260,75 @@ onMounted(() => {
             },
           },
           {
+            /* 地面按**上下**分三层，加上跑道和齿轮，一共五级：
+             *
+             *     机场标志（齿轮）   ← 最上
+             *     机场跑道
+             *     滑行道
+             *     停机位
+             *     航站楼、机坪       ← 最下
+             *
+             * 拆成三层是因为**一个图层压不出上下**。顺序照的是「哪一样被挡住损失最
+             * 大」：航站楼和机坪是大块的面，压在最下；跑道是这张图的骨架，谁都不该
+             * 盖住它；齿轮是找机场用的，永远在最上。
+             *
+             * 三层的 `minzoom` **一样** —— 上下和出现时机是两回事，这里只管上下。 */
+            id: "ground-terminals",
+            type: "line",
+            source: "ground",
+            minzoom: GROUND_MIN_ZOOM + 1,
+            filter: [
+              "all",
+              ["!", ["has", "rgb"]],
+              ["match", ["get", "kind"], ["terminal", "apron"], true, false],
+            ] as never,
+            paint: {
+              "line-color": groundFeatureColor(c) as never,
+              "line-width": groundWidth(30),
+              "line-opacity": 0.9,
+            },
+          },
+          {
+            // 停机位压在滑行道之下：滑行道是通行路径，被机位盖住就读不出走法。
+            id: "ground-stands",
+            type: "line",
+            source: "ground",
+            minzoom: GROUND_MIN_ZOOM + 1,
+            filter: [
+              "all",
+              ["!", ["has", "rgb"]],
+              ["==", ["get", "kind"], "parking_position"],
+            ] as never,
+            paint: {
+              "line-color": groundFeatureColor(c) as never,
+              "line-width": groundWidth(12),
+              "line-opacity": 0.9,
+            },
+          },
+          {
+            // 滑行道和等待位置，地面里最上的一层，只在跑道之下。
+            id: "ground-taxiways",
+            type: "line",
+            source: "ground",
+            minzoom: GROUND_MIN_ZOOM + 1,
+            filter: [
+              "all",
+              ["!", ["has", "rgb"]],
+              [
+                "match",
+                ["get", "kind"],
+                ["taxiway", "holding_position"],
+                true,
+                false,
+              ],
+            ] as never,
+            paint: {
+              "line-color": groundFeatureColor(c) as never,
+              "line-width": groundWidth(23),
+              "line-opacity": 0.9,
+            },
+          },
+          {
             /* 跑道。**来自 can-db 的 `/aip/runways`，不是地面数据。**
              *
              * 缩放阶梯上它比地面早一档：比例尺 20 公里（约 z9）就该看得到跑道，而
@@ -1294,30 +1362,6 @@ onMounted(() => {
                 90,
               ] as never,
               "line-opacity": 0.95,
-            },
-          },
-          {
-            /* 机场地面 —— **分好类**的那份（扇区包手工做的或 OSM）。
-             *
-             * 按 `kind` 分色。跑道最亮：放到这个尺度上，读图的人找的就是它。
-             * 认不出的类别落到滑行道色而不是藏起来 —— 源数据里将来多一个类别时，
-             * 那条线仍然画得出来，只是颜色不特别。 */
-            id: "ground-features",
-            type: "line",
-            source: "ground",
-            /* **跑道不在这一层**，它在 `ground-runways`、早一级出现 —— 缩放阶梯上
-             * 「机场跑道」排在「机场地面」前面。一个图层只有一个 minzoom，所以这是
-             * 两层。 */
-            minzoom: GROUND_MIN_ZOOM + 1,
-            filter: [
-              "all",
-              ["!", ["has", "rgb"]],
-              ["!=", ["get", "kind"], "runway"],
-            ] as never,
-            paint: {
-              "line-color": groundFeatureColor(c) as never,
-              "line-width": groundWidth(23),
-              "line-opacity": 0.9,
             },
           },
           {
