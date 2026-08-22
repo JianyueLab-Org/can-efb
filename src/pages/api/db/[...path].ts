@@ -99,6 +99,23 @@ const ALLOW_PATTERNS: { pattern: RegExp; entry: Allowed }[] = [
       who: "lib/ground.ts，放大后画的机场地面",
     },
   },
+  {
+    /* 机场详情。进离场程序的选择器要它 —— 它带着 `runways` 和 `procedures`，而
+     * `procedures[].path` 里每条腿自带坐标和约束，正好是「选跑道 → 筛程序 → 画
+     * 出来」这三步全部需要的东西。
+     *
+     * **没有为此新开一条 `/procedures`**：那会得到同一批数据的第二种形状，外加
+     * can-db 一次改动、一次部署、一次 pin 移动。理由展开在 lib/procedures.ts 顶
+     * 上。顺带被带来的机位、通信、ILS 是多付的，认了。
+     *
+     * 形状收得和上面那条一样死（一段、四个字母），大小写都收 —— 理由见上面那段
+     * 注释，这条同样适用。 */
+    pattern: /^aip\/airports\/[A-Za-z]{4}$/,
+    entry: {
+      methods: ["GET"],
+      who: "lib/procedures.ts，进离场程序与跑道的选择器",
+    },
+  },
 ];
 
 const PASS_THROUGH = ["content-type", "cache-control"];

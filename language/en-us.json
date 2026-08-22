@@ -192,6 +192,34 @@
       },
       "expand": {
         "title": "Expand a route string"
+      },
+      "procedures": {
+        "title": "Runways and terminal procedures",
+        "loading": "Loading procedures…",
+        "denied": "Your account has no aeronautical data access, so procedures cannot be read.",
+        "failed": "Procedures could not be loaded. Try again shortly.",
+        "departure": "Departure",
+        "arrival": "Arrival",
+        "runway": "Runway",
+        "anyRunway": "Any",
+        "none": "None",
+        "approachNote": "The approach is not written into the route string (ATC assigns it); picking one only changes the map and the leg table below.",
+        "sidGap": "This SID does not join the route — it ends at, and the route starts at:",
+        "starGap": "This STAR does not join the route — the route ends at, and it starts at:",
+        "noFix": "This leg has no fix (it terminates on an altitude or a course)",
+        "rawNote": "Altitude and speed constraints are the published encoding, verbatim and undecoded.",
+        "kind": {
+          "sid": "SID",
+          "star": "STAR",
+          "approach": "Approach"
+        },
+        "table": {
+          "proc": "Procedure",
+          "ident": "Fix",
+          "path": "Leg",
+          "alt": "Altitude",
+          "speed": "Speed"
+        }
       }
     },
     "dashboard": {
