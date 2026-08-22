@@ -48,6 +48,7 @@ import type { Feature, FeatureCollection } from "geojson";
 import { arc, type LatLon } from "@/lib/geo";
 import { FACILITY_COLORS } from "@/lib/atc";
 import { altitudeRamp } from "@/lib/traffic";
+import { GROUND_MIN_ZOOM } from "@/lib/ground";
 
 /**
  * 航班按高度档取色的 MapLibre 表达式。
@@ -168,6 +169,21 @@ const props = defineProps<{
   airways?: FeatureCollection | null;
   /** 航路点（航路网自己的点集），和 airways 一起来一起走。 */
   airwayFixes?: FeatureCollection | null;
+  /**
+   * 机场地面（滑行道、机位、等待位置、跑道线画），放大之后才有。
+   *
+   * 传进来已经是选好的那一份 —— **有分好类的要素就不带航图线画**，两者不同时画。
+   * 那个取舍在 `lib/ground.ts` 里，理由也写在那儿：两份并排画等于把同一条滑行道
+   * 画两遍、位置差十几米，读图的人无法判断该信哪条。
+   */
+  ground?: FeatureCollection | null;
+  /**
+   * 随数据变化的额外署名，例如 OSM 的 ODbL 那一行。
+   *
+   * **和常驻的那几行一起进同一个署名控件**，不另起一块：署名被放到第二个地方，
+   * 等于让人得知道该去哪儿找。空数组就是这一屏没有需要额外署名的数据。
+   */
+  extraAttribution?: string[];
   /** 导航台。 */
   navaids?: FeatureCollection | null;
   /** 空域多边形（扇区与限制区，按 family 分色）。 */
@@ -297,6 +313,19 @@ const PALETTE = {
     own: "#ffd166",
     traffic: "#8fa6b8",
     atc: "#e8934a",
+    /* 机场地面，只在放大之后出现。
+     *
+     * **跑道最亮，其余压下去。** 放到这个尺度上时，读图的人找的是跑道 —— 滑行道
+     * 和机坪是它的上下文，不是主角。机位和等待位置画成点，因为源数据里它们本来
+     * 就常常只有一个点（扇区包那份有 733 个等待位置是点）。
+     *
+     * 和航路网那几色刻意错开色相：地面和航路会在同一个画面里同时出现，同色系会
+     * 让「这条是滑行道还是航路」变成一道需要思考的题。 */
+    groundRunway: "#cdd8e0",
+    groundTaxiway: "#7d8f9c",
+    groundApron: "#3a4854",
+    groundStand: "#9aa8b4",
+    groundHold: "#d98a9a",
   },
   light: {
     ocean: "#dde5ea",
@@ -319,6 +348,11 @@ const PALETTE = {
     own: "#b8860b",
     traffic: "#6b8395",
     atc: "#b8622a",
+    groundRunway: "#4a5b68",
+    groundTaxiway: "#8fa0ad",
+    groundApron: "#c4cdd4",
+    groundStand: "#7b8b98",
+    groundHold: "#b45a6d",
   },
 };
 
@@ -496,6 +530,44 @@ function emitViewport() {
 }
 
 /**
+ * 常驻的那几行署名。
+ *
+ * VATSpy 是 CC BY-SA 4.0，**署名是许可条款不是装饰**；陆地那份（Natural Earth）
+ * 属公有领域，一并列出是礼貌不是义务。
+ */
+const BASE_ATTRIBUTION =
+  '情报区 <a href="https://github.com/vatsimnetwork/vatspy-data-project" ' +
+  'target="_blank" rel="noreferrer">VATSpy</a> (CC BY-SA 4.0) · ' +
+  "陆地 Natural Earth";
+
+/** 当前挂着的署名控件。换内容时要先摘下来 —— MapLibre 没有改文案的接口。 */
+let attributionControl: AttributionControl | null = null;
+
+/**
+ * 把常驻署名和随数据来的那几行拼起来挂上去。
+ *
+ * **放右上角，不是默认的右下角**：右下角是 `.map-corner-se` 那个坐标读数和比例
+ * 尺，三个都绝对定位贴着同一个角，叠在一起谁也读不清。这不是审美取舍 —— 署名被
+ * 盖住就等于没署。
+ *
+ * 内容变了就摘掉重挂。看着粗暴，但 MapLibre 的 AttributionControl 没有别的改法，
+ * 而这件事一屏最多发生一两次（放大到一个用了 OSM 的机场时）。
+ */
+function applyAttribution() {
+  if (!map) return;
+  if (attributionControl) {
+    map.removeControl(attributionControl);
+    attributionControl = null;
+  }
+  const extra = (props.extraAttribution ?? []).filter(Boolean);
+  attributionControl = new AttributionControl({
+    compact: true,
+    customAttribution: [BASE_ATTRIBUTION, ...extra].join(" · "),
+  });
+  map.addControl(attributionControl, "top-right");
+}
+
+/**
  * 航路点的三角形符号。**运行时用 canvas 画出来注册**，不引 sprite 文件。
  *
  * 一套雪碧图要两个文件（png + json）、一份构建步骤，而这里总共只有几个符号，
@@ -638,6 +710,9 @@ function render() {
       ...points.map((p) => ({ ...p, onRoute: true })),
     ]),
   );
+  (map.getSource("ground") as GeoJSONSource | undefined)?.setData(
+    props.ground ?? { type: "FeatureCollection", features: [] },
+  );
   (map.getSource("airways") as GeoJSONSource | undefined)?.setData(
     props.airways ?? { type: "FeatureCollection", features: [] },
   );
@@ -762,6 +837,10 @@ onMounted(() => {
             type: "geojson",
             data: { type: "FeatureCollection", features: [] },
           },
+          ground: {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+          },
           airwayFixes: {
             type: "geojson",
             data: { type: "FeatureCollection", features: [] },
@@ -833,6 +912,109 @@ onMounted(() => {
             type: "line",
             source: "grid",
             paint: { "line-color": c.grid, "line-width": 0.5 },
+          },
+          {
+            /* 机场地面 —— **航图那份**（从汇编图上抠的线画）。
+             *
+             * `line-color` 取要素自己的 `rgb`：这一份**没有语义**，内容流里只有颜
+             * 色和线宽，没有一个字说哪条是滑行道中线。硬派一个含义上去就是编造，
+             * 所以照图上的原色画，读图的人看到的和纸上那张一致。
+             *
+             * 没有 `rgb` 的要素（也就是分好类的那一份）在这里落到 `transparent`，
+             * 由下面那层按类别画 —— 两层共用一个 source，各画各的那一半。 */
+            id: "ground-lines",
+            type: "line",
+            source: "ground",
+            minzoom: GROUND_MIN_ZOOM,
+            paint: {
+              "line-color": [
+                "coalesce",
+                ["get", "rgb"],
+                "transparent",
+              ] as never,
+              /* 线宽跟着**真实米数**走，不是一个定值：图上那些线本来就有宽度，
+               * 而在一个会缩放的地图上，唯一诚实的画法是让它随缩放变。0.5 是下
+               * 限，免得最细的标线在刚过门槛时整片消失。 */
+              "line-width": [
+                "interpolate",
+                ["exponential", 2],
+                ["zoom"],
+                GROUND_MIN_ZOOM,
+                0.5,
+                18,
+                ["max", 1, ["*", ["coalesce", ["get", "widthM"], 1], 1.2]],
+              ] as never,
+              "line-opacity": 0.85,
+            },
+          },
+          {
+            /* 机场地面 —— **分好类**的那份（扇区包手工做的或 OSM）。
+             *
+             * 按 `kind` 分色。跑道最亮：放到这个尺度上，读图的人找的就是它。
+             * 认不出的类别落到滑行道色而不是藏起来 —— 源数据里将来多一个类别时，
+             * 那条线仍然画得出来，只是颜色不特别。 */
+            id: "ground-features",
+            type: "line",
+            source: "ground",
+            minzoom: GROUND_MIN_ZOOM,
+            filter: ["!", ["has", "rgb"]] as never,
+            paint: {
+              "line-color": [
+                "match",
+                ["get", "kind"],
+                "runway",
+                c.groundRunway,
+                "apron",
+                c.groundApron,
+                "terminal",
+                c.groundApron,
+                "parking_position",
+                c.groundStand,
+                "holding_position",
+                c.groundHold,
+                c.groundTaxiway,
+              ] as never,
+              "line-width": [
+                "interpolate",
+                ["exponential", 2],
+                ["zoom"],
+                GROUND_MIN_ZOOM,
+                ["case", ["==", ["get", "kind"], "runway"], 1.2, 0.5],
+                18,
+                ["max", 1, ["*", ["coalesce", ["get", "widthM"], 15], 1.2]],
+              ] as never,
+              "line-opacity": 0.9,
+            },
+          },
+          {
+            /* 单点要素：等待位置和一部分机位本来就是一个点，不是退化的线。
+             *
+             * 扇区包那份里有 733 个等待位置是点 —— 只画线的话它们会整批消失，而
+             * 等待位置恰恰是地面上最该看见的东西之一。 */
+            id: "ground-points",
+            type: "circle",
+            source: "ground",
+            minzoom: GROUND_MIN_ZOOM + 1,
+            filter: ["==", ["geometry-type"], "Point"] as never,
+            paint: {
+              "circle-radius": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                13,
+                1.5,
+                17,
+                4,
+              ] as never,
+              "circle-color": [
+                "match",
+                ["get", "kind"],
+                "holding_position",
+                c.groundHold,
+                c.groundStand,
+              ] as never,
+              "circle-opacity": 0.9,
+            },
           },
           {
             /* 有人上席的空域，**填充**。
@@ -1529,16 +1711,7 @@ onMounted(() => {
   // **放右上角，不是默认的右下角**：右下角是 `.map-corner-se` 那个坐标读数，两
   // 个都是绝对定位、都贴着同一个角，叠在一起谁也读不清。这不是审美取舍 —— 署名
   // 被盖住就等于没署。
-  map.addControl(
-    new AttributionControl({
-      compact: true,
-      customAttribution:
-        '情报区 <a href="https://github.com/vatsimnetwork/vatspy-data-project" ' +
-        'target="_blank" rel="noreferrer">VATSpy</a> (CC BY-SA 4.0) · ' +
-        "陆地 Natural Earth",
-    }),
-    "top-right",
-  );
+  applyAttribution();
 
   /* 比例尺。航图上判断距离靠它，而这张图没有任何别的尺度参照 —— 网格线是整度
    * 的，纬度上一度约 60 海里，经度上随纬度收窄，用它读距离会错。
@@ -1594,6 +1767,7 @@ watch(
   () => [
     props.airways,
     props.airwayFixes,
+    props.ground,
     props.navaids,
     props.firs,
     props.mora,
@@ -1605,6 +1779,10 @@ watch(
   ],
   render,
 );
+
+/* 署名单独一个 watch，不跟着 render 走：它换的是控件不是图层数据，而 render 每
+   次视野变化都会跑好几趟 —— 挂在那上面等于每拖一次地图就摘挂一次控件。 */
+watch(() => props.extraAttribution, applyAttribution, { deep: true });
 
 onBeforeUnmount(() => {
   themeObserver?.disconnect();

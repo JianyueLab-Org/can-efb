@@ -59,6 +59,14 @@ import {
 } from "@/lib/mora";
 import { fetchFIRs } from "@/lib/firs";
 import {
+  fetchGround,
+  toGroundDrawing,
+  GROUND_MIN_ZOOM,
+  GROUND_MAX_AIRPORTS,
+  type Ground,
+} from "@/lib/ground";
+import { fetchAirportPins, airportsInView } from "@/lib/airports";
+import {
   fetchDatafeed,
   onlineControllers,
   ownPilot,
@@ -106,6 +114,8 @@ const props = defineProps<{
     emptyAirways: string;
     emptyNavaids: string;
     emptyGeneric: string;
+    /** 画的是航图线画时那一句，`{m}` 是精度米数。 */
+    groundAccuracy: string;
   };
   /** 地图整个起不来时那两句，转交给 RouteMap。 */
   failureText: { init: string; webgl: string };
@@ -375,6 +385,20 @@ async function loadFirCache(): Promise<FeatureCollection> {
  */
 const showMora = ref(false);
 const mora = ref<FeatureCollection | null>(null);
+
+/**
+ * 机场地面。**没有开关**，由缩放决定 —— 见 `loadGroundFor`。
+ *
+ * 三个 ref 是一组：几何、署名、精度。后两个不是装饰 ——
+ *
+ *   - `groundAttribution` 是 **ODbL 的许可条款**。OSM 那份数据用了就必须署名，而
+ *     它由数据决定（只有真用了 OSM 的机场才有值），所以不能写死一句挂在图上。
+ *   - `groundAccuracyM` 只在画**航图线画**那份时有值。那一份位置只能信到 5–20
+ *     米；分好类的那份是米级的，给它标精度反而误导。
+ */
+const ground = ref<FeatureCollection | null>(null);
+const groundAttribution = ref<string[]>([]);
+const groundAccuracyM = ref(0);
 /** 已取回的格子，跨块累积；键是 `lat,lon`。 */
 const moraCells = new Map<string, MORACell>();
 /** 已经取过（或正在取）的块，键是块的左下角。避免同一块并发重复请求。 */
@@ -667,10 +691,117 @@ async function onViewport(v: {
   west: number;
   north: number;
   east: number;
+  zoom: number;
 }) {
   lastViewport = v;
+  /* 地面和 Grid MORA 都挂在这个事件上，但**互不相干**：地面没有开关，它由缩放
+     自己决定出不出现，所以不能藏在 MORA 那个 return 后面。 */
+  void loadGroundFor(v);
   if (!showMora.value || deniedThisSession) return;
   await loadMoraFor(v);
+}
+
+/* 已经取回来的机场地面，按 ICAO。**留着不清**：平移出去再回来是最常见的动作，
+   而每个机场是兆级的几何 —— 清掉等于每次来回都重下一遍。 */
+const groundCache = new Map<string, Ground>();
+/** 这一轮画的是哪几个场，用来判断要不要重新拼 GeoJSON。 */
+let groundShown = "";
+
+/**
+ * 放大到门槛以上时，把视野里的机场地面补上。
+ *
+ * **没有图层开关，这是刻意的。** 地面只在放大之后出现，而放大本身就是"我要看这个
+ * 机场"的意思 —— 再要求点一次开关，等于让人先猜到有这么个开关。缩回去它自己消
+ * 失，不留状态。
+ */
+async function loadGroundFor(v: {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+  zoom: number;
+}) {
+  if (v.zoom < GROUND_MIN_ZOOM) {
+    // 缩回去就清空。留着不画只是省一次拼装，却会让下次放大到别处时先闪一下上一
+    // 个机场的地面。
+    if (ground.value) {
+      ground.value = null;
+      groundAttribution.value = [];
+      groundAccuracyM.value = 0;
+      groundShown = "";
+      clearNotice("ground");
+    }
+    return;
+  }
+
+  const pins = await fetchAirportPins();
+  if (!pins.length) return;
+
+  const wanted = airportsInView(pins, v).slice(0, GROUND_MAX_AIRPORTS);
+  if (!wanted.length) {
+    if (ground.value) {
+      ground.value = null;
+      groundAttribution.value = [];
+      groundAccuracyM.value = 0;
+      groundShown = "";
+      clearNotice("ground");
+    }
+    return;
+  }
+
+  await Promise.all(
+    wanted
+      .filter((p) => !groundCache.has(p.icao))
+      .map(async (p) => {
+        const g = await fetchGround(p.icao);
+        // null = 这个场没有地面数据。`fetchGround` 自己记住了，这里不必再记 ——
+        // 它不进 groundCache，所以下面拼装时自然跳过。
+        if (g) groundCache.set(p.icao, g);
+      }),
+  );
+
+  const have = wanted
+    .map((p) => groundCache.get(p.icao))
+    .filter((g): g is Ground => !!g);
+
+  const key = have.map((g) => g.icao).join(",");
+  if (key === groundShown) return;
+  groundShown = key;
+
+  if (!have.length) {
+    ground.value = null;
+    groundAttribution.value = [];
+    groundAccuracyM.value = 0;
+    clearNotice("ground");
+    return;
+  }
+
+  const drawing = toGroundDrawing(have);
+  ground.value = drawing.collection;
+  /* 署名**必须**显示 —— OSM 那份是 ODbL，署名是许可条款不是礼貌。由数据决定而不
+     是写死：只有真的用了 OSM 的机场才有值，写死会让纯扇区包的机场挂一个错误的出
+     处。汇编那份的规矩正好相反（来源不能外露），所以画 lines 时这里是空的。 */
+  groundAttribution.value = drawing.attributions;
+  /* 画的是航图线画时才说精度：那一份位置只能信到 5–20 米，而分好类的那份是米级
+     的，给它标一个精度反而是误导。 */
+  groundAccuracyM.value = drawing.kind === "lines" ? drawing.worstAccuracyM : 0;
+
+  /* 只有画**航图线画**时才说精度。
+   *
+   * 分好类的那份是米级的，给它标一句「约 20 米」反而是误导。而航图那份非说不
+   * 可：它画出来和图纸一样利落，看不出位置只能信到 5–20 米 —— 正是那种"看起来
+   * 完全正常"的错，这个网络的文档里反复记的就是这一类。 */
+  if (groundAccuracyM.value > 0) {
+    setNotice(
+      "ground",
+      props.t.groundAccuracy.replace(
+        "{m}",
+        String(Math.round(groundAccuracyM.value)),
+      ),
+    );
+  } else {
+    clearNotice("ground");
+  }
 }
 
 async function loadMoraFor(v: {
@@ -884,6 +1015,8 @@ onBeforeUnmount(() => {
       :focus="focus"
       :airways="airways"
       :airway-fixes="airwayFixes"
+      :ground="ground"
+      :extra-attribution="groundAttribution"
       :navaids="navaids"
       :firs="firs"
       :mora="mora"
