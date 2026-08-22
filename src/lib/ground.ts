@@ -168,7 +168,7 @@ export function toGroundDrawing(grounds: Ground[]): GroundDrawing {
             icao: g.icao,
             kind: f.kind,
             name: f.name ?? "",
-            widthM: f.widthM ?? 0,
+            widthM: widthMetres(f.kind, f.widthM),
             // 画 features 时颜色由 kind 决定，交给图层的 match 表达式。
             source: f.source,
           },
@@ -204,6 +204,33 @@ export function toGroundDrawing(grounds: Ground[]): GroundDrawing {
     attributions: [...attributions],
     worstAccuracyM: worst,
   };
+}
+
+/**
+ * 这一类地面要素画多宽，**米**。
+ *
+ * 源数据里宽度常常缺（手工那份多数机位和等待位置没有），而缺席不能当成 0 —— 线宽
+ * 是按真实米数换算成像素的，0 米出来就是一条画不出来的线。所以按类别给一个典型值：
+ * 跑道 45、滑行道 23、机坪和航站楼当面状物给宽一点、其余按滑行道。
+ *
+ * 这些是**画图用的排版数字，不是航行数据**，所以放在这一层而不是往库里写。真实宽
+ * 度只要有就一定优先用。
+ */
+function widthMetres(kind: string, published?: number): number {
+  if (published && published > 0) return published;
+  switch (kind) {
+    case "runway":
+      return 45;
+    case "apron":
+    case "terminal":
+      return 30;
+    case "parking_position":
+      return 12;
+    case "holding_position":
+      return 6;
+    default:
+      return 23;
+  }
 }
 
 /**

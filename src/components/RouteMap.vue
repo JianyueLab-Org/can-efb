@@ -530,6 +530,34 @@ function emitViewport() {
 }
 
 /**
+ * 地面线宽：**把真实米数换算成像素**，随缩放走。
+ *
+ * 这一层从前写的是几乎不变的像素值（z12 是 0.5px、z18 才 1px）—— 线确实画出来了，
+ * 但细到看不见，症状和「地面没有显示」一模一样。**这是这个网络反复记的那种坏法的
+ * 又一例**：不报错、不缺数据，只是屏幕上什么也没有。
+ *
+ * 换算按 Web Mercator：`米/像素 ≈ 156543 · cos(纬度) / 2^zoom`。取纬度 35°（本网络
+ * 覆盖区中部）算出 z12 约 31 米/像素、z18 约 0.49 米/像素。于是一条 23 米宽的滑行
+ * 道在 z12 是 0.7 像素、z18 是 47 像素 —— 恰好每升一级翻一倍，正是
+ * `["exponential", 2]` 在两个端点之间给出的曲线。
+ *
+ * 下限是必须的：低缩放上按真实宽度算出来是零点几像素，一整片地面会同时消失，而那
+ * 又是一次「看起来完全正常」。`fallbackM` 是这一层缺宽度时按多少米算。
+ */
+function groundWidth(fallbackM: number): never {
+  const w = ["case", [">", ["get", "widthM"], 0], ["get", "widthM"], fallbackM];
+  return [
+    "interpolate",
+    ["exponential", 2],
+    ["zoom"],
+    GROUND_MIN_ZOOM,
+    ["max", 0.6, ["/", w, 31.3]],
+    18,
+    ["max", 2, ["/", w, 0.49]],
+  ] as never;
+}
+
+/**
  * 常驻的那几行署名。
  *
  * VATSpy 是 CC BY-SA 4.0，**署名是许可条款不是装饰**；陆地那份（Natural Earth）
@@ -692,6 +720,8 @@ function applyPalette() {
 
 /** 上一次真正对过焦的那个点，见 render() 里的说明。 */
 let lastFocus: unknown = null;
+/** 上一次真的框选过的那批点的签名。见 render() 结尾。 */
+let lastFitted = "";
 
 /** 把当前 props 灌进 source。source 已经在，只换数据 —— 不重建图层。 */
 function render() {
@@ -764,7 +794,26 @@ function render() {
   // **航路网不参与框选**：它是全国的图，把它算进去等于每次都缩到最小。视野
   // 该跟着你正在看的东西走，而不是跟着背景参考走。
   const all = [...points, ...markers];
-  if (!all.length) return;
+  if (!all.length) {
+    lastFitted = "";
+    return;
+  }
+
+  /* **只在这批点真的换了的时候框选一次。**
+   *
+   * 和上面 `focus` 那道防护是同一件事，只是当时没有人踩到：`render()` 会被实时
+   * 图层每 30 秒触发一次，而 `points` 从前只在用户主动做了什么之后才有值 —— 于是
+   * 「每次 render 都 fitBounds」看起来没问题。
+   *
+   * 地图开始默认画已提交的飞行计划之后它就不成立了：概览页上那条航路一直在，于是
+   * **每半分钟把镜头拽回航路**，正在平移或放大看机场的人会以为地图坏了。放大看地
+   * 面的时候尤其明显 —— 刚凑近跑道就被拉回去。
+   *
+   * 签名用代号加坐标：同一条航路重新解析一次（对象换了、内容没变）不该重新框选。 */
+  const signature = all.map((p) => `${p.ident}:${p.lat},${p.lon}`).join("|");
+  if (signature === lastFitted) return;
+  lastFitted = signature;
+
   const bounds = new LngLatBounds();
   for (const p of all) bounds.extend([p.lon, p.lat]);
   map.fitBounds(bounds, { padding: 48, maxZoom: 8, duration: 0 });
@@ -932,18 +981,7 @@ onMounted(() => {
                 ["get", "rgb"],
                 "transparent",
               ] as never,
-              /* 线宽跟着**真实米数**走，不是一个定值：图上那些线本来就有宽度，
-               * 而在一个会缩放的地图上，唯一诚实的画法是让它随缩放变。0.5 是下
-               * 限，免得最细的标线在刚过门槛时整片消失。 */
-              "line-width": [
-                "interpolate",
-                ["exponential", 2],
-                ["zoom"],
-                GROUND_MIN_ZOOM,
-                0.5,
-                18,
-                ["max", 1, ["*", ["coalesce", ["get", "widthM"], 1], 1.2]],
-              ] as never,
+              "line-width": groundWidth(1.5),
               "line-opacity": 0.85,
             },
           },
@@ -974,15 +1012,7 @@ onMounted(() => {
                 c.groundHold,
                 c.groundTaxiway,
               ] as never,
-              "line-width": [
-                "interpolate",
-                ["exponential", 2],
-                ["zoom"],
-                GROUND_MIN_ZOOM,
-                ["case", ["==", ["get", "kind"], "runway"], 1.2, 0.5],
-                18,
-                ["max", 1, ["*", ["coalesce", ["get", "widthM"], 15], 1.2]],
-              ] as never,
+              "line-width": groundWidth(23),
               "line-opacity": 0.9,
             },
           },
