@@ -729,11 +729,46 @@ async function onViewport(v: {
   zoom: number;
 }) {
   lastViewport = v;
-  /* 地面和 Grid MORA 都挂在这个事件上，但**互不相干**：地面没有开关，它由缩放
-     自己决定出不出现，所以不能藏在 MORA 那个 return 后面。 */
+  /* 这几层都挂在这个事件上，但**互不相干**：它们没有开关，由缩放自己决定出不出
+     现，所以不能藏在 MORA 那个 return 后面。 */
+  void loadForZoom(v.zoom);
   void loadGroundFor(v);
   if (!showMora.value || deniedThisSession) return;
   await loadMoraFor(v);
+}
+
+/**
+ * 每一层各自的取数门槛，**和它自己的 `minzoom` 一致**。
+ *
+ * 从前这些是一进页面就无条件拉的 —— 而地图的开图视野是 z3，那时候机场齿轮（z5）和
+ * 跑道（z7）一个像素都画不出来。于是**每打开任何一页都要为看不见的东西付两次请
+ * 求**，而这块地图是常驻的，每一页都会经历一次。
+ *
+ * 现在按需要才取。门槛必须和图层的 `minzoom` 对齐：定得比它高，会出现「层该显示
+ * 了、数据还没到」的空窗；定得低，就退回成白拉。
+ */
+const NEED_ZOOM = {
+  /** 机场齿轮，`airport-gear` 的 minzoom。 */
+  airports: 5,
+  /** 跑道，`runways` 的 minzoom。 */
+  runways: 7,
+} as const;
+
+/**
+ * 按当前缩放，把该有的底数据补上。
+ *
+ * 三份数据各自记住自己取没取过（`fetchAirportPins` / `fetchRunways` 内部就有那道
+ * 闸），所以这里重复调是廉价的 —— `moveend` 每次都会调。
+ */
+async function loadForZoom(zoom: number) {
+  if (zoom >= NEED_ZOOM.airports && !airports.value) {
+    const pins = await fetchAirportPins();
+    if (pins.length) airports.value = toAirportPoints(pins);
+  }
+  if (zoom >= NEED_ZOOM.runways && !runways.value) {
+    const list = await fetchRunways();
+    if (list.length) runways.value = toRunwayFeatures(list);
+  }
 }
 
 /* 已经取回来的机场地面，按 ICAO。**留着不清**：平移出去再回来是最常见的动作，
@@ -1104,18 +1139,6 @@ onMounted(() => {
   if (saved.restricted) void toggleAirspace("restricted");
   // 计划那条线不 await：地图不该等它回来才出现，和航路网是同一条道理。
   void loadPlanRoute();
-
-  /* 机场齿轮。和地面用的是同一份索引（`fetchAirportPins` 整趟会话只取一次），所以
-     这一层不额外花一次请求。取不到就没有齿轮 —— 和别的图层一样安静降级。 */
-  void fetchAirportPins().then((pins) => {
-    if (pins.length) airports.value = toAirportPoints(pins);
-  });
-
-  /* 跑道。和机场索引一样整份取一次 —— 34 kB，比按机场取地面便宜三个数量级，而且它
-     带的是权威入口坐标，跑道号不用推。 */
-  void fetchRunways().then((list) => {
-    if (list.length) runways.value = toRunwayFeatures(list);
-  });
 
   unsubscribe = subscribeToMap((payload) => {
     panelPublished = true;
