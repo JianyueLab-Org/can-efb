@@ -187,9 +187,12 @@ const props = defineProps<{
   /** 全库跑道（线加端点），来自 can-db 的 `/aip/runways`。见 lib/runways.ts。 */
   runways?: FeatureCollection | null;
   /**
-   * 计划里**真正在航路网上点亮了**的那些腿。这一层据此跳过它们，不重复画线。
+   * 计划里**真正在航路网上点亮了**的那些腿。
    *
-   * 是「标到的」而不是「有 via 的」—— 见 routeLines 上面那段。
+   * 这一层据此决定 z6 以上**由谁画**它们（航路网点亮，计划线让位），不是据此把它
+   * 们丢掉 —— 丢掉的话 z6 以下就没人画了，见 routeLines 上面那段。
+   *
+   * 是「标到的」而不是「有 via 的」：同上。
    */
   highlightedLegs?: Set<string> | null;
   ground?: FeatureCollection | null;
@@ -490,21 +493,36 @@ function graticule(): FeatureCollection {
  * 设有 via 就一定被点亮了的话，没点上的腿会从图上消失，而**航路断在中间看不出来**
  * —— 剩下的线本身都对。
  */
+/**
+ * 计划的每条腿画成一条线。
+ *
+ * **`onAirway` 的那几条腿仍然在这份集合里**，只是在航路网接手的缩放级上被压成透明
+ * （见 `route` / `route-casing` 的 `line-opacity`）。
+ *
+ * 从前是直接 `continue` 把它们**整条丢掉**，理由是「航路网会点亮它，别画两条」。
+ * 那句话只在 z6 及以上成立 —— 航路网那一层 `minzoom: 6`。缩到全国视野（一条
+ * ZBAA→ZGGG 的计划正好要 z4）之后航路网整层不画，而这几条腿已经被丢掉了，于是**谁
+ * 都不画**：计划线上出现几个洞，剩下的直飞段和程序段照旧画着，看起来完全正常。
+ *
+ * `markRouteOnAirways` 的文档里数过三种「点不亮」（图层关着、被高低空过滤掉、端点
+ * 没坐标），并说「航路断在中间是看不出来的」。缩放是第四种，当时没数进去 —— 而它
+ * 和前三种不同：前三种一旦成立就没有高亮可言，这一种是**同一条计划在不同缩放下
+ * 时有时无**。
+ *
+ * 所以判断从「画不画」改成「谁来画」：交接由缩放决定，两边都在，永远只有一条可见。
+ */
 function routeLines(
   points: Point[],
-  suppressed?: Set<string> | null,
+  onAirway?: Set<string> | null,
 ): FeatureCollection {
   const features: Feature[] = [];
   const isProcedure = (p: Point) => p.kind === "sid" || p.kind === "star";
 
   for (let i = 1; i < points.length; i++) {
     const via = points[i].via;
-    if (
-      via &&
-      suppressed?.has(legKey(via, points[i - 1].ident, points[i].ident))
-    ) {
-      continue;
-    }
+    const handedOff = Boolean(
+      via && onAirway?.has(legKey(via, points[i - 1].ident, points[i].ident)),
+    );
     const from: LatLon = [points[i - 1].lat, points[i - 1].lon];
     const to: LatLon = [points[i].lat, points[i].lon];
     features.push({
@@ -517,6 +535,8 @@ function routeLines(
       properties: {
         procedure: isProcedure(points[i]) ? 1 : 0,
         via: points[i].via ?? "",
+        // 这条腿在航路网上被点亮了 —— 高缩放交给那一层画，见上面那段。
+        onAirway: handedOff ? 1 : 0,
       },
       geometry: {
         type: "LineString",
@@ -1735,7 +1755,7 @@ onMounted(() => {
                 ["linear"],
                 ["zoom"],
                 6,
-                ["case", ["==", ["get", "onRoute"], 1], 2.2, 0.5],
+                ["case", ["==", ["get", "onRoute"], 1], 2.8, 0.5],
                 9,
                 ["case", ["==", ["get", "onRoute"], 1], 3.4, 1.1],
               ] as never,
@@ -1785,10 +1805,18 @@ onMounted(() => {
              * 40px 宽 —— 挨着的两个点必然打架，于是避让会丢掉大部分名字，屏幕上
              * 剩下一批看起来随机的标注。三角形本身很小，那一档先画出来说明「这
              * 里有一个航路点」，名字等放到读得出的比例尺再出现。 */
+            /* 航路点**和航路同时出现**（都是 z6）。
+             *
+             * 一张只有线没有点的航路图读不了：航路是「从哪个点到哪个点」，点才是那
+             * 条线的意义。先前这一层被推到 z8，于是 z6–7 那两级只有线 —— 看得见网，
+             * 却说不出任何一段是什么。
+             *
+             * 代号仍然晚两级（下面那条 `text-opacity` 的 step）：z6 上五千多个代号
+             * 排不下，而三角形本身已经回答了「这儿有个点」。 */
             id: "airway-fixes",
             type: "symbol",
             source: "airwayFixes",
-            minzoom: 8,
+            minzoom: 6,
             layout: {
               "icon-image": "fix-triangle",
               "icon-size": 1,
@@ -1803,8 +1831,8 @@ onMounted(() => {
               "text-color": c.label,
               "text-halo-color": c.ocean,
               "text-halo-width": 1.2,
-              // 名字在 z6 才出现，三角形从 z5 就在。见上面那段注释。
-              "text-opacity": ["step", ["zoom"], 0, 6, 1] as never,
+              // 名字在 z8 才出现，三角形从 z6 起就和航路一起在。见上面那段注释。
+              "text-opacity": ["step", ["zoom"], 0, 8, 1] as never,
             },
           },
           {
@@ -1911,7 +1939,21 @@ onMounted(() => {
                 8,
                 6.5,
               ] as never,
-              "line-opacity": 0.9,
+              /* **交接给航路网的那几条腿在 z6 以上让位。**
+               *
+               * z6 正是 `airways` 那一层的 `minzoom` —— 它从那一级起接手把这几段
+               * 点亮，所以计划线自己画到那儿为止。数字写死成 6 是因为它就是那个
+               * 图层的 minzoom，改一个必须改另一个（下面 `route` 同）。
+               *
+               * 用透明度而不是 `filter`：`filter` 是按要素判的，判不了缩放；而把
+               * 要素从源里拿掉正是这次要修的那个毛病。 */
+              "line-opacity": [
+                "step",
+                ["zoom"],
+                0.9,
+                6,
+                ["case", ["==", ["get", "onAirway"], 1], 0, 0.9],
+              ] as never,
             },
           },
           {
@@ -1940,6 +1982,14 @@ onMounted(() => {
                 2,
                 8,
                 3.4,
+              ] as never,
+              // 同 route-casing：z6 起交给航路网点亮那几段。
+              "line-opacity": [
+                "step",
+                ["zoom"],
+                1,
+                6,
+                ["case", ["==", ["get", "onAirway"], 1], 0, 1],
               ] as never,
             },
           },
@@ -1990,6 +2040,19 @@ onMounted(() => {
               "text-color": c.route,
               "text-halo-color": c.routeCasing,
               "text-halo-width": 1.6,
+              /* 标注的交接点是 **z8**，不是线的 z6 —— 接手标注的是
+               * `airway-labels`，而它的 minzoom 是 8。
+               *
+               * 两个交接点不同不是疏漏：z6–8 那两级里，航路网的线已经画着、名字还
+               * 没出来，这时候计划自己的沿线标注是那一段唯一写着航路代号的东西。
+               * 跟着线一起在 z6 让位，就会有两级只有一条亮线而说不出它是哪条航路。 */
+              "text-opacity": [
+                "step",
+                ["zoom"],
+                1,
+                8,
+                ["case", ["==", ["get", "onAirway"], 1], 0, 1],
+              ] as never,
             },
           },
           {
