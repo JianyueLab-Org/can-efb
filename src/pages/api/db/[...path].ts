@@ -47,13 +47,48 @@ const ALLOW_LIST: Record<string, Allowed> = {
   // 格子最低超障高度。**必须带 `?bbox=`**，can-db 那边没有「取全世界」的形式 ——
   // 这一层是画在图上的标注，而一张显示 180 度纬度的图没地方画它们。
   "aip/mora": { methods: ["GET"], who: "MapSurface.vue 的 Grid MORA 图层" },
+  // 机场索引。**上面那句「特意不在这里」到期了**：地面图层要按机场取数据，而地
+  // 图只知道自己在看哪一块地 —— 中间缺的就是一张 ICAO → 坐标的表。这正是那句话
+  // 说的「哪天真有岛屿要在浏览器里查机场」。
+  //
+  // 它按 `aipAccess` 分级（1–2 级 246 个，3–4 级 433 个），分级在 can-db 那边判，
+  // 这一层不抄。
+  "aip/airports": {
+    methods: ["GET"],
+    who: "lib/airports.ts，地面图层的机场索引",
+  },
 };
+
+/**
+ * 带一个参数的那些路径。
+ *
+ * **正则而不是通配**，而且只有一处能变：`aip/airports/<四字母 ICAO>/ground`。写成
+ * `aip/airports/*` 就等于把机场详情、地面、以及将来挂在这个前缀下的一切都开出去，
+ * 那正是文件头那句「通配转发等于把 can-db 挂到公网上当开放代理」说的事。
+ *
+ * ICAO 必须是四个字母：can-db 自己也只认四位（不是就回 400），在这里同样收死，是
+ * 为了让这条转发的形状**一眼看得出边界**，而不是靠上游兜底。
+ *
+ * **大小写都收。** 收死的是形状（一段、四个字母、然后 /ground），不是大小写 ——
+ * can-db 自己会转大写，两种拼法到的是同一个资源。只认大写不会拦住任何东西，只会
+ * 让下一个用这条路的人撞上一个说「不在白名单内」的 404，而他明明写对了。
+ */
+const ALLOW_PATTERNS: { pattern: RegExp; entry: Allowed }[] = [
+  {
+    pattern: /^aip\/airports\/[A-Za-z]{4}\/ground$/,
+    entry: {
+      methods: ["GET"],
+      who: "lib/ground.ts，放大后画的机场地面",
+    },
+  },
+];
 
 const PASS_THROUGH = ["content-type", "cache-control"];
 
 const handler: APIRoute = async (context) => {
   const rest = context.params.path ?? "";
-  const entry = ALLOW_LIST[rest];
+  const entry =
+    ALLOW_LIST[rest] ?? ALLOW_PATTERNS.find((p) => p.pattern.test(rest))?.entry;
 
   if (!entry) {
     return Response.json(
