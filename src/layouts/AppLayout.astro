@@ -25,6 +25,7 @@
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import AppRail from "@/components/AppRail.vue";
 import MapSurface from "@/components/MapSurface.vue";
+import BeianLine from "@jianyuelab-org/can-ui/components/BeianLine.vue";
 import { getLocale, getMessages, useTranslations } from "@/lib/i18n";
 import { buildCrossLinks, buildNav } from "@/lib/nav";
 import { toEfbUser } from "@/lib/session";
@@ -71,6 +72,21 @@ const crossLinks = buildCrossLinks(t);
     <main id="main-content" tabindex="-1" class="app-panel">
       <div class="w-full px-4 py-8 sm:px-5 lg:py-10">
         <slot />
+      </div>
+      <!--
+        备案号。这个站不用 can-ui 的 `AppShell`（它自己那套 AppRail + 地图的
+        外壳还没有第二个用户，见 can-ui 的「Still not here」），所以那边挂在
+        AppShell 页脚上的那一行到不了这里，要单独放一次。
+
+        位置是面板列的最底下而不是地图上：`app-panel` 是每一页内容所在的、会
+        滚到底的那一列，而地图 `transition:persist` 跨页面存活 —— 挂在地图上
+        等于挂在一个不属于任何一页的东西上。
+
+        不加 `client:` 指令：这是一个静态链接，没有状态也没有事件，Astro 直接
+        渲染成 HTML。给它水合等于为了一个 <a> 往每一页塞一份运行时。
+      -->
+      <div class="w-full px-4 pb-6 sm:px-5">
+        <BeianLine />
       </div>
     </main>
 
