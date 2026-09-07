@@ -75,6 +75,7 @@ import {
 import { fetchRunways, toRunwayFeatures } from "@/lib/runways";
 import {
   fetchDatafeed,
+  hasPosition,
   onlineControllers,
   ownPilot,
   toControllerAreas,
@@ -536,9 +537,18 @@ async function refreshLive() {
       );
       const mine = ownPilot(feed, props.cid);
       own.value = toOwnPoint(mine);
-      ownAt.value = mine
-        ? { lat: mine.latitude, lon: mine.longitude, callsign: mine.callsign }
-        : null;
+      // 「定位到我」那颗按钮要有一个真的坐标才有意义。刚连上、还没发过位置包
+      // 的时候 datafeed 里没有经纬度（见 `lib/datafeed.ts` 的 `DatafeedPilot`），
+      // 从前这里会存下一对 undefined，然后按钮照常出现、按下去把地图飞去
+      // `NaN` —— MapLibre 对此的反应是整张图不动，看起来像按钮坏了。
+      ownAt.value =
+        mine && hasPosition(mine)
+          ? {
+              lat: mine.latitude!,
+              lon: mine.longitude!,
+              callsign: mine.callsign,
+            }
+          : null;
     }
     if (!showAtc.value) return;
 
