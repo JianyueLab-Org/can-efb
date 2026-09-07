@@ -50,21 +50,40 @@ export interface DatafeedFlightPlan {
   route: string;
 }
 
+/**
+ * 一架在线的飞机。
+ *
+ * **位置和姿态那几项全是可选的，这是照着生产者写的，不是防御性编程。**
+ * can-fsd 把它们声明成 `omitempty` 的指针
+ * （`internal/api/datafeed.go`），并且只在 `HasPosition()` 为真时才填 ——
+ * 一个刚连上、还没发过位置包的飞行员，他的条目里这几个键**根本不存在**，
+ * 那边还有一条 `TestUnpositionedClientOmitsCoordinates` 钉着这件事。
+ *
+ * 从前这里写的是必填。类型说了谎，于是每一处读它的地方都在无保护地用：
+ * `coordinates: [p.longitude, p.latitude]` 会得到 `[undefined, undefined]`
+ * —— 一份不合法的 GeoJSON 直接喂给 MapLibre —— 而 TypeScript 一声不吭，因为
+ * 按类型说这两个值是 number。
+ */
 export interface DatafeedPilot {
-  altitude: number;
+  /** 见接口顶上的说明：没发过位置包的飞行员没有这个键。 */
+  altitude?: number;
   callsign: string;
   cid: string;
   flight_plan?: DatafeedFlightPlan;
-  groundspeed: number;
-  heading: number;
-  /** **数字。** 管制员那边是字符串，见文件头。 */
-  latitude: number;
+  /** 见接口顶上的说明。 */
+  groundspeed?: number;
+  /** 见接口顶上的说明。 */
+  heading?: number;
+  /** **数字。** 管制员那边是字符串，见文件头。见接口顶上的说明：可以不存在。 */
+  latitude?: number;
   logon_time: string;
-  longitude: number;
+  /** 见接口顶上的说明：可以不存在。 */
+  longitude?: number;
   name: string;
   /** 占着这架飞机雷达标牌的管制员呼号；没人接管时不存在。 */
   tracked_by?: string;
-  transponder: number;
+  /** 见接口顶上的说明。 */
+  transponder?: number;
 }
 
 export interface DatafeedController {
@@ -276,13 +295,21 @@ export function toControllerPoints(
 export function toTrafficPoints(
   feed: Datafeed | null,
   cid: string | null,
-  bandOf: (altitude: number) => number,
-  onGroundOf: (groundspeed: number) => boolean,
-  levelOf: (altitude: number) => string,
+  // 三个回调都收得下 `undefined`，因为传给它们的三个字段都是可选的（见
+  // `DatafeedPilot`）。`lib/traffic.ts` 里的三个实现本来就是这个签名，而且各
+  // 自对"没有值"给了一个想清楚过的答案 —— 尤其是 `isOnGround`，缺地速时算在
+  // 地面（判错的方向有讲究，见那边的注释）。
+  bandOf: (altitude: number | null | undefined) => number,
+  onGroundOf: (groundspeed: number | null | undefined) => boolean,
+  levelOf: (altitude: number | null | undefined) => string,
 ): FeatureCollection {
   const features: Feature[] = [];
   for (const p of feed?.pilots ?? []) {
     if (cid && p.cid === cid) continue;
+    // **没报过位置的飞机不画。** 刚连上还没发位置包的飞行员没有经纬度，
+    // 从前这里会给他造一个 `[undefined, undefined]` 的要素。画在原点也不是
+    // 出路：几内亚湾上凭空多一架飞机，比这架飞机暂时不出现更难解释。
+    if (!hasPosition(p)) continue;
     features.push({
       type: "Feature",
       properties: {
@@ -293,15 +320,33 @@ export function toTrafficPoints(
         onGround: onGroundOf(p.groundspeed) ? 1 : 0,
         level: levelOf(p.altitude),
       },
-      geometry: { type: "Point", coordinates: [p.longitude, p.latitude] },
+      // 上面 `hasPosition` 已经确认过两个都是有限数，这里的 `!` 是给编译器
+      // 的，不是一次赌博。
+      geometry: { type: "Point", coordinates: [p.longitude!, p.latitude!] },
     });
   }
   return { type: "FeatureCollection", features };
 }
 
+/**
+ * 这架飞机报过位置吗？
+ *
+ * `Number.isFinite` 而不是 `!= null`：键缺席时是 `undefined`，而 JSON 里一个
+ * `null` 或者一个 `NaN` 同样画不出点来。GeoJSON 的坐标必须是有限数，把
+ * `undefined` 塞进去得到的不是"画在原点"，是一份不合法的文档 —— MapLibre 对它
+ * 的反应取决于版本，而没有一种反应是有用的。
+ */
+export function hasPosition(pilot: DatafeedPilot): boolean {
+  return Number.isFinite(pilot.latitude) && Number.isFinite(pilot.longitude);
+}
+
 /** 自己那架飞机，单要素。没连线时是空集合。 */
 export function toOwnPoint(pilot: DatafeedPilot | null): FeatureCollection {
-  if (!pilot) return { type: "FeatureCollection", features: [] };
+  // 「没连线」和「连上了但还没发位置包」在图上是同一件事：没有点可画。后者从
+  // 前会走进下面那段，造一个坐标是 undefined 的要素。
+  if (!pilot || !hasPosition(pilot)) {
+    return { type: "FeatureCollection", features: [] };
+  }
   return {
     type: "FeatureCollection",
     features: [
@@ -312,12 +357,14 @@ export function toOwnPoint(pilot: DatafeedPilot | null): FeatureCollection {
           heading: pilot.heading,
           // 高度取整到百英尺：datafeed 给的是逐英尺的瞬时值，标注上会跳个不停，
           // 而这张图上没有任何决定取决于那几十英尺。
-          altitude: Math.round(pilot.altitude / 100) * 100,
-          groundspeed: Math.round(pilot.groundspeed),
+          // 高度和地速和位置是同一组键，一起出现一起缺席；但它们只是标注上
+          // 的两个数字，缺了写 0 比让整个要素消失合理。
+          altitude: Math.round((pilot.altitude ?? 0) / 100) * 100,
+          groundspeed: Math.round(pilot.groundspeed ?? 0),
         },
         geometry: {
           type: "Point",
-          coordinates: [pilot.longitude, pilot.latitude],
+          coordinates: [pilot.longitude!, pilot.latitude!],
         },
       },
     ],

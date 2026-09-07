@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { lookupAllowed } from "@/lib/allowList";
 import { CAN_API_ORIGIN, origin } from "@/lib/config";
 
 export const prerender = false;
@@ -93,7 +94,10 @@ const PASS_THROUGH = ["content-type", "cache-control", "set-cookie"];
 
 const handler: APIRoute = async (context) => {
   const rest = context.params.path ?? "";
-  const entry = ALLOW_LIST[rest];
+  // `ALLOW_LIST[rest]` 直接查会把 `toString` / `constructor` / `__proto__` 这
+  // 类继承来的键当成命中，下面那道 404 放行、再下一行 `entry.methods` 抛
+  // TypeError。理由和做法写在 `lib/allowList.ts` 顶上。
+  const entry = lookupAllowed(ALLOW_LIST, rest);
 
   if (!entry) {
     return Response.json(

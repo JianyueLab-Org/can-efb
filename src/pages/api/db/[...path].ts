@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { lookupAllowed } from "@/lib/allowList";
 import { CAN_DB_ORIGIN } from "@/lib/config";
 
 export const prerender = false;
@@ -122,8 +123,12 @@ const PASS_THROUGH = ["content-type", "cache-control"];
 
 const handler: APIRoute = async (context) => {
   const rest = context.params.path ?? "";
+  // 精确表要走 `lookupAllowed`，不能直接下标 —— 对象字面量继承的那批键
+  // （`toString`、`constructor`、`__proto__`…）会假装命中，然后在
+  // `entry.methods` 那一行抛 TypeError。见 `lib/allowList.ts`。
   const entry =
-    ALLOW_LIST[rest] ?? ALLOW_PATTERNS.find((p) => p.pattern.test(rest))?.entry;
+    lookupAllowed(ALLOW_LIST, rest) ??
+    ALLOW_PATTERNS.find((p) => p.pattern.test(rest))?.entry;
 
   if (!entry) {
     return Response.json(
