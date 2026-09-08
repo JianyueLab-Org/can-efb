@@ -257,19 +257,41 @@ function toFlightPlan() {
         <li v-for="(note, i) in plan.notes" :key="i">{{ note }}</li>
       </ul>
 
-      <!-- 限制与空域：只摆原文。 -->
+      <!--
+        限制。**不能只摆原文。**
+
+        `aipAccess` 不到受限档时 can-db 抹掉 `code` 和 `body`（汇编原文是内容），但
+        限制本身照报 —— 规则对每个级别生效。只渲染原文的话，公众级看到的是一排标着
+        「限制」的空卡片，比不显示更糟。
+
+        所以：有原文就摆原文；没有就摆**哪几段受限**，那是这时候剩下的全部信息，也正
+        是要传达的东西。
+      -->
       <div v-if="plan.restrictions.length" class="flex flex-col gap-2">
         <p class="text-xs font-medium text-ink">
           {{ t("route.generate.restrictions") }}
         </p>
-        <p
+        <div
           v-for="(r, i) in plan.restrictions"
           :key="i"
           class="card p-3 text-sm text-muted"
         >
-          <span v-if="r.code" class="font-mono text-ink">{{ r.code }} </span>
-          {{ r.body }}
-        </p>
+          <template v-if="r.body">
+            <span v-if="r.code" class="font-mono text-ink">{{ r.code }} </span>
+            {{ r.body }}
+          </template>
+          <template v-else>
+            <p class="text-ink">{{ t("route.generate.restrictedLegs") }}</p>
+            <p class="mt-1 font-mono text-xs">
+              <span v-for="(l, j) in r.legs ?? []" :key="j" class="mr-3">
+                {{ l.airway }} {{ l.from }}–{{ l.to }}
+              </span>
+            </p>
+            <p class="mt-1 text-xs text-faint">
+              {{ t("route.generate.restrictionTextWithheld") }}
+            </p>
+          </template>
+        </div>
       </div>
 
       <div v-if="plan.airspaces.length" class="flex flex-col gap-2">

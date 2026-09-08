@@ -188,7 +188,9 @@
         "noRoute": "この 2 空港間に利用可能な経路がありません（巡航高度を変えると見つかる場合があります）。",
         "badInput": "空港コードは 4 文字の ICAO です。",
         "failed": "生成に失敗しました。しばらくしてから再試行してください。",
-        "toFlightPlan": "フライトプランに入力"
+        "toFlightPlan": "フライトプランに入力",
+        "restrictedLegs": "以下の区間に制限があります",
+        "restrictionTextWithheld": "制限の本文にはより高いデータベース権限が必要です"
       },
       "expand": {
         "title": "ルート文字列を展開"

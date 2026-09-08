@@ -188,7 +188,9 @@
         "noRoute": "这两个机场之间没有可用的走法（换个巡航高度也许可以）。",
         "badInput": "机场代码不对，要四位 ICAO。",
         "failed": "生成失败，请稍后再试。",
-        "toFlightPlan": "填入飞行计划"
+        "toFlightPlan": "填入飞行计划",
+        "restrictedLegs": "以下航段受限",
+        "restrictionTextWithheld": "限制原文需要更高的资料库权限"
       },
       "expand": {
         "title": "展开航路字符串"
