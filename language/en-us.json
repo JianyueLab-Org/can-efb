@@ -190,7 +190,10 @@
         "failed": "Could not generate a route — try again shortly.",
         "toFlightPlan": "Fill into flight plan",
         "restrictedLegs": "These legs are restricted",
-        "restrictionTextWithheld": "The restriction's text needs a higher database tier"
+        "restrictionTextWithheld": "The restriction's text needs a higher database tier",
+        "unrestricted": "Without the restricted compilation",
+        "unrestrictedHint": "Plan from tier 1–2 data only, leaving out NAIP. The result may be shared with members who do not hold that tier.",
+        "withoutRestricted": "restricted compilation not used"
       },
       "expand": {
         "title": "Expand a route string"

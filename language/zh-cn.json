@@ -190,7 +190,10 @@
         "failed": "生成失败，请稍后再试。",
         "toFlightPlan": "填入飞行计划",
         "restrictedLegs": "以下航段受限",
-        "restrictionTextWithheld": "限制原文需要更高的资料库权限"
+        "restrictionTextWithheld": "限制原文需要更高的资料库权限",
+        "unrestricted": "不使用受限汇编",
+        "unrestrictedHint": "按 1–2 级的数据规划，也就是不用 NAIP。结果可以给看不到那一份的人。",
+        "withoutRestricted": "未使用受限汇编"
       },
       "expand": {
         "title": "展开航路字符串"

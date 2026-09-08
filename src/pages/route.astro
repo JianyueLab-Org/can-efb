@@ -23,7 +23,11 @@ const description = t("pages.route.description");
   <h2 class="mb-3 text-sm font-semibold text-ink">
     {t("route.generate.title")}
   </h2>
-  <RouteGenerator messages={getMessages(locale, "efb")} client:load />
+  <RouteGenerator
+    messages={getMessages(locale, "efb")}
+    aipAccess={Astro.locals.user?.aipAccess ?? 0}
+    client:load
+  />
 
   <h2 class="mt-8 mb-3 text-sm font-semibold text-ink">
     {t("route.expand.title")}

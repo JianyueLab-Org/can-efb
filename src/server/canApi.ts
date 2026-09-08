@@ -86,6 +86,16 @@ export interface SessionUser {
   name: string;
   email: string;
   rating: number;
+  /**
+   * 资料库访问级别，由 ADM 逐个授予：0 无 / 1 只读 / 2 可编辑 / 3 受限只读 /
+   * 4 受限可编辑。**3 和 4 多出来的那一份是 CAAC 的 NAIP 汇编。**
+   *
+   * 这个站不拿它做权限判断 —— 门在 can-db。这里只用来决定「不使用受限汇编」那个
+   * 开关出不出：档下的人按它恒为空转，摆出来只会让人以为自己错过了什么。
+   *
+   * can-api 一直在回这个字段，这里从前只是没写进类型。
+   */
+  aipAccess: number;
 }
 
 /**
