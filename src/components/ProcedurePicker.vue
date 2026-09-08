@@ -36,6 +36,7 @@ import {
   joinsRoute,
   pickProcedures,
   procedureLabel,
+  procedureTrack,
   ProcedureError,
   procedureRunways,
   rewriteRoute,
@@ -207,8 +208,13 @@ watch(
       points: composeRoutePoints({
         departure: props.departurePoint,
         sid: sid.value,
+        // 跑道要传进去：一条 SID 常常把好几条跑道的转换塞在同一串腿里，不给跑道就
+        // 只画公共段。不传的话画出来是一团来回穿插的线（ZBAD 的 ELKU4K 就是），而
+        // 每一段本身画得都很漂亮，看不出错。
+        sidRunway: depRunway.value,
         enroute: props.enroute,
         star: star.value,
+        starRunway: arrRunway.value,
         approach: approach.value,
         arrival: props.arrivalPoint,
       }),
@@ -218,11 +224,29 @@ watch(
   { deep: false },
 );
 
-/** 摆出来的腿表：选中的三条程序按飞行顺序接起来。 */
+/**
+ * 摆出来的腿表：选中的三条程序按飞行顺序接起来。
+ *
+ * 和地图一样只列**实际飞的那几段** —— 列全部转换的话，一条 SID 会摊出好几条跑道各自
+ * 的腿，而表格里看不出哪几行属于哪条跑道。
+ */
 const legs = computed(() =>
-  [sid.value, star.value, approach.value]
-    .filter((p): p is Procedure => Boolean(p))
-    .flatMap((p) => p.path.map((leg) => ({ procedure: p, leg }))),
+  (
+    [
+      [sid.value, depRunway.value, firstEnroute.value],
+      [star.value, arrRunway.value, lastEnroute.value],
+      [approach.value, arrRunway.value, null],
+    ] as const
+  )
+    .filter((row): row is readonly [Procedure, string, string | null] =>
+      Boolean(row[0]),
+    )
+    .flatMap(([p, runway, enrouteFix]) =>
+      procedureTrack(p, { runway, enrouteFix }).map((leg) => ({
+        procedure: p,
+        leg,
+      })),
+    ),
 );
 
 function runwayNote(p: Procedure): string {
