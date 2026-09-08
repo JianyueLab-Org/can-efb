@@ -35,12 +35,31 @@ import {
 } from "@/lib/routePlan";
 import ProcedurePicker from "@/components/ProcedurePicker.vue";
 
-const props = defineProps<{ messages: Record<string, unknown> }>();
+const props = defineProps<{
+  messages: Record<string, unknown>;
+  /**
+   * 成员的 `aipAccess`，**只用来决定开关出不出**，不是权限判断。
+   *
+   * can-db 那边 `?unrestricted=1` 是把级别往下压（`min(自己的, 2)`），是 cap 不是
+   * 赋值，所以这里判错、或者有人自己拼一个带参数的请求，都只可能少看到而不会多看到。
+   */
+  aipAccess: number;
+}>();
 const t = createTranslator(props.messages);
 
 const from = ref("");
 const to = ref("");
 const level = ref("");
+const unrestricted = ref(false);
+/**
+ * 开关对谁可见。
+ *
+ * 3–4 级比 1–2 级多出来的恰好是 CAAC 的 NAIP 汇编。持有它的人有两个理由想把它排掉：
+ * 那是低级别成员实际拿到的答案；受限汇编推出来的航路不能转手给看不到那一份的人。
+ *
+ * 档下的人不显示 —— 对他们这个开关恒为空转，摆出来只会让人以为自己错过了什么。
+ */
+const canChooseTier = computed(() => props.aipAccess >= 3);
 
 const busy = ref(false);
 const plan = ref<RoutePlan | null>(null);
@@ -89,7 +108,12 @@ async function generate() {
   plan.value = null;
 
   try {
-    const result = await planRoute(a, b, Number(level.value) || undefined);
+    const result = await planRoute(
+      a,
+      b,
+      Number(level.value) || undefined,
+      canChooseTier.value && unrestricted.value,
+    );
     plan.value = result;
     route.value = result.route;
     publishToMap({
@@ -171,6 +195,25 @@ function toFlightPlan() {
       </label>
     </div>
 
+    <!--
+      3–4 级才有的开关：按 1–2 级的数据规划，也就是不用 CAAC 的 NAIP 汇编。
+
+      档下的人不显示 —— 对他们这个开关恒为空转（can-db 那边是把级别往下压，cap 不是
+      赋值），摆出来只会让人以为自己错过了什么。
+    -->
+    <label
+      v-if="canChooseTier"
+      class="flex w-fit cursor-pointer items-start gap-2 text-sm"
+    >
+      <input v-model="unrestricted" type="checkbox" class="mt-0.5" />
+      <span>
+        <span class="text-ink">{{ t("route.generate.unrestricted") }}</span>
+        <span class="mt-0.5 block text-xs text-muted">{{
+          t("route.generate.unrestrictedHint")
+        }}</span>
+      </span>
+    </label>
+
     <button
       type="button"
       class="btn btn-primary self-start"
@@ -192,6 +235,15 @@ function toFlightPlan() {
         }}
         <span v-if="plan.publishedName" class="font-mono">
           · {{ plan.publishedName }}</span
+        >
+        <!--
+          用没用受限汇编。**对每个级别都显示**，包括看不到开关的人 —— 否则「没有开关」
+          和「功能坏了」在界面上长得一模一样，而这一行正是答案。
+          值取 can-db 报的 `plan.unrestricted`，不是这边的勾选框：答案该由产出它的那一
+          方描述，而不是由发起请求的一方记着自己传了什么。
+        -->
+        <span v-if="plan.unrestricted">
+          · {{ t("route.generate.withoutRestricted") }}</span
         >
         <span v-if="plan.alternatives">
           · {{ t("route.generate.alternatives") }} {{ plan.alternatives }}</span

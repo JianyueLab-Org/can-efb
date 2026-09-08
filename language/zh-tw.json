@@ -190,7 +190,10 @@
         "failed": "產生失敗，請稍後再試。",
         "toFlightPlan": "填入飛行計劃",
         "restrictedLegs": "以下航段受限",
-        "restrictionTextWithheld": "限制原文需要更高的資料庫權限"
+        "restrictionTextWithheld": "限制原文需要更高的資料庫權限",
+        "unrestricted": "不使用受限彙編",
+        "unrestrictedHint": "按 1–2 級的資料規劃，也就是不用 NAIP。結果可以給看不到那一份的人。",
+        "withoutRestricted": "未使用受限彙編"
       },
       "expand": {
         "title": "展開航路字串"

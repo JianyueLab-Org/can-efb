@@ -190,7 +190,10 @@
         "failed": "生成に失敗しました。しばらくしてから再試行してください。",
         "toFlightPlan": "フライトプランに入力",
         "restrictedLegs": "以下の区間に制限があります",
-        "restrictionTextWithheld": "制限の本文にはより高いデータベース権限が必要です"
+        "restrictionTextWithheld": "制限の本文にはより高いデータベース権限が必要です",
+        "unrestricted": "制限付き資料を使わない",
+        "unrestrictedHint": "レベル 1〜2 のデータのみで計画します（NAIP を除外）。その資料を閲覧できない会員にも渡せます。",
+        "withoutRestricted": "制限付き資料は未使用"
       },
       "expand": {
         "title": "ルート文字列を展開"
