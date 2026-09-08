@@ -244,9 +244,101 @@ export function procedureLabel(p: Procedure): string {
  * `via` 一律是程序名，于是地图上那条沿线标注写的就是 `IDKE5Y`，和航图上读一条计
  * 划的方式一致：点、程序、点。
  */
-export function procedureToMapPoints(p: Procedure): MapPoint[] {
-  const out: MapPoint[] = [];
+/** `RW19L` 这类跑道转换的名字。它面向跑道，不是接航路网的那一端。 */
+const RUNWAY_TRANSITION = /^RW([0-9]{2}[LRCG]?)$/;
+
+/**
+ * 一条程序里**实际要飞的那几段**。
+ *
+ * **一条程序的点列不是一条航迹。** NAIP 把一条 SID 的几个跑道转换和公共段全塞进同一
+ * 串腿里 —— ZBAD 的 `ELKU4K` 就是这样，`AD4xx`/`AD5xx` 是各条跑道各自的转换，后面才
+ * 接上公共段出到 ELKUR。整串连成一条折线画出来，是一团来回穿插的线，程序名沿线重复
+ * 三次，而**每一段本身画得都很漂亮**，所以看不出错。346 条 SID 和 47 条 STAR 是这样，
+ * 一行最多 11 组。
+ *
+ * 要画的是实际飞的那一条：
+ *
+ *   SID   所选跑道的转换 → 公共段 → 接得上航路的那个航路转换
+ *   STAR  反过来
+ *
+ * **没给跑道就不画任何跑道转换**，只画公共段。随便挑一条会画出这架飞机不飞的线，而它
+ * 看起来和真的一模一样 —— 这个站的判据是「错了不会被屏幕出卖的地方要格外小心」。
+ * 同理，航路转换按 `enrouteFix` 挑，挑不中就不画。
+ *
+ * 一个转换都没有的程序（navigraph 那一份 33574 个点里 0 个带转换）原样返回。
+ */
+export function procedureTrack(
+  p: Procedure,
+  opts: { runway?: string | null; enrouteFix?: string | null } = {},
+): ProcedureLeg[] {
+  const groups = new Map<string, ProcedureLeg[]>();
   for (const leg of p.path ?? []) {
+    const key = leg.transition ?? "";
+    const list = groups.get(key);
+    if (list) list.push(leg);
+    else groups.set(key, [leg]);
+  }
+  // 只有一组就是「没有转换」，原样返回 —— 分组不该改变这类程序的任何行为。
+  if (groups.size <= 1) return [...(p.path ?? [])];
+
+  const isCommon = (name: string) => name === "" || name === "ALL";
+  const wantRunway = (opts.runway ?? "").toUpperCase();
+
+  const runwayLegs: ProcedureLeg[] = [];
+  const commonLegs: ProcedureLeg[] = [];
+  const enrouteLegs: ProcedureLeg[] = [];
+  for (const [name, legs] of groups) {
+    const rw = RUNWAY_TRANSITION.exec(name);
+    if (rw) {
+      if (wantRunway && rw[1] === wantRunway) runwayLegs.push(...legs);
+      continue;
+    }
+    if (isCommon(name)) {
+      commonLegs.push(...legs);
+      continue;
+    }
+    // 具名的航路转换。名字就是接入点，但按**腿**判更稳：汇编偶尔用别名。
+    if (!opts.enrouteFix) continue;
+    const outer = p.kind === "star" ? legs[0] : legs[legs.length - 1];
+    if (name === opts.enrouteFix || outer?.ident === opts.enrouteFix) {
+      enrouteLegs.push(...legs);
+    }
+  }
+
+  const ordered =
+    p.kind === "star"
+      ? [...enrouteLegs, ...commonLegs, ...runwayLegs]
+      : [...runwayLegs, ...commonLegs, ...enrouteLegs];
+
+  // 一段都没挑中时退回整串 —— 宁可画一团，也不能让这条程序从图上消失。
+  if (!ordered.length) return [...(p.path ?? [])];
+
+  // **接缝上的那个点是同一个点。** 一个航路转换从公共段结束的地方开始（ARINC 的常态），
+  // 所以两组接起来会出现连着两个 ELKUR。收掉，否则腿表里多一行、地图上多一条零长腿 ——
+  // 而零长腿会让 MapLibre 的碰撞检测随缩放随机藏掉一个标注，表现是标注忽隐忽现。
+  //
+  // 只收**相邻**的重复，和 composeRoutePoints 同一条规矩：一条程序合法地两次经过同一个
+  // 点（等待、折返），全局去重会把中间那一整段吃掉。代号为空的腿比坐标。
+  const out: ProcedureLeg[] = [];
+  for (const leg of ordered) {
+    const prev = out[out.length - 1];
+    const same = prev
+      ? leg.ident && prev.ident
+        ? leg.ident === prev.ident
+        : leg.lat === prev.lat && leg.lon === prev.lon
+      : false;
+    if (same) continue;
+    out.push(leg);
+  }
+  return out;
+}
+
+export function procedureToMapPoints(
+  p: Procedure,
+  opts: { runway?: string | null; enrouteFix?: string | null } = {},
+): MapPoint[] {
+  const out: MapPoint[] = [];
+  for (const leg of procedureTrack(p, opts)) {
     if (leg.lat == null || leg.lon == null) continue;
     out.push({
       ident: leg.ident || "",
@@ -293,7 +385,13 @@ export function joinsRoute(
 
 /** 程序和航路相接的那一端的代号 —— 界面要把两头都摆出来，不然「接不上」没法查。 */
 export function joinIdent(procedure: Procedure): string | null {
-  const idents = (procedure.path ?? [])
+  // **不能拿整串的首末。** 整串的最后一个代号可能落在跑道转换那一组上（NAIP 里 28 条
+  // SID 就是这样），于是界面会说「接不上」，而实际上接得上 —— 一个假警报会让人手改
+  // 航路串，把本来对的改错。
+  //
+  // 不给跑道、不给衔接点地调 `procedureTrack`，剩下的正是公共段，它的那一端就是这条
+  // 程序接上航路网的地方。
+  const idents = procedureTrack(procedure)
     .map((l) => l.ident)
     .filter((i): i is string => Boolean(i));
   if (idents.length === 0) return null;
@@ -347,17 +445,44 @@ export function rewriteRoute(
 export function composeRoutePoints(parts: {
   departure?: MapPoint | null;
   sid?: Procedure | null;
+  /** 起飞跑道。**不给就不画任何跑道转换** —— 见 procedureTrack。 */
+  sidRunway?: string | null;
   enroute?: MapPoint[] | null;
   star?: Procedure | null;
+  /** 落地跑道，同上。 */
+  starRunway?: string | null;
   approach?: Procedure | null;
   arrival?: MapPoint | null;
 }): MapPoint[] {
+  // 衔接点从 `enroute` 自己推：SID 接航路的第一个点，STAR 接最后一个。调用方已经把
+  // 航路交过来了，再要它算一遍只是多一处可以算错的地方。
+  const first = parts.enroute?.[0]?.ident || null;
+  const last = parts.enroute?.[parts.enroute.length - 1]?.ident || null;
+
   const chain: MapPoint[] = [];
   if (parts.departure) chain.push(parts.departure);
-  if (parts.sid) chain.push(...procedureToMapPoints(parts.sid));
+  if (parts.sid) {
+    chain.push(
+      ...procedureToMapPoints(parts.sid, {
+        runway: parts.sidRunway,
+        enrouteFix: first,
+      }),
+    );
+  }
   if (parts.enroute) chain.push(...parts.enroute);
-  if (parts.star) chain.push(...procedureToMapPoints(parts.star));
-  if (parts.approach) chain.push(...procedureToMapPoints(parts.approach));
+  if (parts.star) {
+    chain.push(
+      ...procedureToMapPoints(parts.star, {
+        runway: parts.starRunway,
+        enrouteFix: last,
+      }),
+    );
+  }
+  if (parts.approach) {
+    chain.push(
+      ...procedureToMapPoints(parts.approach, { runway: parts.starRunway }),
+    );
+  }
   if (parts.arrival) chain.push(parts.arrival);
 
   const out: MapPoint[] = [];

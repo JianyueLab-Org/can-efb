@@ -7,6 +7,7 @@ import {
   procedureLabel,
   procedureRunways,
   procedureToMapPoints,
+  procedureTrack,
   rewriteRoute,
   runwayIdents,
   servesAllRunways,
@@ -286,5 +287,200 @@ describe("合成", () => {
 
   test("什么都没有就是空的，不是一条假线", () => {
     expect(composeRoutePoints({})).toEqual([]);
+  });
+});
+
+/**
+ * 一条程序的点列**不是一条航迹**。
+ *
+ * NAIP 把一条 SID 的几个跑道转换和公共段全塞进同一串腿里 —— ZBAD 的 `ELKU4K` 就是
+ * 这样：`AD4xx`/`AD5xx` 是各条跑道各自的转换，后面才接上公共段出到 ELKUR。整串连成
+ * 一条折线画出来，是一团来回穿插的线，`ELKU4K` 这个标签沿线重复三次，而每一段本身
+ * 画得都很漂亮 —— 所以看不出错。346 条 SID 和 47 条 STAR 是这样，一行最多 11 组。
+ *
+ * 飞行计划要画的是**实际飞的那一条**：所选跑道的转换 → 公共段 → 接得上航路的那个航路
+ * 转换。不是所有转换。
+ */
+describe("procedureTrack", () => {
+  const leg = (ident: string, transition: string | null): ProcedureLeg =>
+    ({
+      ident,
+      lat: 39 + ident.length / 100,
+      lon: 116 + ident.length / 100,
+      path: "TF",
+      transition,
+      routeType: null,
+      alt: null,
+      speedKt: null,
+      speedKind: null,
+      turn: null,
+      courseMag: null,
+      vpaDeg: null,
+      flyover: false,
+      isMap: false,
+      part: null,
+    }) as ProcedureLeg;
+
+  const elku4k: Procedure = {
+    kind: "sid",
+    name: "ELKU4K",
+    runway: "01L",
+    runways: "01L,01R,11L",
+    chart: null,
+    variant: null,
+    points: [],
+    path: [
+      leg("AD551", "RW01L"),
+      leg("AD557", "RW01L"),
+      leg("AD531", "RW01R"),
+      leg("AD532", "RW01R"),
+      leg("AD430", "RW11L"),
+      leg("AD456", "RW11L"),
+      leg("AD535", "ALL"),
+      leg("AD539", "ALL"),
+      leg("ELKUR", "ALL"),
+    ],
+  };
+
+  test("只画所选跑道的转换加公共段，不画别的跑道的", () => {
+    const idents = procedureTrack(elku4k, { runway: "01L" }).map(
+      (l) => l.ident,
+    );
+    expect(idents).toEqual(["AD551", "AD557", "AD535", "AD539", "ELKUR"]);
+  });
+
+  test("换一条跑道就换一组转换", () => {
+    const idents = procedureTrack(elku4k, { runway: "11L" }).map(
+      (l) => l.ident,
+    );
+    expect(idents).toEqual(["AD430", "AD456", "AD535", "AD539", "ELKUR"]);
+  });
+
+  // 没指定跑道时只画公共段 —— 随便挑一条跑道转换会画出一条这架飞机不飞的线，
+  // 而它看起来和真的一模一样。
+  test("没给跑道就只画公共段", () => {
+    const idents = procedureTrack(elku4k, {}).map((l) => l.ident);
+    expect(idents).toEqual(["AD535", "AD539", "ELKUR"]);
+  });
+
+  // navigraph 的程序一个转换都没有（33574 个点里 0 个带转换），不能因为多了分组就退化。
+  test("没有转换的程序原样返回", () => {
+    const plain: Procedure = {
+      ...elku4k,
+      path: [leg("RW01L", null), leg("GG101", null), leg("ELKUR", null)],
+    };
+    expect(
+      procedureTrack(plain, { runway: "01L" }).map((l) => l.ident),
+    ).toEqual(["RW01L", "GG101", "ELKUR"]);
+  });
+
+  // 航路转换按「接得上航路」挑。挑错等于画一条飞机不飞的线。
+  test("航路转换按衔接点挑", () => {
+    const withEnroute: Procedure = {
+      ...elku4k,
+      path: [
+        leg("AD551", "RW01L"),
+        leg("AD535", "ALL"),
+        leg("ELKUR", "ALL"),
+        leg("ELKUR", "SOTMU"),
+        leg("SOTMU", "SOTMU"),
+        leg("ELKUR", "AVBOX"),
+        leg("AVBOX", "AVBOX"),
+      ],
+    };
+    const idents = procedureTrack(withEnroute, {
+      runway: "01L",
+      enrouteFix: "SOTMU",
+    }).map((l) => l.ident);
+    expect(idents).toEqual(["AD551", "AD535", "ELKUR", "SOTMU"]);
+  });
+
+  // STAR 反过来：航路转换在前，跑道转换在后。
+  test("STAR 的顺序是反的", () => {
+    const star: Procedure = {
+      kind: "star",
+      name: "AVBO4A",
+      runway: "01L",
+      runways: "01L",
+      chart: null,
+      variant: null,
+      points: [],
+      path: [
+        leg("AVBOX", "AVBOX"),
+        leg("GG201", "AVBOX"),
+        leg("GG202", "ALL"),
+        leg("GG203", "RW01L"),
+      ],
+    };
+    const idents = procedureTrack(star, {
+      runway: "01L",
+      enrouteFix: "AVBOX",
+    }).map((l) => l.ident);
+    expect(idents).toEqual(["AVBOX", "GG201", "GG202", "GG203"]);
+  });
+});
+
+/**
+ * 衔接判断也不能拿整串的首末。
+ *
+ * `joinIdent` 回答「这条程序在哪儿接上航路」。整串的最后一个代号可能落在**跑道转换**
+ * 那一组上（NAIP 里 28 条 SID 就是这样），于是界面会说「接不上」，而实际上接得上 ——
+ * 一个假警报会让人手改航路串，把本来对的改错。
+ */
+describe("joinIdent 按转换取", () => {
+  const leg = (ident: string, transition: string | null): ProcedureLeg =>
+    ({
+      ident,
+      lat: 39,
+      lon: 116,
+      path: "TF",
+      transition,
+      routeType: null,
+      alt: null,
+      speedKt: null,
+      speedKind: null,
+      turn: null,
+      courseMag: null,
+      vpaDeg: null,
+      flyover: false,
+      isMap: false,
+      part: null,
+    }) as ProcedureLeg;
+
+  test("跑道转换存在最后时，接点仍是公共段的末点", () => {
+    const p: Procedure = {
+      kind: "sid",
+      name: "ELKU4K",
+      runway: "01L",
+      runways: "01L",
+      chart: null,
+      variant: null,
+      points: [],
+      path: [
+        leg("AD535", "ALL"),
+        leg("ELKUR", "ALL"),
+        leg("AD551", "RW01L"), // 跑道转换排在后面
+        leg("AD557", "RW01L"),
+      ],
+    };
+    expect(joinIdent(p)).toBe("ELKUR");
+  });
+
+  test("STAR 取公共段的首点", () => {
+    const p: Procedure = {
+      kind: "star",
+      name: "AVBO4A",
+      runway: "01L",
+      runways: "01L",
+      chart: null,
+      variant: null,
+      points: [],
+      path: [
+        leg("GG203", "RW01L"), // 跑道转换排在前面
+        leg("AVBOX", "ALL"),
+        leg("GG202", "ALL"),
+      ],
+    };
+    expect(joinIdent(p)).toBe("AVBOX");
   });
 });
