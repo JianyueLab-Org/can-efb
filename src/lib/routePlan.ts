@@ -25,10 +25,19 @@ export interface RouteLeg {
 
 /** 沿途命中的一条限制。**是散文，不是规则** —— 界面只负责把原文摆出来。 */
 export interface RouteRestriction {
+  /**
+   * 代号和正文是**汇编原文** —— `aipAccess` 不到受限档时 can-db 会抹掉它们
+   * （`code` 为 null、`body` 为空串），而限制本身仍然报出来。
+   *
+   * 所以渲染的一方不能假设这两个有值：只摆原文的写法在公众级会变成一排标着「限制」
+   * 的空卡片，比不显示更糟。剩下的信息在 `legs` 和 `scope` 里。
+   */
   code: string | null;
   body: string;
   /** "segment"（真正飞的那一段命中）或 "airway"（只是同一条航路）。 */
   scope?: string;
+  /** 这条航路上被这条限制盖住的那几段。**正文被抹掉时，这就是全部信息。** */
+  legs?: Array<{ airway: string; from: string; to: string }>;
 }
 
 export interface RouteAirspace {

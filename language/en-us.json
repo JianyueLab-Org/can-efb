@@ -188,7 +188,9 @@
         "noRoute": "No routing between these two airports (another cruise level may work).",
         "badInput": "Airport codes must be four-letter ICAO.",
         "failed": "Could not generate a route — try again shortly.",
-        "toFlightPlan": "Fill into flight plan"
+        "toFlightPlan": "Fill into flight plan",
+        "restrictedLegs": "These legs are restricted",
+        "restrictionTextWithheld": "The restriction's text needs a higher database tier"
       },
       "expand": {
         "title": "Expand a route string"
