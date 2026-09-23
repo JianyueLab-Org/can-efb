@@ -36,15 +36,63 @@ export const onRequest = defineMiddleware(async (context, next) => {
     return withSecurityHeaders(await next());
   }
 
-  const user = await resolveSession(context);
-  context.locals.user = user;
+  const session = await resolveSession(context);
 
-  if (!user) {
+  // can-api 没给出答案时回 503，**不重定向**：这时成员多半是登录着的，把他踢去
+  // 登录页只会让一次上游故障看起来像被登出，而且登录完回来还是同一个故障。
+  if (session.status === "unavailable") {
+    context.locals.user = null;
+    return withSecurityHeaders(unavailable());
+  }
+
+  if (session.status === "anonymous") {
+    context.locals.user = null;
     return withSecurityHeaders(context.redirect(signInUrl(context.url)));
   }
 
+  context.locals.user = session.user;
   return withSecurityHeaders(await next());
 });
+
+/**
+ * can-api 不可用时的那一页。
+ *
+ * 故意写成一段内联 HTML，不走布局：布局要渲染轨脚的账户区、要读词典，而这时会
+ * 话本身就是缺的那一块。`/api/*` 不经过这里（见 `isUnguarded`），反代自己会回
+ * 502 JSON，所以这里只需要一种形状。
+ */
+function unavailable(): Response {
+  const html = `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>503 · CAN EFB</title>
+<style>
+body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,sans-serif;background:#0b1220;color:#e2e8f0}
+main{max-width:28rem;padding:1.5rem;text-align:center}
+h1{font-size:1.25rem;margin:0 0 .75rem}
+p{margin:.5rem 0;color:#94a3b8;line-height:1.6}
+a{color:#7dd3fc}
+</style>
+</head>
+<body>
+<main>
+<h1>暂时无法验证登录状态</h1>
+<p>会话服务暂时不可用，你的登录并没有失效。请稍后<a href="">刷新</a>重试。</p>
+<p lang="en">The session service is temporarily unavailable. You have not been signed out — please retry shortly.</p>
+</main>
+</body>
+</html>`;
+  return new Response(html, {
+    status: 503,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "retry-after": "30",
+    },
+  });
+}
 
 /**
  * 和三个兄弟站一致的安全头。

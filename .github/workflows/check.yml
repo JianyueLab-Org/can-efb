@@ -4,6 +4,9 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Deploy 把这份当作前置 job 调用，检查不过就不部署。push 到 main 时它因此会
+  # 跑两遍（这里一遍、Deploy 里一遍），换来的是部署不再和检查并行赛跑。
+  workflow_call:
 
 # 门就是本地那一条 `bun run lint` 加一次构建，一字不差 —— CI 和本地跑的不是同
 # 一组命令，是「在我机器上是好的」的标准来源。

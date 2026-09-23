@@ -1,0 +1,19 @@
+# 构建上下文只需要 package.json / bun.lock / .npmrc 和源码（src、public、
+# language、scripts、astro.config.mjs、tsconfig*.json）。依赖和产物都在镜像里
+# 重新装、重新构建，宿主机上那一份带进去只会覆盖掉镜像里装好的那份。
+node_modules
+dist
+.astro
+.git
+.github
+.claude
+.temp
+.vscode
+.idea
+.DS_Store
+.env
+.env.*
+npm-debug.log*
+Dockerfile
+.dockerignore
+deploy
