@@ -14,7 +14,20 @@ permissions:
   deployments: write
 
 jobs:
+  # 部署之前先过一遍和 check.yml 同一份的门。两个工作流原本各自由 push 触发、互
+  # 不等待，检查红了照样部署。
+  #
+  # 被调用的 check.yml 拿到的是**这里**给的 GITHUB_TOKEN 权限，所以按它需要的收
+  # 窄：读代码、从 GitHub Packages 装 can-ui。不收窄就会继承上面那份带
+  # packages: write 的。
+  check:
+    uses: ./.github/workflows/check.yml
+    permissions:
+      contents: read
+      packages: read
+
   deploy:
+    needs: check
     uses: JianyueLab-Org/actions/.github/workflows/deploy-k8s.yml@main
     with:
       image: ghcr.io/jianyuelab-org/can-efb

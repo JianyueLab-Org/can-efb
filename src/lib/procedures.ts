@@ -373,13 +373,11 @@ export function joinsRoute(
   enrouteIdent: string | null | undefined,
 ): boolean | null {
   if (!procedure || !enrouteIdent) return null;
-  const idents = (procedure.path ?? [])
-    .map((l) => l.ident)
-    .filter((i): i is string => Boolean(i));
-  if (idents.length === 0) return null;
-  // SID 的出口是最后一个点，STAR 的入口是第一个点 —— 进近同 STAR（它接在 STAR
-  // 后面）。方向由类别决定，不由调用方传，免得两边各判一次而判反。
-  const edge = procedure.kind === "sid" ? idents[idents.length - 1] : idents[0];
+  // 端点只由 `joinIdent` 一处决定：它按公共段取，不拿整串首末（跑道转换会排在两头）。
+  // 两处各取一次，界面摆出来的「两头」和这里的判断就可能不是同一个点。方向同样在那
+  // 里由类别决定，不由调用方传。
+  const edge = joinIdent(procedure);
+  if (edge == null) return null;
   return edge.toUpperCase() === enrouteIdent.toUpperCase();
 }
 

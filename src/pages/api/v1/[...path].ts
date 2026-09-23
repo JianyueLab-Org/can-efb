@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { lookupAllowed } from "@/lib/allowList";
 import { CAN_API_ORIGIN, origin } from "@/lib/config";
+import { ResponseCache, cacheKey } from "@/server/responseCache";
 
 export const prerender = false;
 
@@ -31,6 +32,12 @@ interface Allowed {
   methods: string[];
   /** 谁在用它 —— 没有这一句，以后没人敢删任何一条。 */
   who: string;
+  /**
+   * GET 的成功响应在本进程里缓存多少秒。**只给答案与请求者无关的路径标**，理由
+   * 见 `server/responseCache.ts`；标了的路径也不再转发 cookie，免得有人以为它的
+   * 答案会因人而异。
+   */
+  cacheSeconds?: number;
 }
 
 const ALLOW_LIST: Record<string, Allowed> = {
@@ -78,9 +85,32 @@ const ALLOW_LIST: Record<string, Allowed> = {
   // 哪天真要画"这架飞机刚才飞过哪里"再加。
   // 起降两地的 METAR。**Weather.vue 那一页删掉之后只剩 Dashboard 一个消费者** ——
   // 它是飞行计划简报的一部分（`v-if="plan"`），不是一个通用的查站工具。
-  metar: { methods: ["GET"], who: "Dashboard.vue 的起降天气" },
-  route: { methods: ["GET"], who: "RoutePlanner.vue" },
+  //
+  // 这两条都带缓存，因为 can-api 按 IP 限流，而它眼里整站只有集群出口一个 IP ——
+  // 不缓存的话，所有成员合用一个每小时 60 次（METAR）/ 120 次（航路）的桶。
+  //
+  // METAR 半小时一换，五分钟的缓存不会让人看到过期的天气（can-radar 同款）。
+  //
+  // 航路展开是「起飞、落地、航路串」三者的纯函数，不看 cookie、不分成员，can-api
+  // 自己也按同一个键缓存结果。它回 `no-store` 是冲着**浏览器**去的：改了航路串要
+  // 立刻看到新线 —— 而改过的串是另一个键，这里的缓存不会挡住它。唯一会变旧的情形
+  // 是 can-api 换了导航数据，五分钟之内还拿旧的展开结果，这可以接受。
+  metar: {
+    methods: ["GET"],
+    who: "Dashboard.vue 的起降天气",
+    cacheSeconds: 300,
+  },
+  route: { methods: ["GET"], who: "RoutePlanner.vue", cacheSeconds: 300 },
 };
+
+/**
+ * 上面两条缓存共用一份。500 条足够装下全站一段时间里真正在问的机场和航路，又不
+ * 至于被人拿随机航路串灌满内存。
+ */
+const cache = new ResponseCache(500);
+
+/** 能进缓存的响应头：只有描述内容本身的，set-cookie 这类绝不进来。 */
+const CACHEABLE_HEADERS = ["content-type", "cache-control"];
 
 const UNSAFE = new Set(["POST", "PATCH", "PUT", "DELETE"]);
 
@@ -129,9 +159,21 @@ const handler: APIRoute = async (context) => {
 
   const target = CAN_API_ORIGIN + "/api/v1/" + rest + context.url.search;
 
+  const cacheable = method === "GET" && entry.cacheSeconds !== undefined;
+  const key = cacheable ? cacheKey(rest, context.url.searchParams) : "";
+  if (cacheable) {
+    const hit = cache.get(key);
+    if (hit) {
+      return new Response(hit.body.slice(0), {
+        status: hit.status,
+        headers: hit.headers,
+      });
+    }
+  }
+
   const headers = new Headers();
   const cookie = context.request.headers.get("cookie");
-  if (cookie) headers.set("cookie", cookie);
+  if (cookie && !cacheable) headers.set("cookie", cookie);
   const contentType = context.request.headers.get("content-type");
   if (contentType) headers.set("content-type", contentType);
 
@@ -160,6 +202,24 @@ const handler: APIRoute = async (context) => {
   for (const name of PASS_THROUGH) {
     const value = upstream.headers.get(name);
     if (value) out.set(name, value);
+  }
+
+  if (cacheable && entry.cacheSeconds && upstream.ok) {
+    const body = await upstream.arrayBuffer();
+    const kept: [string, string][] = [];
+    for (const name of CACHEABLE_HEADERS) {
+      const value = upstream.headers.get(name);
+      if (value) kept.push([name, value]);
+    }
+    cache.set(
+      key,
+      { status: upstream.status, headers: kept, body },
+      entry.cacheSeconds * 1000,
+    );
+    return new Response(body.slice(0), {
+      status: upstream.status,
+      headers: kept,
+    });
   }
 
   return new Response(upstream.body, { status: upstream.status, headers: out });

@@ -786,6 +786,13 @@ async function loadForZoom(zoom: number) {
 const groundCache = new Map<string, Ground>();
 /** 这一轮画的是哪几个场，用来判断要不要重新拼 GeoJSON。 */
 let groundShown = "";
+/* 每次 `loadGroundFor` 进来就领一个号，await 回来时号不是最新的就什么都不写。
+ *
+ * 没有这道闸时是**最后回来的赢**，而不是最新的视野赢：慢的 A 场请求可以在之后
+ * 命中缓存的 B 场之后回来，把 B 盖掉；缩到门槛以下清空之后，前一次放大时发出的
+ * 请求再回来，又把地面和那句精度提示一起放回去。视野每变一次都会再调一次这里（缩
+ * 回去那一支也领号），所以「号还是最新的」就等于「缩放和视野还是它看到的那个」。 */
+let groundSeq = 0;
 
 /**
  * 放大到门槛以上时，把视野里的机场地面补上。
@@ -801,6 +808,7 @@ async function loadGroundFor(v: {
   east: number;
   zoom: number;
 }) {
+  const seq = ++groundSeq;
   if (v.zoom < GROUND_MIN_ZOOM) {
     // 缩回去就清空。留着不画只是省一次拼装，却会让下次放大到别处时先闪一下上一
     // 个机场的地面。
@@ -815,7 +823,7 @@ async function loadGroundFor(v: {
   }
 
   const pins = await fetchAirportPins();
-  if (!pins.length) return;
+  if (seq !== groundSeq || !pins.length) return;
 
   const wanted = airportsInView(pins, v).slice(0, GROUND_MAX_AIRPORTS);
   if (!wanted.length) {
@@ -839,6 +847,8 @@ async function loadGroundFor(v: {
         if (g) groundCache.set(p.icao, g);
       }),
   );
+  // 过期的请求照样把取回来的场放进缓存（上面那行），只是不许再碰显示状态。
+  if (seq !== groundSeq) return;
 
   const have = wanted
     .map((p) => groundCache.get(p.icao))
@@ -904,6 +914,13 @@ async function loadMoraFor(v: {
     for (const cells of batches) {
       for (const c of cells) moraCells.set(`${c.lat},${c.lon}`, c);
     }
+    /* 取的途中可能已经被关掉了。格子照样进缓存，但**不许**把图层写回来 —— 否则
+     * 关掉 MORA 之后，还在路上的那一批一回来网格就又出现了。
+     *
+     * 不需要像地面那样按号作废：MORA 是累加的，每次写的都是**全部**已取格子的并
+     * 集，回来的先后不影响结果；关掉再打开时，还在路上的这一批正是新那次被
+     * `moraBlocks` 挡掉、指望它补上的那几块，作废反而会漏。 */
+    if (!showMora.value) return;
     mora.value = toMORAPoints([...moraCells.values()]);
   } catch (error) {
     if (isDenied(error)) noteDenied();

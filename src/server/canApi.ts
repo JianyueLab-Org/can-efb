@@ -99,22 +99,41 @@ export interface SessionUser {
 }
 
 /**
+ * 会话查询的三种结局。
+ *
+ * - `signedIn` / `anonymous` 是 can-api 给出的答案。
+ * - `unavailable` 是**没拿到答案**：超时、连不上、5xx、或者 429（整站在 can-api
+ *   眼里是集群出口一个 IP，限流的桶是全站共用的）。
+ *
+ * 后两者曾经合成同一个 null，于是 can-api 一抖，全站成员都被当成没登录、踢去登
+ * 录页 —— 而登录页帮不了他们，登录完回来还是同一个故障。中间件对 `unavailable`
+ * 回 503，不重定向。
+ */
+export type SessionLookup =
+  | { status: "signedIn"; user: SessionUser }
+  | { status: "anonymous" }
+  | { status: "unavailable" };
+
+/**
  * 向 can-api 解出调用者。
  *
  * `/api/v1/auth/session` 在没人登录时回的是 200 + `user: null`，不是 401 ——
- * 「没登录」在公开页面上是预期状态而不是错误 —— 所以这里对「没登录」和「调用
- * 失败」都返回 null。
+ * 「没登录」在公开页面上是预期状态而不是错误。其余 4xx 也按「没登录」处理：那
+ * 是 can-api 对这份凭据的判断，再问一次也不会变。
  *
- * 失败和登出不可区分是**安全的那个方向**：can-api 不可达时页面按匿名渲染，而
- * 不是按某个人渲染。
+ * 上游失败**不按匿名处理**，理由见 `SessionLookup`。它也不会让页面按某个人渲染
+ * —— 两种失败的结局都是「不渲染这一页」，仍然是安全的那个方向。
  */
 export async function resolveSession(
   context: Pick<APIContext, "request">,
-): Promise<SessionUser | null> {
+): Promise<SessionLookup> {
   const result = await callApi<{ user: SessionUser | null }>(
     context,
     "/api/v1/auth/session",
   );
-  if (!result.ok || !result.data) return null;
-  return result.data.user ?? null;
+  if (result.status === 0 || result.status === 429 || result.status >= 500) {
+    return { status: "unavailable" };
+  }
+  const user = result.ok ? (result.data?.user ?? null) : null;
+  return user ? { status: "signedIn", user } : { status: "anonymous" };
 }

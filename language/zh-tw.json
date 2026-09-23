@@ -105,13 +105,15 @@
         "refile": "更新計畫",
         "filing": "送出中…",
         "delete": "撤銷計畫",
-        "import": "從 SimBrief 匯入"
+        "import": "從 SimBrief 匯入",
+        "recheck": "重新檢查"
       },
       "status": {
         "filed": "已送出",
         "none": "目前沒有已送出的飛行計畫。",
         "updatedAt": "更新於",
-        "fromClient": "由客戶端送出"
+        "fromClient": "由客戶端送出",
+        "failed": "沒能讀取你的飛行計畫。讀到之前表單先鎖著 —— 你可能已經送出過一份。"
       },
       "notice": {
         "filed": "飛行計畫已送出。",
@@ -119,7 +121,8 @@
         "imported": "已從 SimBrief 匯入，檢查無誤後再送出。",
         "invalid": "有幾項填得不對，看一下下面標紅的欄位。",
         "tracked": "這架航空器的雷達標牌正由 {controller} 佔用，計畫要由該管制員修改。",
-        "notLinked": "還沒有綁定 SimBrief 帳號，去設定裡綁一個。"
+        "notLinked": "還沒有綁定 SimBrief 帳號，去設定裡綁一個。",
+        "rechecked": "已重新讀取並解鎖。若管制員仍佔著標牌，下次送出時會再次提示。"
       },
       "errors": {
         "callsign": "呼號格式不對。",
@@ -225,7 +228,8 @@
           "alt": "高度限制",
           "speed": "速度"
         }
-      }
+      },
+      "planFailed": "沒能讀取你的飛行計畫，請稍後再試 —— 這不代表你沒有計畫。"
     },
     "dashboard": {
       "greeting": "{name}，歡迎回來。",
@@ -247,7 +251,8 @@
         "title": "線上管制",
         "count": "{count} 個席位",
         "loading": "讀取中…",
-        "none": "目前沒有管制員在線。"
+        "none": "目前沒有管制員在線。",
+        "failed": "沒能讀取線上管制名單 —— 這不代表沒有人在線。"
       },
       "atis": {
         "title": "ATIS 通播"

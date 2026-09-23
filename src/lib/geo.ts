@@ -92,6 +92,13 @@ export function greatCircle(from: LatLon, to: LatLon, points = 64): LatLon[] {
 /** Enough interpolation to bend a long leg, none wasted on a short one. */
 export function arc(from: LatLon, to: LatLon): LatLon[] {
   const distance = distanceNm(from, to);
-  if (distance < 60) return [from, to];
+  if (distance < 60) {
+    // Same shorter-way-round unwrap as greatCircle, or a short leg across
+    // ±180 draws back across the whole map.
+    let lon = to[1];
+    while (lon - from[1] > 180) lon -= 360;
+    while (lon - from[1] < -180) lon += 360;
+    return [from, lon === to[1] ? to : [to[0], lon]];
+  }
   return greatCircle(from, to, Math.min(64, Math.ceil(distance / 60)));
 }
