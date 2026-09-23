@@ -483,4 +483,41 @@ describe("joinIdent 按转换取", () => {
     };
     expect(joinIdent(p)).toBe("AVBOX");
   });
+
+  // `joinsRoute` 和 `joinIdent` 必须取同一端：界面拿后者摆出「两头各是什么」，前者却
+  // 按整串首末判，就会一边写着 ELKUR = ELKUR，一边喊接不上。
+  test("joinsRoute 也按公共段判：SID", () => {
+    const p: Procedure = {
+      kind: "sid",
+      name: "ELKU4K",
+      runway: "01L",
+      runways: "01L",
+      chart: null,
+      variant: null,
+      points: [],
+      path: [
+        leg("AD535", "ALL"),
+        leg("ELKUR", "ALL"),
+        leg("AD551", "RW01L"),
+        leg("AD557", "RW01L"),
+      ],
+    };
+    expect(joinsRoute(p, "ELKUR")).toBe(true);
+    expect(joinsRoute(p, "AD557")).toBe(false);
+  });
+
+  test("joinsRoute 也按公共段判：STAR", () => {
+    const p: Procedure = {
+      kind: "star",
+      name: "AVBO4A",
+      runway: "01L",
+      runways: "01L",
+      chart: null,
+      variant: null,
+      points: [],
+      path: [leg("GG203", "RW01L"), leg("AVBOX", "ALL"), leg("GG202", "ALL")],
+    };
+    expect(joinsRoute(p, "avbox")).toBe(true);
+    expect(joinsRoute(p, "GG203")).toBe(false);
+  });
 });
