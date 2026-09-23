@@ -105,13 +105,15 @@
         "refile": "Update plan",
         "filing": "Filing…",
         "delete": "Withdraw plan",
-        "import": "Import from SimBrief"
+        "import": "Import from SimBrief",
+        "recheck": "Check again"
       },
       "status": {
         "filed": "Filed",
         "none": "No flight plan on file.",
         "updatedAt": "Updated",
-        "fromClient": "filed from a client"
+        "fromClient": "filed from a client",
+        "failed": "Couldn't read your flight plan. The form stays locked until it loads — you may already have one on file."
       },
       "notice": {
         "filed": "Flight plan filed.",
@@ -119,7 +121,8 @@
         "imported": "Imported from SimBrief — check it over before filing.",
         "invalid": "Some fields need fixing; see the ones marked below.",
         "tracked": "{controller} is holding this aircraft's radar track, so the plan is theirs to amend.",
-        "notLinked": "No SimBrief account linked yet — link one in Settings."
+        "notLinked": "No SimBrief account linked yet — link one in Settings.",
+        "rechecked": "Reloaded and unlocked. If a controller still holds the track, filing will say so again."
       },
       "errors": {
         "callsign": "Callsign format is not valid.",
@@ -225,7 +228,8 @@
           "alt": "Altitude",
           "speed": "Speed"
         }
-      }
+      },
+      "planFailed": "Couldn't read your flight plan; try again later — this doesn't mean you have none."
     },
     "dashboard": {
       "greeting": "Welcome back, {name}.",
@@ -247,7 +251,8 @@
         "title": "Online ATC",
         "count": "{count} online",
         "loading": "Loading…",
-        "none": "No controllers are online."
+        "none": "No controllers are online.",
+        "failed": "Couldn't load the online controller list — this doesn't mean nobody is online."
       },
       "atis": {
         "title": "ATIS broadcasts"

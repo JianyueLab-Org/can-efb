@@ -105,13 +105,15 @@
         "refile": "更新计划",
         "filing": "提交中…",
         "delete": "撤销计划",
-        "import": "从 SimBrief 导入"
+        "import": "从 SimBrief 导入",
+        "recheck": "重新检查"
       },
       "status": {
         "filed": "已提交",
         "none": "当前没有已提交的飞行计划。",
         "updatedAt": "更新于",
-        "fromClient": "由客户端提交"
+        "fromClient": "由客户端提交",
+        "failed": "没能读取你的飞行计划。读到之前表单先锁着 —— 你可能已经交过一份。"
       },
       "notice": {
         "filed": "飞行计划已提交。",
@@ -119,7 +121,8 @@
         "imported": "已从 SimBrief 导入，检查无误后再提交。",
         "invalid": "有几项填得不对，看一下下面标红的字段。",
         "tracked": "这架航空器的雷达标牌正由 {controller} 占用，计划要由该管制员修改。",
-        "notLinked": "还没有绑定 SimBrief 账号，去设置里绑一个。"
+        "notLinked": "还没有绑定 SimBrief 账号，去设置里绑一个。",
+        "rechecked": "已重新读取并解锁。若管制员仍占着标牌，下次提交时会再次提示。"
       },
       "errors": {
         "callsign": "呼号格式不对。",
@@ -225,7 +228,8 @@
           "alt": "高度限制",
           "speed": "速度"
         }
-      }
+      },
+      "planFailed": "没能读取你的飞行计划，稍后再试 —— 这不代表你没有计划。"
     },
     "dashboard": {
       "greeting": "{name}，欢迎回来。",
@@ -247,7 +251,8 @@
         "title": "在线管制",
         "count": "{count} 个席位",
         "loading": "读取中…",
-        "none": "当前没有管制员在线。"
+        "none": "当前没有管制员在线。",
+        "failed": "没能读取在线管制名单 —— 这不代表没有人在线。"
       },
       "atis": {
         "title": "ATIS 通播"

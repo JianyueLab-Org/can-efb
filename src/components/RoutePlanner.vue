@@ -77,7 +77,12 @@ async function fromPlan() {
     arrival: string;
     route: string;
   } | null>("/api/v1/pilot/flightplan");
-  if (!result.ok || !result.data) {
+  // 没读到和没有计划分开说：读取失败时说「没有计划」，他会以为自己那份丢了。
+  if (!result.ok) {
+    error.value = t("route.planFailed");
+    return;
+  }
+  if (!result.data) {
     error.value = t("route.noPlan");
     return;
   }

@@ -119,6 +119,12 @@ const groups = ref<StationGroup[]>([]);
 const atis = ref<DatafeedController[]>([]);
 const atcLoading = ref(true);
 /**
+ * datafeed 没取到。和 `planFailed` 同一个判断：以前失败退回空列表，于是这一段写
+ * 着「当前没有管制员在线」—— 同样是把失败画成了「没有」，而人会照着它决定不去
+ * 叫放行。
+ */
+const atcFailed = ref(false);
+/**
  * 取数那一刻的时间，给"上席多久"用。
  *
  * **存下来而不是在模板里调 `Date.now()`** —— 模板里每次重渲染都会重算，而 Vue 无
@@ -139,12 +145,14 @@ async function loadControllers() {
     // ATIS 单独一份，不混进上面 —— 见 datafeed.ts 里 onlineAtis 的注释。
     atis.value = onlineAtis(feed);
     fetchedAt.value = Date.now();
+    atcFailed.value = false;
   } catch (error) {
-    // 静默退回空列表：一个连不上实时数据源的仪表盘不该在飞行计划上面压一条
-    // 红条 —— 它和这一页的其余部分完全无关。
+    // 失败只在这一段里说，不在飞行计划上面压一条红条 —— 实时数据源连不上和这
+    // 一页的其余部分无关。但要说出来，见 atcFailed。
     console.error("[efb] 在线管制加载失败:", error);
     groups.value = [];
     atis.value = [];
+    atcFailed.value = true;
   } finally {
     atcLoading.value = false;
   }
@@ -263,13 +271,17 @@ onMounted(() => {
         <h2 class="text-sm font-semibold text-ink">
           {{ t("dashboard.atc.title") }}
         </h2>
-        <span v-if="!atcLoading" class="text-xs text-muted">{{
+        <span v-if="!atcLoading && !atcFailed" class="text-xs text-muted">{{
           t("dashboard.atc.count", { count: String(controllerCount) })
         }}</span>
       </div>
 
       <p v-if="atcLoading" class="text-sm text-muted">
         {{ t("dashboard.atc.loading") }}
+      </p>
+      <!-- 失败排在「没有」前面，理由同上面的计划那段。 -->
+      <p v-else-if="atcFailed" class="text-sm text-danger">
+        {{ t("dashboard.atc.failed") }}
       </p>
       <p v-else-if="!groups.length" class="text-sm text-muted">
         {{ t("dashboard.atc.none") }}

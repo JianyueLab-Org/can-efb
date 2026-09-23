@@ -77,8 +77,22 @@ const saving = ref(false);
 const deleting = ref(false);
 const importing = ref(false);
 
-/** 已存在的计划；null 表示这名成员现在没有计划。 */
+/** 已存在的计划；null 表示这名成员现在没有计划 —— **前提是读到了**，见 loadFailed。 */
 const stored = ref<StoredPlan | null>(null);
+
+/**
+ * 计划**没读到**，和**没有计划**，是两件事 —— 和 Dashboard 的 `planFailed` 同
+ * 一个判断。
+ *
+ * 以前读取失败只在横幅里放一句错误，`stored` 留在 null，于是状态行写着「当前没
+ * 有已提交的飞行计划」、按钮写着「提交计划」、撤销按钮消失 —— 整个界面在告诉他
+ * 没有计划。而他可能有：此时再交一份，就是拿一张空白表单**覆盖掉**他没看到的那
+ * 份。所以没读到之前表单整个锁着，状态行说清楚是没读到，并给一个重读的按钮。
+ *
+ * 状态走状态行而不是顶部横幅：提交成功之后会重读一次，那次重读失败**不能**盖掉
+ * 「已提交」—— 提交确实成功了，只是回读没成。两件事各占一个位置。
+ */
+const loadFailed = ref(false);
 
 /** 顶部那条横幅：成功、失败、或者被管制员锁住。 */
 const notice = ref<{ kind: "ok" | "error" | "locked"; text: string } | null>(
@@ -88,7 +102,12 @@ const notice = ref<{ kind: "ok" | "error" | "locked"; text: string } | null>(
 const lockedBy = ref<string | null>(null);
 
 const disabled = computed(
-  () => loading.value || saving.value || deleting.value || !!lockedBy.value,
+  () =>
+    loading.value ||
+    saving.value ||
+    deleting.value ||
+    loadFailed.value ||
+    !!lockedBy.value,
 );
 
 function fill(plan: Partial<Plan>) {
@@ -98,19 +117,48 @@ function fill(plan: Partial<Plan>) {
   }
 }
 
-async function load() {
+/**
+ * 读当前计划。`fillForm` 为假时只刷新状态行、不动表单 —— 重新检查锁定时用，见
+ * `recheck()`。
+ */
+async function load(fillForm = true) {
   loading.value = true;
   const result = await api<StoredPlan | null>("/api/v1/pilot/flightplan");
   loading.value = false;
 
   if (!result.ok) {
-    notice.value = { kind: "error", text: result.message };
+    // 不写横幅，见 loadFailed 的注释。草稿也不在这时取出来：它会留到重读成功。
+    loadFailed.value = true;
     return;
   }
+  loadFailed.value = false;
   stored.value = result.data ?? null;
+  if (!fillForm) return;
   if (result.data) fill(result.data);
 
   applyDraft();
+}
+
+/**
+ * 锁定之后的「重新检查」。
+ *
+ * **锁是读不出来的。** can-api 的 GET 不带标牌信息；datafeed 里有 `tracked_by`，
+ * 但那要按 CID 找自己那架飞机（按呼号找会认错人，见 `lib/datafeed.ts` 的
+ * `ownPilot`），而这个岛屿拿不到 CID。所以以前 409 一旦把 `lockedBy` 写上，就再
+ * 没有东西能把它清掉，表单一直锁到刷新整页。
+ *
+ * 这里做的是：重读一次计划（管制员可能已经改过，状态行要跟上），然后**解锁**。
+ * 解锁不等于判定没人占着 —— 真正的判定仍然是提交时那个 409，它在推送**之前**就
+ * 判掉，数据库里什么都不留，所以再撞一次也没有代价，撞上了就重新锁上。
+ *
+ * **不重填表单**：里面是他被 409 挡回来的那份修改，正是他解锁之后要再交的东西。
+ * 也不替他重交 —— 标牌还在不在，由他自己按下提交去问。
+ */
+async function recheck() {
+  await load(false);
+  if (loadFailed.value) return;
+  lockedBy.value = null;
+  notice.value = { kind: "ok", text: t("flightplan.notice.rechecked") };
 }
 
 /**
@@ -178,6 +226,7 @@ async function file() {
 
   if (result.ok) {
     notice.value = { kind: "ok", text: t("flightplan.notice.filed") };
+    // 回读失败只落在状态行，不碰这条横幅 —— 见 loadFailed。
     void load();
     return;
   }
@@ -285,7 +334,17 @@ function errorFor(field: string): string {
         "
         class="mt-px size-4 shrink-0"
       />
-      <span>{{ notice.text }}</span>
+      <span class="min-w-0 flex-1">{{ notice.text }}</span>
+      <!-- 锁定只能靠这里解开，见 recheck()。 -->
+      <button
+        v-if="notice.kind === 'locked' && lockedBy"
+        type="button"
+        class="btn btn-secondary shrink-0"
+        :disabled="loading"
+        @click="recheck"
+      >
+        {{ t("flightplan.actions.recheck") }}
+      </button>
     </div>
 
     <!-- 当前状态 + 动作 -->
@@ -294,6 +353,16 @@ function errorFor(field: string): string {
     >
       <div class="min-w-0 text-sm">
         <p v-if="loading" class="text-muted">{{ t("common.loading") }}</p>
+        <!--
+          **失败要排在「没有」前面**，和 Dashboard 一样：先判 `stored` 的话，读取
+          失败会落进「当前没有已提交的飞行计划」。
+        -->
+        <p v-else-if="loadFailed" class="text-danger">
+          {{ t("flightplan.status.failed") }}
+          <button type="button" class="link ml-1" @click="load()">
+            {{ t("common.refresh") }}
+          </button>
+        </p>
         <template v-else-if="stored">
           <p class="font-semibold text-ink">
             {{ t("flightplan.status.filed") }}
@@ -609,10 +678,11 @@ function errorFor(field: string): string {
       >
         <button type="submit" class="btn btn-primary" :disabled="disabled">
           <Icon name="paperAirplane" class="size-4" />
+          <!-- 没读到时说「更新」而不是「提交」：不替他假设没有计划。按钮此时本来也锁着。 -->
           {{
             saving
               ? t("flightplan.actions.filing")
-              : stored
+              : stored || loadFailed
                 ? t("flightplan.actions.refile")
                 : t("flightplan.actions.file")
           }}
