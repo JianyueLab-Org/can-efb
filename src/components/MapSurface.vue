@@ -59,7 +59,7 @@ import {
   toMORAPoints,
   type MORACell,
 } from "@/lib/mora";
-import { fetchFIRs } from "@/lib/firs";
+import { fetchFIRs, firBoundaries } from "@/lib/firs";
 import {
   fetchGround,
   toGroundDrawing,
@@ -706,14 +706,14 @@ async function toggleFirs() {
     return;
   }
   if (firCache) {
-    firs.value = firCache;
+    firs.value = firBoundaries(firCache);
     showFirs.value = true;
     return;
   }
 
   layerBusy.value = true;
   try {
-    firs.value = await loadFirCache();
+    firs.value = firBoundaries(await loadFirCache());
     showFirs.value = true;
   } catch (error) {
     // 这里不记 deniedThisSession：静态文件不会返回 401，而把一次网络抖动记成

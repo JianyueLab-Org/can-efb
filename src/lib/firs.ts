@@ -44,3 +44,20 @@ export async function fetchFIRs(): Promise<FeatureCollection> {
   cache = (await response.json()) as FeatureCollection;
   return cache;
 }
+
+/**
+ * 情报区图层要画的那部分：去掉区调（`acc`）。
+ *
+ * 区调留在文件里是给实时那一层圈在线区调用的，情报区图层只画情报区。判据在
+ * `scripts/build-firs.mjs` 的「区调打标记」。
+ */
+export function firBoundaries(
+  collection: FeatureCollection,
+): FeatureCollection {
+  return {
+    ...collection,
+    features: collection.features.filter(
+      (feature) => feature.properties?.acc !== true,
+    ),
+  };
+}

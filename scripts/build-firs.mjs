@@ -46,6 +46,20 @@
  * `LGMD-*`⊂LGGG）。哪天 VATSpy 换了结构、某块空域只以连字符形式存在，这里会直接报
  * 错而不是安静地少画一块。
  *
+ * ## 区调（ACC）打标记，不删
+ *
+ * VATPRC 把每个情报区又按区调切了一遍，而且用的是**不带连字符的 id**：`ZSAM` 是厦门
+ * 区调，名字写成 `Xiamen ACC - Shanghai FIR - Xiamen`，画在 `ZSHA` 里面。上面那条连
+ * 字符规则挡不住它们。
+ *
+ * 判据取自 VATSpy 的 `[FIRs]` 名字（can-radar 的 `public/firs.json`）：名字里写着
+ * `ACC`，并且**自己点名了所属的 FIR**。只看 `ACC` 不够 —— `RKRR`（Incheon ACC）、
+ * `VTBB`（Bangkok ACC）本身就是那个情报区的边界，没有别的要素替它。
+ *
+ * 只打 `acc: true`，不从文件里删：实时那一层要拿 `ZSSS`、`ZBAA` 去圈出在线区调管
+ * 的范围（`lib/atc.ts`）。情报区图层自己按这个标记筛掉（`lib/firs.ts` 的
+ * `firBoundaries`）。
+ *
  * ## 输出在 `src/`，不是 `public/`
  *
  * 那样 Vite 会给它一个内容哈希的名字，从而拿到一年的 immutable 缓存和边缘命中。
@@ -61,20 +75,34 @@
  *
  * ```bash
  * bun scripts/build-firs.mjs \
- *   ../can-radar/public/boundaries.geojson src/basemap/firs.json
+ *   ../can-radar/public/boundaries.geojson ../can-radar/public/firs.json \
+ *   src/basemap/firs.json
  * ```
  */
 import { readFileSync, writeFileSync } from "node:fs";
 
-const [input, output] = process.argv.slice(2);
-if (!input || !output) {
+const [input, names, output] = process.argv.slice(2);
+if (!input || !names || !output) {
   console.error(
-    "usage: bun scripts/build-firs.mjs <boundaries.geojson> <out.json>",
+    "usage: bun scripts/build-firs.mjs <boundaries.geojson> <firs.json> <out.json>",
   );
   process.exit(2);
 }
 
 const source = JSON.parse(readFileSync(input, "utf8"));
+
+/* 边界 id → 它在 `[FIRs]` 里的全部名字。见文件头「区调打标记」。 */
+const namesByBoundary = new Map();
+for (const entry of JSON.parse(readFileSync(names, "utf8")).firs) {
+  const list = namesByBoundary.get(entry.boundary) ?? [];
+  list.push(entry.name);
+  namesByBoundary.set(entry.boundary, list);
+}
+const ACC_IN_FIR = /\bACC\b.* - .*\bFIR\b/;
+const isAcc = (id) => {
+  const list = namesByBoundary.get(id);
+  return Boolean(list?.length) && list.every((name) => ACC_IN_FIR.test(name));
+};
 
 const idOf = (f) => String(f.properties?.id ?? "");
 
@@ -149,6 +177,7 @@ const features = kept.map((feature) => {
       // `code` 而不是 `id`：图层里读的就是这个名字，和 can-db 那批空域一致。
       code: idOf(feature),
       oceanic: String(feature.properties?.oceanic ?? "0") === "1",
+      acc: isAcc(idOf(feature)),
       // 数据自己选的标注位置。取不到就留 null，画的那一边自己决定怎么办。
       labelLat: Number.isFinite(labelLat) ? labelLat : null,
       labelLon: Number.isFinite(labelLon) ? labelLon : null,
@@ -161,7 +190,11 @@ const features = kept.map((feature) => {
 });
 
 writeFileSync(output, JSON.stringify({ type: "FeatureCollection", features }));
+const accs = features
+  .filter((f) => f.properties.acc)
+  .map((f) => f.properties.code);
 console.log(
-  `firs: ${features.length} 个情报区（筛掉 ${dropped.length} 个扇区划分，` +
-    `全部已核对落在保留的情报区内）→ ${output}`,
+  `firs: ${features.length} 个要素（筛掉 ${dropped.length} 个扇区划分，` +
+    `全部已核对落在保留的情报区内；其中 ${accs.length} 个标为区调）→ ${output}\n` +
+    `  区调：${[...new Set(accs)].join(" ")}`,
 );
