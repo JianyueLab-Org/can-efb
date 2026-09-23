@@ -54,12 +54,19 @@
  * - `fir`：情报区图层画不画它。
  * - `atc`：实时那一层用不用它。
  *
- * **区调 `fir: false`。** VATPRC 把每个情报区又按区调切了一遍，而且用的是**不带
- * 连字符的 id**：`ZSAM` 是厦门区调，名字写成 `Xiamen ACC - Shanghai FIR - Xiamen`，
- * 画在 `ZSHA` 里面。上面那条连字符规则挡不住它们。判据取自 VATSpy 的 `[FIRs]` 名字
- * （can-radar 的 `public/firs.json`）：名字里写着 `ACC`，并且**自己点名了所属的
- * FIR**。只看 `ACC` 不够 —— `RKRR`（Incheon ACC）、`VTBB`（Bangkok ACC）本身就是那
- * 个情报区的边界，没有别的要素替它。实时那一层仍要它们：`ZSSS_CTR` 上线要圈出上海区调。
+ * **区调 `fir: false`。** 很多情报区在 VATSpy 里又按区调切了一遍，而且用的是**不
+ * 带连字符的 id**（`ZSAM` 厦门区调、`VOBL` 班加罗尔区调、`ENOS` 奥斯陆区调），上面
+ * 那条连字符规则挡不住它们。判据取自 VATSpy 的 `[FIRs]` 名字（can-radar 的
+ * `public/firs.json`），名字的最后一段是它所属的情报区。名字里写着 `ACC`，并且满足
+ * 下面任一条，就是下属区调：
+ *
+ * - 自己点名了所属的 FIR —— VATPRC 的写法，`Xiamen ACC - Shanghai FIR - Xiamen`。
+ * - 同一情报区里另有一个要素是情报区本身：名字里没有 `ACC`（`VOMF` Chennai、`ESAA`
+ *   Sweden），或者名字是「情报区名 ACC」（`RKRR` Incheon ACC 之于 `RKDA` Daegu ACC）。
+ * - 只管到某个高度（`Up to FL245`）—— `EIDW` 是香农情报区里都柏林的低空那一层。
+ *
+ * 只看 `ACC` 不够：`VTBB`（Bangkok ACC）、`RKRR`、`ULLL` 这类本身就是那个情报区的
+ * 边界，没有别的要素替它，所以留着。实时那一层仍要区调：`ZSSS_CTR` 上线要圈出上海区调。
  *
  * **日本是一个情报区（福冈，RJJJ），VATSpy 里没有这一块。** 它给的是 `RJDG`（陆上
  * 全境）、`RJTG`/`RJBG`（其中两个区调）和 `RJJJ`（只有洋区那一半）。`MERGED_FIRS`
@@ -104,10 +111,34 @@ for (const entry of JSON.parse(readFileSync(names, "utf8")).firs) {
   list.push(entry.name);
   namesByBoundary.set(entry.boundary, list);
 }
+const ACC = /\bACC\b/;
 const ACC_IN_FIR = /\bACC\b.* - .*\bFIR\b/;
+const LAYER_ONLY = /\bUp to FL\d+/i;
+const firName = (name) => name.split(" - ").at(-1);
+
+/* 情报区名 → 代表情报区本身的要素。判据见文件头「区调 `fir: false`」。带连字符的
+ * 扇区划分不算：它们不进这份文件，也就替不了谁。 */
+const firHolders = new Map();
+for (const [id, list] of namesByBoundary) {
+  if (id.includes("-")) continue;
+  for (const name of list) {
+    const fir = firName(name);
+    if (ACC.test(name) && !name.startsWith(`${fir} ACC`)) continue;
+    const holders = firHolders.get(fir) ?? new Set();
+    holders.add(id);
+    firHolders.set(fir, holders);
+  }
+}
+
 const isAcc = (id) => {
-  const list = namesByBoundary.get(id);
-  return Boolean(list?.length) && list.every((name) => ACC_IN_FIR.test(name));
+  const list = namesByBoundary.get(id) ?? [];
+  if (!list.some((name) => ACC.test(name))) return false;
+  return list.some(
+    (name) =>
+      ACC_IN_FIR.test(name) ||
+      (ACC.test(name) && LAYER_ONLY.test(name)) ||
+      [...(firHolders.get(firName(name)) ?? [])].some((h) => h !== id),
+  );
 };
 
 /* VATSpy 里拆开了、实际是一个情报区的。`parts` 拼成一块，`covers` 是落在里面的
