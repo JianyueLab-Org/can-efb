@@ -46,10 +46,9 @@ export async function fetchFIRs(): Promise<FeatureCollection> {
 }
 
 /**
- * 情报区图层要画的那部分：去掉区调（`acc`）。
+ * 情报区图层要画的那部分（`fir`）：不含区调，日本是拼好的一整块 `RJJJ`。
  *
- * 区调留在文件里是给实时那一层圈在线区调用的，情报区图层只画情报区。判据在
- * `scripts/build-firs.mjs` 的「区调打标记」。
+ * 另一部分留给实时那一层圈在线席位。判据在 `scripts/build-firs.mjs` 的「两个标记」。
  */
 export function firBoundaries(
   collection: FeatureCollection,
@@ -57,7 +56,7 @@ export function firBoundaries(
   return {
     ...collection,
     features: collection.features.filter(
-      (feature) => feature.properties?.acc !== true,
+      (feature) => feature.properties?.fir !== false,
     ),
   };
 }

@@ -223,7 +223,8 @@ export function toControllerAreas(
   const byCode = new Map<string, Feature[]>();
   for (const f of boundaries?.features ?? []) {
     const code = String(f.properties?.code ?? "").toUpperCase();
-    if (!code) continue;
+    // `atc: false` 是只给情报区图层拼出来的整块（日本 RJJJ），不是哪个席位的范围。
+    if (!code || f.properties?.atc === false) continue;
     const list = byCode.get(code) ?? [];
     list.push(f);
     byCode.set(code, list);

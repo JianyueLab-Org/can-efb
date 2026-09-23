@@ -46,19 +46,25 @@
  * `LGMD-*`⊂LGGG）。哪天 VATSpy 换了结构、某块空域只以连字符形式存在，这里会直接报
  * 错而不是安静地少画一块。
  *
- * ## 区调（ACC）打标记，不删
+ * ## 两个标记：`fir` 和 `atc`
  *
- * VATPRC 把每个情报区又按区调切了一遍，而且用的是**不带连字符的 id**：`ZSAM` 是厦门
- * 区调，名字写成 `Xiamen ACC - Shanghai FIR - Xiamen`，画在 `ZSHA` 里面。上面那条连
- * 字符规则挡不住它们。
+ * 这份文件有两个消费者：情报区图层，和实时那一层（拿边界圈出在线席位管的范围，
+ * `lib/datafeed.ts` 的 `toControllerAreas`）。两边要的要素不一样，所以不删，打标记：
  *
- * 判据取自 VATSpy 的 `[FIRs]` 名字（can-radar 的 `public/firs.json`）：名字里写着
- * `ACC`，并且**自己点名了所属的 FIR**。只看 `ACC` 不够 —— `RKRR`（Incheon ACC）、
- * `VTBB`（Bangkok ACC）本身就是那个情报区的边界，没有别的要素替它。
+ * - `fir`：情报区图层画不画它。
+ * - `atc`：实时那一层用不用它。
  *
- * 只打 `acc: true`，不从文件里删：实时那一层要拿 `ZSSS`、`ZBAA` 去圈出在线区调管
- * 的范围（`lib/atc.ts`）。情报区图层自己按这个标记筛掉（`lib/firs.ts` 的
- * `firBoundaries`）。
+ * **区调 `fir: false`。** VATPRC 把每个情报区又按区调切了一遍，而且用的是**不带
+ * 连字符的 id**：`ZSAM` 是厦门区调，名字写成 `Xiamen ACC - Shanghai FIR - Xiamen`，
+ * 画在 `ZSHA` 里面。上面那条连字符规则挡不住它们。判据取自 VATSpy 的 `[FIRs]` 名字
+ * （can-radar 的 `public/firs.json`）：名字里写着 `ACC`，并且**自己点名了所属的
+ * FIR**。只看 `ACC` 不够 —— `RKRR`（Incheon ACC）、`VTBB`（Bangkok ACC）本身就是那
+ * 个情报区的边界，没有别的要素替它。实时那一层仍要它们：`ZSSS_CTR` 上线要圈出上海区调。
+ *
+ * **日本是一个情报区（福冈，RJJJ），VATSpy 里没有这一块。** 它给的是 `RJDG`（陆上
+ * 全境）、`RJTG`/`RJBG`（其中两个区调）和 `RJJJ`（只有洋区那一半）。`MERGED_FIRS`
+ * 把陆上和洋区沿共用的边拼成一块 `RJJJ`，只给情报区图层（`atc: false`）；参与拼接的
+ * 和被它盖住的区调都 `fir: false`，留给实时那一层。拼不成一个环就报错退出。
  *
  * ## 输出在 `src/`，不是 `public/`
  *
@@ -102,6 +108,62 @@ const ACC_IN_FIR = /\bACC\b.* - .*\bFIR\b/;
 const isAcc = (id) => {
   const list = namesByBoundary.get(id);
   return Boolean(list?.length) && list.every((name) => ACC_IN_FIR.test(name));
+};
+
+/* VATSpy 里拆开了、实际是一个情报区的。`parts` 拼成一块，`covers` 是落在里面的
+ * 区调。见文件头「两个标记」。 */
+const MERGED_FIRS = [
+  { code: "RJJJ", parts: ["RJDG", "RJJJ"], covers: ["RJTG", "RJBG"] },
+];
+const replacedByMerge = new Set(
+  MERGED_FIRS.flatMap((m) => [...m.parts, ...m.covers]),
+);
+
+/* 把几个单环多边形沿**完全重合的边**拼成一个环：统一成逆时针，两边方向相反的边
+ * 成对抵消，剩下的边首尾接成环。VATSpy 相邻两块共用同一串顶点，所以不需要真正的
+ * 多边形求并。 */
+function dissolve(rings) {
+  const key = ([x, y]) => `${x},${y}`;
+  const area = (ring) => {
+    let sum = 0;
+    for (let i = 0; i < ring.length - 1; i++) {
+      sum += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+    }
+    return sum / 2;
+  };
+  const edges = new Map();
+  for (const raw of rings) {
+    const ring = area(raw) < 0 ? [...raw].reverse() : raw;
+    for (let i = 0; i < ring.length - 1; i++) {
+      const [a, b] = [ring[i], ring[i + 1]];
+      if (key(a) === key(b)) continue;
+      const back = `${key(b)}>${key(a)}`;
+      if (edges.has(back)) edges.delete(back);
+      else edges.set(`${key(a)}>${key(b)}`, [a, b]);
+    }
+  }
+  const next = new Map();
+  for (const [a, b] of edges.values()) {
+    if (next.has(key(a))) return null;
+    next.set(key(a), b);
+  }
+  const [start] = edges.values();
+  const ring = [start[0]];
+  let at = start[1];
+  while (key(at) !== key(start[0])) {
+    ring.push(at);
+    at = next.get(key(at));
+    if (!at || ring.length > edges.size) return null;
+  }
+  ring.push(start[0]);
+  return ring.length - 1 === edges.size ? ring : null;
+}
+
+const outerRing = (feature) => {
+  const { type, coordinates } = feature.geometry;
+  const polys = type === "MultiPolygon" ? coordinates : [coordinates];
+  if (polys.length !== 1 || polys[0].length !== 1) return null;
+  return polys[0][0];
 };
 
 const idOf = (f) => String(f.properties?.id ?? "");
@@ -177,7 +239,8 @@ const features = kept.map((feature) => {
       // `code` 而不是 `id`：图层里读的就是这个名字，和 can-db 那批空域一致。
       code: idOf(feature),
       oceanic: String(feature.properties?.oceanic ?? "0") === "1",
-      acc: isAcc(idOf(feature)),
+      fir: !isAcc(idOf(feature)) && !replacedByMerge.has(idOf(feature)),
+      atc: true,
       // 数据自己选的标注位置。取不到就留 null，画的那一边自己决定怎么办。
       labelLat: Number.isFinite(labelLat) ? labelLat : null,
       labelLon: Number.isFinite(labelLon) ? labelLon : null,
@@ -189,12 +252,40 @@ const features = kept.map((feature) => {
   };
 });
 
+for (const merge of MERGED_FIRS) {
+  const parts = merge.parts.map((code) =>
+    kept.find((f) => idOf(f) === code && outerRing(f)),
+  );
+  const ring = parts.every(Boolean) && dissolve(parts.map((f) => outerRing(f)));
+  if (!ring) {
+    console.error(
+      `${merge.code}：${merge.parts.join(" + ")} 拼不成一个环 —— ` +
+        "缺了某一块、它不是单环，或者两块不再共用同一串顶点。",
+    );
+    process.exit(1);
+  }
+  const label = parts[0].properties;
+  features.push({
+    type: "Feature",
+    properties: {
+      code: merge.code,
+      oceanic: false,
+      fir: true,
+      atc: false,
+      labelLat: Number(label.label_lat),
+      labelLon: Number(label.label_lon),
+    },
+    geometry: { type: "Polygon", coordinates: round([ring]) },
+  });
+}
+
 writeFileSync(output, JSON.stringify({ type: "FeatureCollection", features }));
-const accs = features
-  .filter((f) => f.properties.acc)
+const hidden = features
+  .filter((f) => !f.properties.fir)
   .map((f) => f.properties.code);
 console.log(
   `firs: ${features.length} 个要素（筛掉 ${dropped.length} 个扇区划分，` +
-    `全部已核对落在保留的情报区内；其中 ${accs.length} 个标为区调）→ ${output}\n` +
-    `  区调：${[...new Set(accs)].join(" ")}`,
+    `全部已核对落在保留的情报区内）→ ${output}\n` +
+    `  情报区图层不画：${[...new Set(hidden)].join(" ")}\n` +
+    `  拼接：${MERGED_FIRS.map((m) => `${m.code} = ${m.parts.join(" + ")}`).join("，")}`,
 );
