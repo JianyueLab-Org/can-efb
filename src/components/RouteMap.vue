@@ -443,6 +443,23 @@ let themeObserver: MutationObserver | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let landCache: unknown = null;
 
+/* **样式就绪的闸是这个标志，不是 `map.isStyleLoaded()`。**
+ *
+ * MapLibre 6 的 `isStyleLoaded()` 走的是 `style.loaded()`：只要有一个 source 的
+ * `setData` 还没处理完、或者还有瓦片在加载，它就是 false。而这张图的 source 几乎
+ * 一直在忙 —— 实时那三层每 30 秒换一次数据，底图和细节是异步灌的。于是 render()
+ * 和 applyPalette() 拿它当闸，恰好在忙的那一刻进来的 prop 变化（换航路、换焦点、
+ * 切主题）就**被整个丢掉**，直到下一次不相干的触发才补上，而之后没有任何东西会
+ * 重试。
+ *
+ * 这两个函数真正需要的只是「source 和图层已经存在」。它们全都写在构造时那份手写
+ * style 里，没有一个是后来 addSource/addLayer 加的，所以 style 一解析完就全在；
+ * `setData` / `setPaintProperty` 自己也只要求 style 的 `_loaded`，不管 source 忙不
+ * 忙。`load` 事件之后这个前提就永远成立（这里没有 setStyle），而 `load` 回调本身会
+ * 按当前 props 补一次 render 和 applyPalette —— 在那之前被挡掉的调用什么也不丢，
+ * 也就不需要另外挂一个重试。 */
+let styleReady = false;
+
 function isDark(): boolean {
   return document.documentElement.classList.contains("dark");
 }
@@ -826,7 +843,7 @@ function registerIcons() {
 }
 
 function applyPalette() {
-  if (!map || !map.isStyleLoaded()) return;
+  if (!map || !styleReady) return;
   const c = palette();
   map.setPaintProperty("ocean", "background-color", c.ocean);
   map.setPaintProperty("land", "fill-color", c.land);
@@ -972,7 +989,7 @@ let markerMemo: {
 
 /** 把当前 props 灌进 source。source 已经在，只换数据 —— 不重建图层。 */
 function render() {
-  if (!map || !map.isStyleLoaded()) return;
+  if (!map || !styleReady) return;
 
   const points = props.points ?? [];
   const markers = props.markers ?? [];
@@ -2420,7 +2437,11 @@ onMounted(() => {
   );
 
   map.on("load", () => {
+    styleReady = true;
     registerIcons();
+    // 构造时的配色是那一刻取的；`load` 之前切过主题的话，那次 applyPalette 被闸挡
+    // 掉了，这里补上。
+    applyPalette();
     render();
     updateCorners();
     emitViewport();
@@ -2485,6 +2506,7 @@ watch(() => props.extraAttribution, applyAttribution, { deep: true });
 onBeforeUnmount(() => {
   themeObserver?.disconnect();
   resizeObserver?.disconnect();
+  styleReady = false;
   map?.remove();
   map = null;
 });
