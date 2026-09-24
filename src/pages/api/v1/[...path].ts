@@ -1,7 +1,8 @@
 import type { APIRoute } from "astro";
 import { lookupAllowed } from "@/lib/allowList";
 import { CAN_API_ORIGIN, origin } from "@/lib/config";
-import { ResponseCache, cacheKey } from "@/server/responseCache";
+import { ResponseCache, cacheKey, pickParams } from "@/server/responseCache";
+import { copySetCookies, fetchHeadersWithin } from "@/server/upstreamFetch";
 
 export const prerender = false;
 
@@ -38,6 +39,12 @@ interface Allowed {
    * 答案会因人而异。
    */
   cacheSeconds?: number;
+  /**
+   * 带缓存的路径**只转发这几个参数**，缓存键也只由它们组成。键里要是带着上游
+   * 根本不读的参数，`?x=<随机>` 就能次次不命中，拿全站共用的限流桶去打 can-api。
+   * 必须和 can-api 那个 handler 实际读的参数一致。
+   */
+  params?: string[];
 }
 
 const ALLOW_LIST: Record<string, Allowed> = {
@@ -99,8 +106,14 @@ const ALLOW_LIST: Record<string, Allowed> = {
     methods: ["GET"],
     who: "Dashboard.vue 的起降天气",
     cacheSeconds: 300,
+    params: ["icao"],
   },
-  route: { methods: ["GET"], who: "RoutePlanner.vue", cacheSeconds: 300 },
+  route: {
+    methods: ["GET"],
+    who: "RoutePlanner.vue",
+    cacheSeconds: 300,
+    params: ["departure", "arrival", "route"],
+  },
 };
 
 /**
@@ -117,10 +130,11 @@ const UNSAFE = new Set(["POST", "PATCH", "PUT", "DELETE"]);
 /**
  * 逐字转发给 can-api 的响应头。
  *
- * `set-cookie` **必须**在里面：退出登录是 can-api 用一个 Set-Cookie 清掉会话
- * 的，漏掉它成员就永远登不出去。
+ * `set-cookie` 不在这张表里，但**必须**转发：退出登录是 can-api 用 Set-Cookie
+ * 清掉会话的，漏掉它成员就永远登不出去。它单独走 `copySetCookies`，因为
+ * `headers.get()` 会把多条拼成一条（见 server/upstreamFetch.ts）。
  */
-const PASS_THROUGH = ["content-type", "cache-control", "set-cookie"];
+const PASS_THROUGH = ["content-type", "cache-control"];
 
 const handler: APIRoute = async (context) => {
   const rest = context.params.path ?? "";
@@ -157,10 +171,14 @@ const handler: APIRoute = async (context) => {
     }
   }
 
-  const target = CAN_API_ORIGIN + "/api/v1/" + rest + context.url.search;
-
   const cacheable = method === "GET" && entry.cacheSeconds !== undefined;
-  const key = cacheable ? cacheKey(rest, context.url.searchParams) : "";
+  const search = cacheable
+    ? pickParams(context.url.searchParams, entry.params ?? [])
+    : context.url.searchParams;
+  const query = search.toString();
+  const target =
+    CAN_API_ORIGIN + "/api/v1/" + rest + (query ? "?" + query : "");
+  const key = cacheable ? cacheKey(rest, search) : "";
   if (cacheable) {
     const hit = cache.get(key);
     if (hit) {
@@ -179,17 +197,21 @@ const handler: APIRoute = async (context) => {
 
   let upstream: Response;
   try {
-    upstream = await fetch(target, {
-      method,
-      headers,
-      body:
-        method === "GET" || method === "HEAD"
-          ? undefined
-          : context.request.body,
-      // body 是流，Node 的 fetch 要求显式声明才肯发。
-      ...(method === "GET" || method === "HEAD" ? {} : { duplex: "half" }),
-      signal: AbortSignal.timeout(15_000),
-    } as RequestInit);
+    // 超时只管到头到达为止 —— 理由见 server/upstreamFetch.ts。
+    upstream = await fetchHeadersWithin(
+      target,
+      {
+        method,
+        headers,
+        body:
+          method === "GET" || method === "HEAD"
+            ? undefined
+            : context.request.body,
+        // body 是流，Node 的 fetch 要求显式声明才肯发。
+        ...(method === "GET" || method === "HEAD" ? {} : { duplex: "half" }),
+      } as RequestInit,
+      15_000,
+    );
   } catch (error) {
     console.error(`can-api ${rest} unreachable:`, error);
     return Response.json(
@@ -203,6 +225,7 @@ const handler: APIRoute = async (context) => {
     const value = upstream.headers.get(name);
     if (value) out.set(name, value);
   }
+  copySetCookies(upstream.headers, out);
 
   if (cacheable && entry.cacheSeconds && upstream.ok) {
     const body = await upstream.arrayBuffer();

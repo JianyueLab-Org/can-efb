@@ -11,14 +11,16 @@
  * - **409 tracked** 是「这架飞机的雷达标牌正被某位管制员占着」。此时计划归他
  *   改，表单要整个锁上并说清是谁 —— can-fsd 在推送**之前**就判掉了，所以数据
  *   库里什么都没留下，重试也没用。
- * - **409 callsignInUse** 是别人正用这个呼号连着。
+ * - **409 callsignInUse** 是别人正用这个呼号连着。它不锁表单（改个呼号就能交），
+ *   文案走 `common.apiError.callsignInUse`，见 `describeFailure`。
  *
  * SimBrief 是**导入到表单**，不是直接提交。can-api 那边的注释写得很清楚：直接
  * 提交等于把一份成员自己没看过的计划推到全网管制员面前。
  */
 import { computed, onMounted, reactive, ref } from "vue";
-import { api } from "@/lib/canApi";
+import { api, describeFailure } from "@/lib/canApi";
 import { createTranslator } from "@/lib/i18n";
+import { announcePlanChanged } from "@/lib/mapBus";
 import { takeDraft } from "@/lib/planDraft";
 import { Icon } from "@jianyuelab-org/can-ui";
 
@@ -47,6 +49,22 @@ interface Plan {
 interface StoredPlan extends Plan {
   filedFromClient: boolean;
   updatedAt: string;
+}
+
+/**
+ * `updatedAt` 是 can-api 给的 RFC 3339（`plan.UpdatedAt.UTC().Format(...)`）。
+ * 原样显示是一串带 `T` 和秒的机器格式；按本地时区显示又和航空上一切时刻都用
+ * UTC 的约定冲突 —— 管制员、ATIS、飞行计划里的 EOBT 都是 Z 时。所以固定按 UTC
+ * 排成 `YYYY-MM-DD HH:MMZ`。解析不了就原样返回，至少不比以前差。
+ */
+function formatUtc(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ` +
+    `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}Z`
+  );
 }
 
 function blank(): Plan {
@@ -106,6 +124,7 @@ const disabled = computed(
     loading.value ||
     saving.value ||
     deleting.value ||
+    importing.value ||
     loadFailed.value ||
     !!lockedBy.value,
 );
@@ -226,6 +245,7 @@ async function file() {
 
   if (result.ok) {
     notice.value = { kind: "ok", text: t("flightplan.notice.filed") };
+    announcePlanChanged();
     // 回读失败只落在状态行，不碰这条横幅 —— 见 loadFailed。
     void load();
     return;
@@ -244,7 +264,7 @@ async function file() {
     };
     return;
   }
-  notice.value = { kind: "error", text: result.message };
+  notice.value = { kind: "error", text: describeFailure(t, result) };
 }
 
 async function remove() {
@@ -267,12 +287,13 @@ async function remove() {
       };
       return;
     }
-    notice.value = { kind: "error", text: result.message };
+    notice.value = { kind: "error", text: describeFailure(t, result) };
     return;
   }
   stored.value = null;
   fill(blank());
   notice.value = { kind: "ok", text: t("flightplan.notice.deleted") };
+  announcePlanChanged();
 }
 
 async function importSimbrief() {
@@ -289,7 +310,7 @@ async function importSimbrief() {
       text:
         result.error === "not_linked"
           ? t("flightplan.notice.notLinked")
-          : result.message,
+          : describeFailure(t, result),
     };
     return;
   }
@@ -372,7 +393,8 @@ function errorFor(field: string): string {
             >
           </p>
           <p class="mt-0.5 text-xs text-faint">
-            {{ t("flightplan.status.updatedAt") }} {{ stored.updatedAt }}
+            {{ t("flightplan.status.updatedAt") }}
+            {{ formatUtc(stored.updatedAt) }}
             <span v-if="stored.filedFromClient">
               · {{ t("flightplan.status.fromClient") }}</span
             >

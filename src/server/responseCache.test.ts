@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { ResponseCache, cacheKey, type CachedResponse } from "./responseCache";
+import {
+  ResponseCache,
+  cacheKey,
+  pickParams,
+  type CachedResponse,
+} from "./responseCache";
 
 function response(text: string): CachedResponse {
   return {
@@ -71,5 +76,26 @@ describe("cacheKey", () => {
   test("路径不同就是不同的键", () => {
     const q = new URLSearchParams("icao=ZBAA");
     expect(cacheKey("metar", q)).not.toBe(cacheKey("route", q));
+  });
+});
+
+describe("pickParams", () => {
+  test("上游不读的参数不进键", () => {
+    const a = cacheKey(
+      "metar",
+      pickParams(new URLSearchParams("icao=ZBAA&x=1"), ["icao"]),
+    );
+    const b = cacheKey(
+      "metar",
+      pickParams(new URLSearchParams("x=2&icao=zbaa"), ["icao"]),
+    );
+    expect(a).toBe(b);
+  });
+
+  test("重复参数只取第一个", () => {
+    const picked = pickParams(new URLSearchParams("icao=ZBAA&icao=ZSSS"), [
+      "icao",
+    ]);
+    expect(picked.toString()).toBe("icao=ZBAA");
   });
 });

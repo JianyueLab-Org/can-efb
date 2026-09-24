@@ -50,6 +50,7 @@ import { FACILITY_COLORS } from "@/lib/atc";
 import { altitudeRamp } from "@/lib/traffic";
 import { legKey } from "@/lib/airways";
 import { GROUND_MIN_ZOOM } from "@/lib/ground";
+import { escapeHtml, formatLatLon } from "@/lib/mapText";
 
 /**
  * 航班按高度档取色的 MapLibre 表达式。
@@ -127,6 +128,24 @@ function shellIsColumns(): boolean {
       .getPropertyValue("--shell-layout")
       .trim() === "columns"
   );
+}
+
+/**
+ * 窗口缩放时重新问一次布局，把滚轮缩放对上。
+ *
+ * 构造时只判一次是不够的：地图 `transition:persist` 跨页面常驻，平板横竖屏一转、
+ * 窗口一拉就可能跨过断点，而停在旧的设定上就是「堆叠时滚轮把页面卡住」或「三栏
+ * 时滚轮不缩放」—— 都不报错。**仍然问 CSS**，不在这里写断点。
+ *
+ * 挂在 `resize` 上而不是 `matchMedia`：后者要把断点抄进 JS，正是上面那条规矩不许
+ * 的；读一次计算样式很便宜，只有答案变了才动 MapLibre。
+ */
+function syncScrollZoom() {
+  if (!map) return;
+  const want = shellIsColumns();
+  if (want === map.scrollZoom.isEnabled()) return;
+  if (want) map.scrollZoom.enable();
+  else map.scrollZoom.disable();
 }
 
 interface Point {
@@ -257,6 +276,15 @@ const props = defineProps<{
    * 按语言给。
    */
   failureText: { init: string; webgl: string };
+  /**
+   * 署名里「情报区」那个词，**已翻译**。
+   *
+   * 以前署名整行写死成中文（「情报区 … · 陆地 Natural Earth」），英文、日文站上也
+   * 挂着这两个汉字。外壳本来就给图层按钮翻好了「情报区」，这里直接复用那一条，
+   * 不另开一个意思相同的键；「陆地」那个词删了 —— Natural Earth 是专名，单独署上
+   * 在哪种语言里都读得懂。
+   */
+  firsLabel: string;
 }>();
 
 /**
@@ -586,19 +614,18 @@ function pointFeatures(points: Point[]): FeatureCollection {
   };
 }
 
-function fmt(lat: number, lon: number): string {
-  const ns = lat >= 0 ? "N" : "S";
-  const ew = lon >= 0 ? "E" : "W";
-  return `${ns}${Math.abs(lat).toFixed(1)}° ${ew}${Math.abs(lon).toFixed(1)}°`;
-}
-
-/** 角落坐标标注：读当前视野的两个角。 */
+/**
+ * 角落坐标标注：读当前视野的两个角。
+ *
+ * `getBounds()` 平移过日界线后给的是展开的经度（`190`），读数要折回 ±180 再判东
+ * 西 —— 见 `lib/mapText.ts`。只折显示，不折发给外面的视野（见 emitViewport）。
+ */
 function updateCorners() {
   if (!map) return;
   const b = map.getBounds();
   corners.value = {
-    nw: fmt(b.getNorth(), b.getWest()),
-    se: fmt(b.getSouth(), b.getEast()),
+    nw: formatLatLon(b.getNorth(), b.getWest()),
+    se: formatLatLon(b.getSouth(), b.getEast()),
   };
 }
 
@@ -613,6 +640,9 @@ function emitViewport() {
   if (!map) return;
   // 视野一变就看看够不够格拉细节。它自己会挡住重复调用。
   void loadDetail();
+  /* 这里**不折**经度：发出去的是 MapLibre 原样的展开值，west ≤ east 恒成立，按框
+     取数的那几处（MORA 分块、视野内机场）拿到的是一个连续的区间。折回 ±180 由它们
+     自己在库里处理 —— 在这里折，过日界线时 west 会大于 east，区间反而断成两截。 */
   const b = map.getBounds();
   emit("viewport", {
     south: b.getSouth(),
@@ -690,11 +720,18 @@ function groundWidth(fallbackM: number): never {
  *
  * VATSpy 是 CC BY-SA 4.0，**署名是许可条款不是装饰**；陆地那份（Natural Earth）
  * 属公有领域，一并列出是礼貌不是义务。
+ *
+ * 「情报区」那个词按语言来（`firsLabel`），所以这是函数不是常量。它会进 HTML，
+ * 同样先转义。
  */
-const BASE_ATTRIBUTION =
-  '情报区 <a href="https://github.com/vatsimnetwork/vatspy-data-project" ' +
-  'target="_blank" rel="noreferrer">VATSpy</a> (CC BY-SA 4.0) · ' +
-  "陆地 Natural Earth";
+function baseAttribution(): string {
+  return (
+    `${escapeHtml(props.firsLabel)} ` +
+    '<a href="https://github.com/vatsimnetwork/vatspy-data-project" ' +
+    'target="_blank" rel="noreferrer">VATSpy</a> (CC BY-SA 4.0) · ' +
+    "Natural Earth"
+  );
+}
 
 /** 当前挂着的署名控件。换内容时要先摘下来 —— MapLibre 没有改文案的接口。 */
 let attributionControl: AttributionControl | null = null;
@@ -715,10 +752,12 @@ function applyAttribution() {
     map.removeControl(attributionControl);
     attributionControl = null;
   }
-  const extra = (props.extraAttribution ?? []).filter(Boolean);
+  /* 随数据来的那几行**当纯文本**：`customAttribution` 按 HTML 渲染，而这些串来自
+     can-db 的地面数据，不是我们写的 —— 原样拼进去等于让数据往页面里插标签。 */
+  const extra = (props.extraAttribution ?? []).filter(Boolean).map(escapeHtml);
   attributionControl = new AttributionControl({
     compact: true,
-    customAttribution: [BASE_ATTRIBUTION, ...extra].join(" · "),
+    customAttribution: [baseAttribution(), ...extra].join(" · "),
   });
   map.addControl(attributionControl, "top-right");
 }
@@ -2398,6 +2437,9 @@ onMounted(() => {
       // 份 —— 而断点一改（正是这次，1024 → 1152），两份就分叉了，表现是某个宽度
       // 区间里滚轮把页面卡住，而那是没人查得到的那种毛病。现在断点只有媒体查询
       // 里一个定义处，它翻 `--shell-layout`，这里读它。
+      //
+      // 这里只是**初值**：地图跨页面常驻、也跨窗口缩放存活，窗口拉过断点之后要再
+      // 问一次 CSS，见下面的 `syncScrollZoom`。
       scrollZoom: shellIsColumns(),
     });
 
@@ -2452,6 +2494,7 @@ onMounted(() => {
 
   resizeObserver = new ResizeObserver(() => map?.resize());
   resizeObserver.observe(container.value);
+  window.addEventListener("resize", syncScrollZoom);
 
   themeObserver = new MutationObserver(applyPalette);
   themeObserver.observe(document.documentElement, {
@@ -2501,11 +2544,14 @@ watch(
 
 /* 署名单独一个 watch，不跟着 render 走：它换的是控件不是图层数据，而 render 每
    次视野变化都会跑好几趟 —— 挂在那上面等于每拖一次地图就摘挂一次控件。 */
-watch(() => props.extraAttribution, applyAttribution, { deep: true });
+watch(() => [props.extraAttribution, props.firsLabel], applyAttribution, {
+  deep: true,
+});
 
 onBeforeUnmount(() => {
   themeObserver?.disconnect();
   resizeObserver?.disconnect();
+  window.removeEventListener("resize", syncScrollZoom);
   styleReady = false;
   map?.remove();
   map = null;

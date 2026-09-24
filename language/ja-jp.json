@@ -69,7 +69,24 @@
     },
     "common": {
       "loading": "読み込み中…",
-      "refresh": "更新"
+      "refresh": "更新",
+      "apiError": {
+        "network": "ネットワークに接続できませんでした。しばらくしてから再試行してください。",
+        "status": "リクエストに失敗しました（{status}）。",
+        "unauthorized": "ログインの有効期限が切れました。ページを再読み込みしてログインし直してください。",
+        "rate_limited": "リクエストが多すぎます。しばらくしてから再試行してください。",
+        "internal_error": "サーバーでエラーが発生しました。しばらくしてから再試行してください。",
+        "unreachable": "上流のサービスが応答しません。しばらくしてから再試行してください。",
+        "bad_origin": "クロスサイトリクエストは拒否されました。",
+        "invalid_request": "リクエストの形式が正しくありません。",
+        "invalidBody": "リクエストの形式が正しくありません。",
+        "callsignInUse": "このコールサインは別のメンバーが接続中です。",
+        "invalid_identifier": "SimBrief の Pilot ID または Navigraph のユーザー名を入力してください。",
+        "not_found": "SimBrief にこのアカウントが見つからないか、保存済みのプランがありません。",
+        "invalid_plan": "SimBrief から返されたプランに必要な項目がありません。",
+        "invalidAirports": "出発・到着空港は 3～4 文字の ICAO コードで入力してください。"
+      },
+      "retry": "再試行"
     },
     "notFound": {
       "title": "ページが見つかりません",
@@ -275,7 +292,8 @@
         "unlink": "連携解除",
         "bound": "連携済み",
         "linked": "SimBrief を連携しました。",
-        "unlinked": "SimBrief の連携を解除しました。"
+        "unlinked": "SimBrief の連携を解除しました。",
+        "loadFailed": "連携状態を読み込めませんでした。未連携という意味ではありません。"
       },
       "local": {
         "title": "この端末の設定",

@@ -17,6 +17,7 @@
 import type { Feature, FeatureCollection } from "geojson";
 
 import { unwrapList } from "@/lib/aip";
+import { wrapLon } from "@/lib/mapText";
 
 export interface MORACell {
   /** 格子北边纬度。 */
@@ -35,7 +36,19 @@ export interface MORACell {
  */
 export const MORA_BLOCK = 10;
 
-/** 视野框 → 覆盖它的那些块的左下角。 */
+/**
+ * 视野框 → 覆盖它的那些块的左下角。
+ *
+ * **经度是 MapLibre 原样给的展开值**（`getBounds()` 平移过日界线后是 `170..190`，
+ * 往西是 `-200..-170`），这里折回 [-180, 180) 再取块。不折的话 180° 以东的块全被
+ * 当成越界扔掉，图上日界线那一侧整片没有 MORA，而那看起来像那边没有数据。
+ *
+ * 返回的块经度一律是折回后的真实值：取数按它发，缓存按它记，同一块从哪个世界副本
+ * 看过去都是同一个键。标注落在格子的真实经度上，MapLibre 默认的世界副本
+ * （`renderWorldCopies`）会把它画到视野旁边那一份上。
+ *
+ * 视野横跨 360° 以上（缩到最小时）就是整圈，不再逐块走 —— 否则同一块会被数好几遍。
+ */
 export function blocksFor(
   south: number,
   west: number,
@@ -44,13 +57,17 @@ export function blocksFor(
 ): { lat: number; lon: number }[] {
   const out: { lat: number; lon: number }[] = [];
   const floor = (v: number) => Math.floor(v / MORA_BLOCK) * MORA_BLOCK;
+  const [from, to] =
+    east - west >= 360 ? [-180, 180 - MORA_BLOCK] : [floor(west), floor(east)];
+  const lons = new Set<number>();
+  // 块边界是 10 的倍数，360 也是，所以折回之后仍然对齐在块边界上。
+  for (let lon = from; lon <= to; lon += MORA_BLOCK) lons.add(wrapLon(lon));
   for (let lat = floor(south); lat <= floor(north); lat += MORA_BLOCK) {
-    for (let lon = floor(west); lon <= floor(east); lon += MORA_BLOCK) {
-      // 网格本身是 lat -89..90 / lon -180..179，超出的块直接不要 —— 请求出去
-      // 只会换回一个 400。
-      if (lat < -89 || lat > 90 || lon < -180 || lon > 179) continue;
-      out.push({ lat, lon });
-    }
+    // 网格本身是 lat -89..90（格子的北边）。`-90` 那一块覆盖北边 -89..-81 的格子，
+    // 取数时下界会收到 -89，所以要留着；整块落在 -90 以南或 90 以北的才扔 ——
+    // 请求出去只会换回一个 400。
+    if (lat < -90 || lat > 90) continue;
+    for (const lon of lons) out.push({ lat, lon });
   }
   return out;
 }

@@ -69,7 +69,24 @@
     },
     "common": {
       "loading": "载入中…",
-      "refresh": "刷新"
+      "refresh": "刷新",
+      "apiError": {
+        "network": "网络连接失败，请稍后再试。",
+        "status": "请求失败（{status}）。",
+        "unauthorized": "登录已失效，刷新页面重新登录。",
+        "rate_limited": "请求太频繁，稍后再试。",
+        "internal_error": "服务器出错了，稍后再试。",
+        "unreachable": "上游服务没有应答，稍后再试。",
+        "bad_origin": "跨站请求被拒绝。",
+        "invalid_request": "请求格式不对。",
+        "invalidBody": "请求格式不对。",
+        "callsignInUse": "这个呼号正被另一名成员连着使用。",
+        "invalid_identifier": "填一个 SimBrief Pilot ID 或 Navigraph 用户名。",
+        "not_found": "SimBrief 上找不到这个账号，或它没有已保存的计划。",
+        "invalid_plan": "SimBrief 返回的计划缺少必要字段。",
+        "invalidAirports": "起飞和落地机场要填三到四位 ICAO 代码。"
+      },
+      "retry": "重试"
     },
     "notFound": {
       "title": "没有这一页",
@@ -275,7 +292,8 @@
         "unlink": "解绑",
         "bound": "已绑定",
         "linked": "SimBrief 已绑定。",
-        "unlinked": "SimBrief 已解绑。"
+        "unlinked": "SimBrief 已解绑。",
+        "loadFailed": "没能读取绑定状态 —— 这不代表没有绑定。"
       },
       "local": {
         "title": "本机偏好",

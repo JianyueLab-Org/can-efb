@@ -44,15 +44,8 @@ export async function fetchAirportPins(): Promise<AirportPin[]> {
           : [];
       const out: AirportPin[] = [];
       for (const r of rows as Record<string, unknown>[]) {
-        const lat = Number(r.lat);
-        const lon = Number(r.lon);
-        if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-        out.push({
-          icao: String(r.icao ?? "").toUpperCase(),
-          name: (r.name as string) ?? null,
-          lat,
-          lon,
-        });
+        const pin = toAirportPin(r);
+        if (pin) out.push(pin);
       }
       loaded = out;
       return out;
@@ -66,6 +59,31 @@ export async function fetchAirportPins(): Promise<AirportPin[]> {
   })();
 
   return pending;
+}
+
+/**
+ * 一行机场 → 一个点。坐标缺了就不要这一行。
+ *
+ * **不能直接 `Number()`**：`Number(null)` 和 `Number("")` 都是 `0`，而 0 是有限数，
+ * 于是一个没坐标的机场变成几内亚湾里（0°, 0°）的一个齿轮 —— 不报错，看起来还是一
+ * 个正常的机场点。所以只认数字和非空字符串，其余一律当缺。
+ */
+export function toAirportPin(r: Record<string, unknown>): AirportPin | null {
+  const lat = coordinate(r.lat);
+  const lon = coordinate(r.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  return {
+    icao: String(r.icao ?? "").toUpperCase(),
+    name: (r.name as string) ?? null,
+    lat,
+    lon,
+  };
+}
+
+function coordinate(v: unknown): number {
+  if (typeof v === "number") return v;
+  if (typeof v === "string" && v.trim() !== "") return Number(v);
+  return Number.NaN;
 }
 
 /**
@@ -104,6 +122,11 @@ export function toAirportPoints(pins: AirportPin[]): FeatureCollection {
 /**
  * 视野里的机场，按离视野中心由近及远。
  *
+ * **视野的经度是 MapLibre 原样给的展开值**（过了日界线是 `170..190`），而机场的经
+ * 度在 [-180, 180)。直接比的话，东经 190 那一侧（也就是西经 170）的机场永远不在框
+ * 里。所以把每个机场的经度挪到离视野中心最近的那一圈（±360 的整数倍）再比 —— 等于
+ * 把框在日界线处切成两段、各比一次，只是不用真的切。视野横跨 360° 以上时经度不再筛。
+ *
  * 排序是给取数配额用的（`GROUND_MAX_AIRPORTS`）：视野里有四个场而只取三个时，该
  * 放弃的是最边上那个，不是碰巧排在数组后面那个。
  *
@@ -123,18 +146,17 @@ export function airportsInView(
   const padLon =
     VIEW_PAD_KM / (111 * Math.max(0.2, Math.cos((cLat * Math.PI) / 180)));
 
+  const wholeWorld = v.east - v.west >= 360;
+  const near = (lon: number) => lon + 360 * Math.round((cLon - lon) / 360);
+  const dist = (p: AirportPin) =>
+    (p.lat - cLat) ** 2 + (near(p.lon) - cLon) ** 2;
+
   return pins
-    .filter(
-      (p) =>
-        p.lat >= v.south - padLat &&
-        p.lat <= v.north + padLat &&
-        p.lon >= v.west - padLon &&
-        p.lon <= v.east + padLon,
-    )
-    .sort(
-      (a, b) =>
-        (a.lat - cLat) ** 2 +
-        (a.lon - cLon) ** 2 -
-        ((b.lat - cLat) ** 2 + (b.lon - cLon) ** 2),
-    );
+    .filter((p) => {
+      if (p.lat < v.south - padLat || p.lat > v.north + padLat) return false;
+      if (wholeWorld) return true;
+      const lon = near(p.lon);
+      return lon >= v.west - padLon && lon <= v.east + padLon;
+    })
+    .sort((a, b) => dist(a) - dist(b));
 }

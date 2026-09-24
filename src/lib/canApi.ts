@@ -11,11 +11,13 @@
  * 代价是路径必须在那份白名单里，收益是这个站不依赖 can-api 的一次部署改动。
  * 路径本身**一个字都没变** —— `/api/v1/...` 是published contract。
  */
+import type { Translator } from "@/lib/i18n";
 
 export interface ApiFailure {
   ok: false;
   status: number;
   error: string;
+  /** can-api 原文（英文），给日志看。**别直接显示**，界面走 `describeFailure`。 */
   message: string;
   /** 422 时 can-api 会逐字段告诉你哪里不对。 */
   fields?: Record<string, string>;
@@ -51,7 +53,7 @@ export async function api<T = unknown>(
       ok: false,
       status: 0,
       error: "network",
-      message: "网络连接失败，请稍后再试。",
+      message: "Network request failed.",
     };
   }
 
@@ -65,7 +67,7 @@ export async function api<T = unknown>(
       ok: false,
       status: response.status,
       error: String(body.error ?? "http_error"),
-      message: String(body.message ?? `请求失败（${response.status}）`),
+      message: String(body.message ?? `HTTP ${response.status}`),
       fields: (body.fields as Record<string, string>) ?? undefined,
       controller:
         typeof body.controller === "string" ? body.controller : undefined,
@@ -75,4 +77,20 @@ export async function api<T = unknown>(
   // can-api 大部分接口包着 {status, data, timestamp}，少数裸奔。
   const data = "data" in body ? body.data : body;
   return { ok: true, data: data as T };
+}
+
+/**
+ * 失败时给成员看的那句话，按错误码翻译。
+ *
+ * **不显示 `message`。** 那是 can-api 写给开发者的英文，直接摆出来就是中文、日文
+ * 界面里冒出一句英文。认得的错误码走 `common.apiError.<code>`，认不得的只报状态码
+ * —— 宁可笼统，也不要换一种语言。
+ */
+export function describeFailure(t: Translator, failure: ApiFailure): string {
+  const key = `common.apiError.${failure.error}`;
+  const text = t(key);
+  if (text !== key) return text;
+  return failure.status === 0
+    ? t("common.apiError.network")
+    : t("common.apiError.status", { status: failure.status });
 }

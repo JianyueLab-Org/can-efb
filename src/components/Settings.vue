@@ -10,8 +10,8 @@
  * 3. **本机偏好** —— 主题、语言、侧栏，全部只存在这台设备上。它们不值得占用
  *    can-api 的一张表，而且换一台设备本来就该重新选。
  */
-import { onMounted, ref } from "vue";
-import { api } from "@/lib/canApi";
+import { onBeforeUnmount, onMounted, ref } from "vue";
+import { api, describeFailure } from "@/lib/canApi";
 import { createTranslator } from "@/lib/i18n";
 import { Icon } from "@jianyuelab-org/can-ui";
 
@@ -29,10 +29,14 @@ const simbriefId = ref<string | null>(null);
 const identifier = ref("");
 const busy = ref(false);
 const loading = ref(true);
+/** 读绑定状态失败。和「未绑定」分开，否则失败会被画成没绑定。 */
+const loadFailed = ref(false);
 const notice = ref<{ kind: "ok" | "error"; text: string } | null>(null);
 
 async function loadSimbrief() {
   loading.value = true;
+  loadFailed.value = false;
+  notice.value = null;
   const result = await api<{ simbriefId: string | null }>(
     "/api/v1/pilot/simbrief",
   );
@@ -41,10 +45,11 @@ async function loadSimbrief() {
     simbriefId.value = result.data.simbriefId ?? null;
     return;
   }
-  // **读失败不等于没绑定。** 静默 return 会让 simbriefId 留在 null，界面因此显示
-  // 成「未绑定」并摆出输入框 —— 而那是一句假话，可能让人以为绑定掉了、再绑一次。
-  // 和概览页那条「还没有提交飞行计划」是同一类坏法：把失败画成了「没有」。
-  notice.value = { kind: "error", text: result.message };
+  // **读失败不等于没绑定。** 只设横幅的话 simbriefId 留在 null，模板落进「未绑定」
+  // 那一支并摆出输入框 —— 一句假话，可能让人以为绑定掉了、再绑一次。所以失败单独
+  // 一个状态，模板里有它自己的分支。
+  loadFailed.value = true;
+  notice.value = { kind: "error", text: describeFailure(t, result) };
 }
 
 async function link() {
@@ -59,7 +64,7 @@ async function link() {
   busy.value = false;
 
   if (!result.ok) {
-    notice.value = { kind: "error", text: result.message };
+    notice.value = { kind: "error", text: describeFailure(t, result) };
     return;
   }
   simbriefId.value = result.data.simbriefId;
@@ -75,7 +80,7 @@ async function unlink() {
   busy.value = false;
 
   if (!result.ok) {
-    notice.value = { kind: "error", text: result.message };
+    notice.value = { kind: "error", text: describeFailure(t, result) };
     return;
   }
   simbriefId.value = null;
@@ -85,8 +90,15 @@ async function unlink() {
 /* ------------------------------------------------------------ 本机偏好 */
 const railCollapsed = ref(false);
 
+// 和 AppRail 一样只写 data-rail、再由观察者读回来：轨上那颗按钮也会改它，
+// 这边的开关要跟着变，而不是停在进页面时读到的值上。
+let railObserver: MutationObserver | null = null;
+
+function syncRail() {
+  railCollapsed.value = document.documentElement.dataset.rail === "collapsed";
+}
+
 function toggleRail(next: boolean) {
-  railCollapsed.value = next;
   document.documentElement.dataset.rail = next ? "collapsed" : "expanded";
   try {
     localStorage.setItem("efb.rail", next ? "collapsed" : "expanded");
@@ -96,9 +108,15 @@ function toggleRail(next: boolean) {
 }
 
 onMounted(() => {
-  railCollapsed.value = document.documentElement.dataset.rail === "collapsed";
+  syncRail();
+  railObserver = new MutationObserver(syncRail);
+  railObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-rail"],
+  });
   void loadSimbrief();
 });
+onBeforeUnmount(() => railObserver?.disconnect());
 </script>
 
 <template>
@@ -166,6 +184,20 @@ onMounted(() => {
       <p v-if="loading" class="mt-4 text-sm text-muted">
         {{ t("common.loading") }}
       </p>
+
+      <div
+        v-else-if="loadFailed"
+        class="mt-4 flex flex-wrap items-center gap-3 text-sm"
+      >
+        <span class="text-muted">{{ t("settings.simbrief.loadFailed") }}</span>
+        <button
+          type="button"
+          class="btn btn-secondary ml-auto"
+          @click="loadSimbrief"
+        >
+          {{ t("common.retry") }}
+        </button>
+      </div>
 
       <div
         v-else-if="simbriefId"

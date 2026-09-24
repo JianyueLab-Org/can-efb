@@ -247,9 +247,11 @@ onMounted(() => {
 
     <!-- 起降天气 -->
     <section v-if="plan" class="grid gap-3 @md:grid-cols-2">
+      <!-- key 带上角色：本场起落（起降同一个机场）时两张卡的 ICAO 相同，只用
+           ICAO 做 key 会重复，Vue 会把两张卡当成同一个节点复用。 -->
       <div
-        v-for="icao in [plan.departure, plan.arrival]"
-        :key="icao"
+        v-for="(icao, role) in { dep: plan.departure, arr: plan.arrival }"
+        :key="`${role}-${icao}`"
         class="card p-4"
       >
         <h3 class="font-mono text-sm font-semibold text-ink">{{ icao }}</h3>

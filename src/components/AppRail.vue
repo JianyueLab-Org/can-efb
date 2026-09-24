@@ -56,7 +56,10 @@ const t = createTranslator(props.messages);
 const collapsed = ref(false);
 
 function applyCollapsed(next: boolean) {
-  collapsed.value = next;
+  // 不直接改 collapsed：下面的 MutationObserver 会从 data-rail 读回来。设置页
+  // 的「收起侧栏」开关也只写 data-rail，状态要是这里另存一份，那一份就会过期
+  // —— 箭头朝向和折叠态的 title 对不上，轨上第一次点击还会被吞掉（它把同一
+  // 个值再写一遍）。data-rail 是唯一的来源，这个 ref 只是它的镜像。
   document.documentElement.dataset.rail = next ? "collapsed" : "expanded";
   try {
     localStorage.setItem("efb.rail", next ? "collapsed" : "expanded");
@@ -64,6 +67,12 @@ function applyCollapsed(next: boolean) {
     // 隐私模式下 localStorage 会抛。折叠这件事不值得为它中断，本次会话内仍然
     // 生效，只是下次打开回到默认展开。
   }
+}
+
+let railObserver: MutationObserver | null = null;
+
+function syncCollapsed() {
+  collapsed.value = document.documentElement.dataset.rail === "collapsed";
 }
 
 /* --------------------------------------------------------------------------
@@ -190,11 +199,17 @@ function onGlobalClick(event: MouseEvent) {
 onMounted(() => {
   // RailScript 已经在首屏之前把 data-rail 写好了；这里只是把它读回来，而不是
   // 第二次判断 —— 两处各读一次 localStorage 就会有两种可能不一致的答案。
-  collapsed.value = document.documentElement.dataset.rail === "collapsed";
+  syncCollapsed();
+  railObserver = new MutationObserver(syncCollapsed);
+  railObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-rail"],
+  });
   document.addEventListener("keydown", onGlobalKeydown);
   document.addEventListener("click", onGlobalClick);
 });
 onBeforeUnmount(() => {
+  railObserver?.disconnect();
   document.removeEventListener("keydown", onGlobalKeydown);
   document.removeEventListener("click", onGlobalClick);
 });

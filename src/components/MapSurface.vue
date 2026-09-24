@@ -36,7 +36,11 @@ import {
   onMounted,
   ref,
 } from "vue";
-import { subscribeToMap, type MapPoint } from "@/lib/mapBus";
+import {
+  PLAN_CHANGED_EVENT,
+  subscribeToMap,
+  type MapPoint,
+} from "@/lib/mapBus";
 import {
   fetchAirways,
   toAirwayLines,
@@ -501,8 +505,14 @@ const ownAt = ref<{ lat: number; lon: number; callsign: string } | null>(null);
  */
 const LIVE_INTERVAL_MS = 30_000;
 let liveTimer: ReturnType<typeof setInterval> | null = null;
-/** 首次取数期间挡住再次点击，见 toggleLive。 */
+/** 首次取数期间不再并发取第二次，见 toggleLive。 */
 let liveInFlight = false;
+/**
+ * 取数途中又打开了另一层：等这一次回来再补取一次。
+ *
+ * 以前途中那次点击是直接被丢掉的 —— 按钮不亮、不报错，看起来像没点上。
+ */
+let liveAgain = false;
 
 /**
  * 从别的标签页切回来时立刻补一次。
@@ -550,7 +560,11 @@ async function refreshLive() {
             }
           : null;
     }
-    if (!showAtc.value) return;
+    // 关着就保证是空的，而不只是不画：清空本来由关掉那一下做，这里兜一次底。
+    if (!showAtc.value) {
+      clearAtc();
+      return;
+    }
 
     const controllers = onlineControllers(feed);
 
@@ -563,6 +577,12 @@ async function refreshLive() {
        边界底图**按需现取**：这一层默认是开的，而边界那一层不一定（`showFirs` 可以
        关掉）。所以这里不看 `firs.value`，直接要 `firCache` —— 两层的开关互不影响。 */
     const boundaries = firCache ?? (await loadFirCache().catch(() => null));
+    /* 第一次要现下边界底图，这一段 await 里管制那层可能已经被关掉了 —— 那次关掉时
+       已经清过，这里再写回去就是一个按钮灭着、图上却铺着管制区的状态。 */
+    if (!showAtc.value) {
+      clearAtc();
+      return;
+    }
     const { areas, unmatched } = toControllerAreas(
       controllers,
       boundaries,
@@ -583,6 +603,13 @@ async function refreshLive() {
   }
 }
 
+/** 管制那层清干净。关掉时、以及取数途中被关掉时都走这里。 */
+function clearAtc() {
+  atc.value = null;
+  atcAreas.value = null;
+  atcCount.value = 0;
+}
+
 /**
  * 机组和管制各一个开关，**共用一个定时器**。
  *
@@ -593,7 +620,6 @@ async function toggleLive(which: "traffic" | "atc") {
   // **先翻状态再取数**，而不是取完再翻。中间那一段 await 是可以被再点一次的：
   // 「开」还在等第一份数据时又点了「关」，若状态留到 await 之后才写，关的那次
   // 会被开的那次覆盖 —— 界面显示关着，定时器却活着，而且没有任何办法再关掉它。
-  if (liveInFlight) return;
   const flag = which === "traffic" ? showTraffic : showAtc;
   const next = !flag.value;
   flag.value = next;
@@ -608,9 +634,7 @@ async function toggleLive(which: "traffic" | "atc") {
       own.value = null;
       ownAt.value = null;
     } else {
-      atc.value = null;
-      atcAreas.value = null;
-      atcCount.value = 0;
+      clearAtc();
     }
     // 另一层还开着就继续轮询，两个都关了才停。
     if (!liveOn.value && liveTimer) {
@@ -620,14 +644,24 @@ async function toggleLive(which: "traffic" | "atc") {
     return;
   }
 
+  /* 上一次取数还在路上：不并发再取，记一笔，等它回来补一次。状态已经翻好了，按钮
+     立刻就亮；补取那次按那时的开关算，所以期间来回点几下也只落到最后的状态。 */
+  if (liveInFlight) {
+    liveAgain = true;
+    return;
+  }
   liveInFlight = true;
   try {
-    await refreshLive();
+    do {
+      liveAgain = false;
+      await refreshLive();
+    } while (liveAgain && liveOn.value);
   } finally {
     liveInFlight = false;
   }
+  // 取数途中两层可能都被关掉了 —— 那时不该再把定时器建起来。
   // 定时器建一次就够两层用；已经在跑就别重建，否则第二个开关会把周期重新计时。
-  if (!liveTimer) {
+  if (liveOn.value && !liveTimer) {
     liveTimer = setInterval(() => void refreshLive(), LIVE_INTERVAL_MS);
   }
 }
@@ -870,7 +904,8 @@ async function loadGroundFor(v: {
   ground.value = drawing.collection;
   /* 署名**必须**显示 —— OSM 那份是 ODbL，署名是许可条款不是礼貌。由数据决定而不
      是写死：只有真的用了 OSM 的机场才有值，写死会让纯扇区包的机场挂一个错误的出
-     处。汇编那份的规矩正好相反（来源不能外露），所以画 lines 时这里是空的。 */
+     处。汇编那份的规矩正好相反（来源不能外露），所以画 lines 时这里是空的。
+     这里传的是**纯文本**，转义在 RouteMap 挂署名控件那一步做（它按 HTML 渲染）。 */
   groundAttribution.value = drawing.attributions;
   /* 画的是航图线画时才说精度：那一份位置只能信到 5–20 米，而分好类的那份是米级
      的，给它标一个精度反而是误导。 */
@@ -1058,6 +1093,27 @@ const skippedTotal = computed(
 let panelPublished = false;
 
 /**
+ * 图上现在画的是不是**已提交的计划**，以及是哪一份（起降 + 航路串）。
+ *
+ * 地图跨页面常驻，计划却会变：交了、改了、撤了。每换一页重读一次计划（见
+ * `onPageSwap`），这两个值决定要不要重画、要不要撤掉 —— 没变就不重复展开，撤了就
+ * 把那条线拿走，而面板推来的东西一律不碰。
+ */
+let planShown = false;
+let planKey = "";
+/** 每次读计划领一个号，回来时号不是最新的就不写，和地面那层同一道闸。 */
+let planSeq = 0;
+
+/** 撤掉图上的计划线，角标回到外壳给的那一句。只在画的确实是计划时调。 */
+function clearPlanRoute() {
+  planShown = false;
+  planKey = "";
+  points.value = [];
+  refreshHighlight();
+  label.value = props.label;
+}
+
+/**
  * 把成员**已提交的飞行计划**画在地图上，作为默认内容。
  *
  * 以前这块地图的默认内容是「上一个面板推过来的东西」，而在没人推之前是空的 ——
@@ -1075,16 +1131,29 @@ let panelPublished = false;
  * （`planFailed` 那一段专门讲了「把失败画成没有」为什么更贵）。
  */
 async function loadPlanRoute() {
+  if (panelPublished) return;
+  const seq = ++planSeq;
   const plan = await api<{
     departure?: string;
     arrival?: string;
     route?: string;
   } | null>("/api/v1/pilot/flightplan");
-  if (!plan.ok || !plan.data) return;
-  if (panelPublished) return;
+  if (seq !== planSeq || panelPublished) return;
+  // 没读上：图上是什么就留着什么。读失败不等于撤了计划。
+  if (!plan.ok) return;
 
-  const { departure, arrival, route } = plan.data;
-  if (!departure || !arrival) return;
+  const departure = plan.data?.departure;
+  const arrival = plan.data?.arrival;
+  const route = plan.data?.route;
+  if (!departure || !arrival) {
+    // 读上了、确实没有计划（撤掉了）：之前画着的那条要拿走，否则撤掉的计划还挂在
+    // 图上，角标还写着「已提交的飞行计划」。
+    if (planShown) clearPlanRoute();
+    return;
+  }
+  const key = `${departure}|${arrival}|${route ?? ""}`;
+  // 还是同一份计划，就别每换一页都重新展开一遍。
+  if (planShown && key === planKey) return;
 
   const params = new URLSearchParams({
     departure,
@@ -1105,11 +1174,23 @@ async function loadPlanRoute() {
    * 它要 `aipAccess >= 1`，但这张图上**每一个航行图层本来就都要**（航路、导航
    * 台、空域、MORA、地面全走 can-db）—— 拿不到的成员看到的本来就是一张空底图，
    * 所以这里不多挡任何人。 */
-  const response = await fetch(`/api/db/aip/resolve?${params}`);
-  if (!response.ok || panelPublished) return;
-  const resolved = unwrapList<MapPoint>(await response.json());
-  if (!resolved.length) return;
+  const response = await fetch(`/api/db/aip/resolve?${params}`).catch(
+    () => null,
+  );
+  if (seq !== planSeq || panelPublished) return;
+  const resolved = response?.ok
+    ? unwrapList<MapPoint>(await response.json().catch(() => null))
+    : [];
+  if (seq !== planSeq || panelPublished) return;
+  if (!resolved.length) {
+    // 新的这份画不出来。旧的那份已经不是他的计划了，不能留着冒充 —— 撤掉，和「没
+    // 画出来」在这一层是同一回事（见上面「失败一律安静」）。
+    if (planShown) clearPlanRoute();
+    return;
+  }
 
+  planShown = true;
+  planKey = key;
   points.value = resolved;
   // 计划到了，把它在航路网上点亮。航路网可能还没加载好 —— 那边加载完也会再算一次。
   refreshHighlight();
@@ -1159,6 +1240,20 @@ function refreshHighlight() {
 
 let unsubscribe: (() => void) | null = null;
 
+/**
+ * 每次页面导航之后重读一次计划。
+ *
+ * 地图是 `transition:persist` 的，`onMounted` 一辈子只跑一次 —— 以前计划那条线
+ * 因此只在第一次打开时画，之后交了、改了、撤了，图上都还是那一条旧的。
+ *
+ * 挂 `astro:after-swap`（只在导航时触发，首次加载不触发，那一次 onMounted 已经
+ * 读过）。在飞行计划那一页交或撤**不导航**，所以那一页另发一个
+ * `PLAN_CHANGED_EVENT`（`lib/mapBus.ts`），走的是同一个处理函数。
+ */
+function onPageSwap() {
+  void loadPlanRoute();
+}
+
 onMounted(() => {
   mounted.value = true;
   document.addEventListener("visibilitychange", onVisible);
@@ -1172,8 +1267,8 @@ onMounted(() => {
   if (saved.airway !== "off") void setAirwayLevel(saved.airway);
   if (saved.firs) void toggleFirs();
   if (saved.mora) void toggleMora();
-  // 两层各自恢复。**不能都调一遍 toggleLive**，`liveInFlight` 会把第二次挡掉 ——
-  // 那正是它存在的目的（防连点），所以这里直接把状态摆好，取数交给一次 refresh。
+  // 两层各自恢复。**不调两遍 toggleLive**：两层共用一次取数，直接把状态摆好、
+  // 交给一次 refresh 就够了。
   if (saved.traffic) showTraffic.value = true;
   if (saved.atcLive) showAtc.value = true;
   if (liveOn.value) {
@@ -1187,8 +1282,14 @@ onMounted(() => {
   // 计划那条线不 await：地图不该等它回来才出现，和航路网是同一条道理。
   void loadPlanRoute();
 
+  document.addEventListener("astro:after-swap", onPageSwap);
+  window.addEventListener(PLAN_CHANGED_EVENT, onPageSwap);
+
   unsubscribe = subscribeToMap((payload) => {
     panelPublished = true;
+    // 面板接管了这块地图，图上画的不再是计划 —— 之后导航时不要去撤它。
+    planShown = false;
+    planKey = "";
     points.value = payload.points ?? [];
     // 面板换了一条航路：旧的高亮必须撤掉，否则图上会同时亮着两条。
     refreshHighlight();
@@ -1207,6 +1308,8 @@ onBeforeUnmount(() => {
   if (liveTimer) clearInterval(liveTimer);
   liveTimer = null;
   document.removeEventListener("visibilitychange", onVisible);
+  document.removeEventListener("astro:after-swap", onPageSwap);
+  window.removeEventListener(PLAN_CHANGED_EVENT, onPageSwap);
 });
 </script>
 
@@ -1239,6 +1342,7 @@ onBeforeUnmount(() => {
       :airspaces="airspaces"
       :label="label"
       :failure-text="failureText"
+      :firs-label="layerLabels.firs"
       class="h-full"
     />
 

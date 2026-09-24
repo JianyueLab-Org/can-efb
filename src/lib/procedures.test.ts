@@ -10,6 +10,7 @@ import {
   procedureTrack,
   rewriteRoute,
   runwayIdents,
+  runwayMatches,
   servesAllRunways,
   servesRunway,
   type Procedure,
@@ -395,6 +396,35 @@ describe("procedureTrack", () => {
     expect(idents).toEqual(["AD551", "AD535", "ELKUR", "SOTMU"]);
   });
 
+  // ARINC 424 的 `RW19B` 是 19L/19R 共用的那条转换。不认 B 的话它掉进航路转换那一
+  // 支，选哪条 19 都画不出来，而少了的那一截看起来只像程序本来就短。
+  test("RW##B 对这个号码的每一条平行跑道都算", () => {
+    const both: Procedure = {
+      ...elku4k,
+      path: [
+        leg("AD191", "RW19B"),
+        leg("AD011", "RW01L"),
+        leg("AD535", "ALL"),
+        leg("ELKUR", "ALL"),
+      ],
+    };
+    for (const runway of ["19L", "19R", "19C"]) {
+      expect(procedureTrack(both, { runway }).map((l) => l.ident)).toEqual([
+        "AD191",
+        "AD535",
+        "ELKUR",
+      ]);
+    }
+    // 别的号码、以及别的跑道的转换，都不能被它带进来。
+    expect(procedureTrack(both, { runway: "01R" }).map((l) => l.ident)).toEqual(
+      ["AD535", "ELKUR"],
+    );
+    // 也不能被当成航路转换，按名字去接 `enrouteFix`。
+    expect(
+      procedureTrack(both, { enrouteFix: "RW19B" }).map((l) => l.ident),
+    ).toEqual(["AD535", "ELKUR"]);
+  });
+
   // STAR 反过来：航路转换在前，跑道转换在后。
   test("STAR 的顺序是反的", () => {
     const star: Procedure = {
@@ -519,5 +549,28 @@ describe("joinIdent 按转换取", () => {
     };
     expect(joinsRoute(p, "avbox")).toBe(true);
     expect(joinsRoute(p, "GG203")).toBe(false);
+  });
+});
+
+describe("runwayMatches", () => {
+  test("B 指这个号码的所有平行跑道", () => {
+    expect(runwayMatches("19B", "19L")).toBe(true);
+    expect(runwayMatches("19B", "19R")).toBe(true);
+    expect(runwayMatches("19B", "19C")).toBe(true);
+    expect(runwayMatches("19B", "01L")).toBe(false);
+    expect(runwayMatches("19B", "19")).toBe(false);
+  });
+
+  test("其余按字面比", () => {
+    expect(runwayMatches("19L", "19L")).toBe(true);
+    expect(runwayMatches("19L", "19R")).toBe(false);
+    expect(runwayMatches("36", "36")).toBe(true);
+  });
+
+  test("servesRunway 同样认 B", () => {
+    const p = { runways: "16B", runway: null } as unknown as Procedure;
+    expect(servesRunway(p, "16L")).toBe(true);
+    expect(servesRunway(p, "16R")).toBe(true);
+    expect(servesRunway(p, "34L")).toBe(false);
   });
 });

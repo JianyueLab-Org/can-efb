@@ -28,7 +28,9 @@ jobs:
 
   deploy:
     needs: check
-    uses: JianyueLab-Org/actions/.github/workflows/deploy-k8s.yml@main
+    # 钉在提交上而不是 @main：这份工作流拿着集群凭据，main 上任何一次改动都会
+    # 不经这个仓库的审查就跑进部署里。升级时改 SHA，注释跟着写对应的分支。
+    uses: JianyueLab-Org/actions/.github/workflows/deploy-k8s.yml@615b32a26cc306ee63eefc3ae2cbee41bd5519e1 # main
     with:
       image: ghcr.io/jianyuelab-org/can-efb
       namespace: can-efb

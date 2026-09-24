@@ -177,7 +177,25 @@ export function servesRunway(p: Procedure, runway: string): boolean {
   if (!runway) return true;
   const list = procedureRunways(p);
   if (list.length === 0) return true;
-  return list.includes(runway.toUpperCase());
+  const want = runway.toUpperCase();
+  return list.some((code) => runwayMatches(code, want));
+}
+
+/**
+ * 一个跑道代号能不能指这条跑道。
+ *
+ * **ARINC 424 的 `B` 是「这个号码的所有平行跑道」**：`RW19B` 是 19L、19R（有的话
+ * 还有 19C）共用的那条转换。navigraph 那一份里这种写法很常见 —— 深圳的 `RW16B`、
+ * 首都的 `RW18B`/`RW36B`。按字面比的话，选了 19L 或 19R 都对不上它，那一段就不画，
+ * 而少画的那一截看起来只像程序本来就短。
+ */
+export function runwayMatches(code: string, runway: string): boolean {
+  if (code === runway) return true;
+  return (
+    /^[0-9]{2}B$/.test(code) &&
+    /^[0-9]{2}[LRC]$/.test(runway) &&
+    code.slice(0, 2) === runway.slice(0, 2)
+  );
 }
 
 /** 这条程序没有写明跑道 —— 上面那条规则的另一半，界面要据此加个标记。 */
@@ -244,8 +262,13 @@ export function procedureLabel(p: Procedure): string {
  * `via` 一律是程序名，于是地图上那条沿线标注写的就是 `IDKE5Y`，和航图上读一条计
  * 划的方式一致：点、程序、点。
  */
-/** `RW19L` 这类跑道转换的名字。它面向跑道，不是接航路网的那一端。 */
-const RUNWAY_TRANSITION = /^RW([0-9]{2}[LRCG]?)$/;
+/**
+ * `RW19L` 这类跑道转换的名字。它面向跑道，不是接航路网的那一端。
+ *
+ * `B` 也得认：`RW19B` 不认的话会掉进下面「具名的航路转换」那一支，被当成一个接航路
+ * 网的入口去比 `enrouteFix`。它指哪几条跑道由 `runwayMatches` 判。
+ */
+const RUNWAY_TRANSITION = /^RW([0-9]{2}[LRCGB]?)$/;
 
 /**
  * 一条程序里**实际要飞的那几段**。
@@ -290,7 +313,9 @@ export function procedureTrack(
   for (const [name, legs] of groups) {
     const rw = RUNWAY_TRANSITION.exec(name);
     if (rw) {
-      if (wantRunway && rw[1] === wantRunway) runwayLegs.push(...legs);
+      if (wantRunway && runwayMatches(rw[1], wantRunway)) {
+        runwayLegs.push(...legs);
+      }
       continue;
     }
     if (isCommon(name)) {

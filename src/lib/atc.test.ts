@@ -236,10 +236,13 @@ describe("facilityColor", () => {
 });
 
 describe("ownsAirspace", () => {
-  test("区域 / 进近 / FSS 管的是一片范围", () => {
+  test("区域 / FSS 管的是一片范围", () => {
     expect(ownsAirspace(6)).toBe(true); // CTR
-    expect(ownsAirspace(5)).toBe(true); // APP
     expect(ownsAirspace(1)).toBe(true); // FSS
+  });
+
+  test("进近画点：边界底图里同前缀的是区调扇区，不是进近范围", () => {
+    expect(ownsAirspace(5)).toBe(false); // APP
   });
 
   test("放行 / 地面 / 塔台管的是这一个机场，画点是对的", () => {

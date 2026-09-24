@@ -20,7 +20,7 @@
  * 不是塌进通用错误。
  */
 import { ref, watch } from "vue";
-import { api } from "@/lib/canApi";
+import { api, describeFailure } from "@/lib/canApi";
 import { createTranslator } from "@/lib/i18n";
 import { Icon } from "@jianyuelab-org/can-ui";
 import { distanceNm } from "@/lib/geo";
@@ -97,9 +97,10 @@ async function resolve() {
   loading.value = true;
   error.value = "";
   unavailable.value = false;
+  // legs 不在这里清空：上面那个 watch 会把空数组发给地图，一次失败（比如
+  // navDataUnavailable）就把图上原本画着的那条航路抹掉，换成什么都没有。
+  // 只在解析成功时整体替换。
   resolved.value = false;
-  legs.value = [];
-  total.value = 0;
 
   const params = new URLSearchParams({
     departure: departure.value.trim().toUpperCase(),
@@ -114,7 +115,7 @@ async function resolve() {
       unavailable.value = true;
       return;
     }
-    error.value = result.message;
+    error.value = describeFailure(t, result);
     return;
   }
 

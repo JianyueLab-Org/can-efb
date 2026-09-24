@@ -85,3 +85,17 @@ export function subscribeToMap(
   window.addEventListener(MAP_EVENT, listener);
   return () => window.removeEventListener(MAP_EVENT, listener);
 }
+
+/**
+ * 「成员的飞行计划变了」—— 交了或撤了。
+ *
+ * 地图自己会读计划画那条线，但它跨页面存活，而飞行计划页交、撤都**不导航**。没有
+ * 这一声，图上那条线要等切到下一页才跟上。它不带内容：计划以 can-api 为准，地图
+ * 收到后自己重读，不信任面板手里的那一份。
+ */
+export const PLAN_CHANGED_EVENT = "efb:plan-changed";
+
+export function announcePlanChanged(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(PLAN_CHANGED_EVENT));
+}

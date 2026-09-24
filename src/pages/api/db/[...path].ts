@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { lookupAllowed } from "@/lib/allowList";
 import { CAN_DB_ORIGIN } from "@/lib/config";
+import { fetchHeadersWithin } from "@/server/upstreamFetch";
 
 export const prerender = false;
 
@@ -153,13 +154,12 @@ const handler: APIRoute = async (context) => {
 
   let upstream: Response;
   try {
-    upstream = await fetch(target, {
-      method,
-      headers,
-      // 航路网是几百 KB 且要打 PostgreSQL，比 can-api 那边的调用重 —— 超时给得
-      // 比那边的 15 秒宽一点没有意义，它要么很快要么是真的出问题了。
-      signal: AbortSignal.timeout(15_000),
-    });
+    // 航路网是几百 KB 且要打 PostgreSQL，比 can-api 那边的调用重 —— 超时给得
+    // 比那边的 15 秒宽一点没有意义，它要么很快要么是真的出问题了。
+    //
+    // 这 15 秒只管到响应头到达为止：几百 KB 流给一个慢客户端可能远超 15 秒，
+    // 那一段不该被掐断。理由见 server/upstreamFetch.ts。
+    upstream = await fetchHeadersWithin(target, { method, headers }, 15_000);
   } catch (error) {
     console.error(`can-db ${rest} unreachable:`, error);
     return Response.json(

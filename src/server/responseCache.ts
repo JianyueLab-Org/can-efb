@@ -84,3 +84,19 @@ export function cacheKey(path: string, search: URLSearchParams): string {
   );
   return path + "?" + new URLSearchParams(pairs).toString();
 }
+
+/**
+ * 只留下 `names` 里的参数，每个取第一个值 —— 和 Go 的 `Query().Get` 读法一致。
+ * 其余参数一律丢掉：上游不读它们，留着只会把同一个问题拆成不同的缓存键。
+ */
+export function pickParams(
+  search: URLSearchParams,
+  names: readonly string[],
+): URLSearchParams {
+  const out = new URLSearchParams();
+  for (const name of names) {
+    const value = search.get(name);
+    if (value !== null) out.set(name, value);
+  }
+  return out;
+}

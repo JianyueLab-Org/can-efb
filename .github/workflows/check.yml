@@ -20,9 +20,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 钉死版本：latest 会在某天悄悄换成一个本地没用过的 Bun，锁文件格式或
+      # bun test 的行为一变，CI 红得和代码无关。升级时这里和本地一起改。
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.4.2
 
       # --frozen-lockfile：CI 不该顺手升级依赖。锁文件对不上就该红，而不是装
       # 一套和本地不同的东西然后通过。

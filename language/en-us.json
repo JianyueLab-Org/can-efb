@@ -69,7 +69,24 @@
     },
     "common": {
       "loading": "Loading…",
-      "refresh": "Refresh"
+      "refresh": "Refresh",
+      "apiError": {
+        "network": "Network connection failed. Try again shortly.",
+        "status": "Request failed ({status}).",
+        "unauthorized": "Your session has expired. Reload the page to sign in again.",
+        "rate_limited": "Too many requests. Try again shortly.",
+        "internal_error": "Server error. Try again shortly.",
+        "unreachable": "The upstream service did not answer. Try again shortly.",
+        "bad_origin": "Cross-site request refused.",
+        "invalid_request": "Malformed request.",
+        "invalidBody": "Malformed request.",
+        "callsignInUse": "That callsign is connected by another member.",
+        "invalid_identifier": "Enter a SimBrief Pilot ID or Navigraph username.",
+        "not_found": "SimBrief has no such account, or no saved flight for it.",
+        "invalid_plan": "SimBrief returned a plan without the required fields.",
+        "invalidAirports": "Departure and arrival need 3–4 character ICAO codes."
+      },
+      "retry": "Retry"
     },
     "notFound": {
       "title": "No such page",
@@ -275,7 +292,8 @@
         "unlink": "Unlink",
         "bound": "Linked",
         "linked": "SimBrief linked.",
-        "unlinked": "SimBrief unlinked."
+        "unlinked": "SimBrief unlinked.",
+        "loadFailed": "Could not read the link status. This does not mean you are unlinked."
       },
       "local": {
         "title": "This device",

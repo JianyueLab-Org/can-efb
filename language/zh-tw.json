@@ -69,7 +69,24 @@
     },
     "common": {
       "loading": "載入中…",
-      "refresh": "重新整理"
+      "refresh": "重新整理",
+      "apiError": {
+        "network": "網路連線失敗，請稍後再試。",
+        "status": "請求失敗（{status}）。",
+        "unauthorized": "登入已失效，重新整理頁面再登入。",
+        "rate_limited": "請求太頻繁，請稍後再試。",
+        "internal_error": "伺服器發生錯誤，請稍後再試。",
+        "unreachable": "上游服務沒有回應，請稍後再試。",
+        "bad_origin": "跨站請求被拒絕。",
+        "invalid_request": "請求格式不正確。",
+        "invalidBody": "請求格式不正確。",
+        "callsignInUse": "這個呼號正被另一名成員連線使用。",
+        "invalid_identifier": "請填寫 SimBrief Pilot ID 或 Navigraph 使用者名稱。",
+        "not_found": "SimBrief 上找不到這個帳號，或它沒有已儲存的計畫。",
+        "invalid_plan": "SimBrief 回傳的計畫缺少必要欄位。",
+        "invalidAirports": "起飛和落地機場要填三到四位 ICAO 代碼。"
+      },
+      "retry": "重試"
     },
     "notFound": {
       "title": "沒有這一頁",
@@ -275,7 +292,8 @@
         "unlink": "解除綁定",
         "bound": "已綁定",
         "linked": "SimBrief 已綁定。",
-        "unlinked": "SimBrief 已解除綁定。"
+        "unlinked": "SimBrief 已解除綁定。",
+        "loadFailed": "沒能讀取綁定狀態 —— 這不代表沒有綁定。"
       },
       "local": {
         "title": "本機偏好",

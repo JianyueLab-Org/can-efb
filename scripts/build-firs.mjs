@@ -33,16 +33,16 @@
  *
  * ## 带连字符的一律筛掉，而且这件事是自证的
  *
- * 768 个要素里有 343 个是扇区划分（`ADR-E`、`BIRD-N`），画在自己所属 FIR 之上。全
- * 铺开就是每个被拆过的 FIR 一圈外框加几条内部分割线，叠成一张网 —— 这张图要的是情
- * 报区边界，不是那张网。
+ * 当前这份 1102 个要素里有 665 个是扇区划分（`ADR-E`、`BIRD-N`），画在自己所属
+ * FIR 之上。全铺开就是每个被拆过的 FIR 一圈外框加几条内部分割线，叠成一张网 —— 这
+ * 张图要的是情报区边界，不是那张网。
  *
  * **can-radar 的判据比这里严**（「父要素也在数据里」才算子扇区），因为它画的是**管
  * 制席位覆盖**：有人上了 `ZJSY_CTR`，那块就必须画得出来。这张图不是那件事，所以这
  * 里一刀切 —— 但一刀切会不会切掉一整块空域，不能靠猜。
  *
  * 所以脚本自己查：**每一个被筛掉的"无父"要素，都必须落在某个保留下来的要素里面**。
- * 当前周期的 22 个无父要素全部通过（`ZJSY-*`⊂ZJSA、`ZWWW-*`⊂ZWUQ、`TEH-*`⊂OIIX、
+ * 当前周期的 32 个无父要素全部通过（`ZJSY-*`⊂ZJSA、`ZWWW-*`⊂ZWUQ、`TEH-*`⊂OIIX、
  * `LGMD-*`⊂LGGG）。哪天 VATSpy 换了结构、某块空域只以连字符形式存在，这里会直接报
  * 错而不是安静地少画一块。
  *
@@ -72,6 +72,21 @@
  * 全境）、`RJTG`/`RJBG`（其中两个区调）和 `RJJJ`（只有洋区那一半）。`MERGED_FIRS`
  * 把陆上和洋区沿共用的边拼成一块 `RJJJ`，只给情报区图层（`atc: false`）；参与拼接的
  * 和被它盖住的区调都 `fir: false`，留给实时那一层。拼不成一个环就报错退出。
+ *
+ * ## 跨 180° 经线的情报区拼回一块
+ *
+ * VATSpy 把跨日界线的情报区（`KZAK`、`NFFF`、`NFFJ`、`NZCM`、`NZZO`、`PAZA`、`UHMM`）
+ * 在 ±180° 切成两块 MultiPolygon，切口是两条**正好落在 ±180° 上的边**。填充看不出来，
+ * 但 `fir-line` 是一个直接描多边形轮廓的 line 图层，于是沿 180° 经线画出一条假的虚线
+ * 边界，`fir-labels` 又沿着这条假边界重复标注。
+ *
+ * 所以在这里把另一侧那块平移 360° 接上，沿切口抵消掉那两条边，输出一个经度越过 ±180
+ * 的多边形 —— MapLibre 认这种坐标（geojson-vt 会自己绕回另一侧的世界副本）。平移哪一
+ * 侧看 `label_lon`：标注点所在的那一侧不动，所以标注点仍落在几何的同一个经度框里。
+ *
+ * 两块在切口上的顶点并不一一对应（`KZAK` 东块在 180° 上比西块多往南走到 5°S），所以
+ * 先在所有切口纬度上把切口边打断再抵消。抵消不掉的那段是**真的**边界（那一段西边是
+ * `NFFF`），留着。拼不成闭合的环就报错退出。
  *
  * ## 输出在 `src/`，不是 `public/`
  *
@@ -150,18 +165,19 @@ const replacedByMerge = new Set(
   MERGED_FIRS.flatMap((m) => [...m.parts, ...m.covers]),
 );
 
+const key = ([x, y]) => `${x},${y}`;
+const area = (ring) => {
+  let sum = 0;
+  for (let i = 0; i < ring.length - 1; i++) {
+    sum += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+  }
+  return sum / 2;
+};
+
 /* 把几个单环多边形沿**完全重合的边**拼成一个环：统一成逆时针，两边方向相反的边
  * 成对抵消，剩下的边首尾接成环。VATSpy 相邻两块共用同一串顶点，所以不需要真正的
  * 多边形求并。 */
 function dissolve(rings) {
-  const key = ([x, y]) => `${x},${y}`;
-  const area = (ring) => {
-    let sum = 0;
-    for (let i = 0; i < ring.length - 1; i++) {
-      sum += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
-    }
-    return sum / 2;
-  };
   const edges = new Map();
   for (const raw of rings) {
     const ring = area(raw) < 0 ? [...raw].reverse() : raw;
@@ -188,6 +204,111 @@ function dissolve(rings) {
   }
   ring.push(start[0]);
   return ring.length - 1 === edges.size ? ring : null;
+}
+
+/* 跨 180° 的情报区拼回一块。见文件头「跨 180° 经线的情报区拼回一块」。
+ *
+ * 不跨的原样返回。返回的是新几何；输入带洞、或抵消后接不成环都返回 null，
+ * 由调用方报错 —— 宁可构建失败，也不要安静地画出一圈错的边界。抵消后顺时针的环
+ * 是洞，挂回含住它的外环。 */
+function stitchAntimeridian(geometry, labelLon) {
+  if (geometry.type !== "MultiPolygon") return geometry;
+  const onSeam = (ring, x) => ring.some(([lon]) => lon === x);
+  const touchesEast = geometry.coordinates.some((p) => onSeam(p[0], 180));
+  const touchesWest = geometry.coordinates.some((p) => onSeam(p[0], -180));
+  if (!touchesEast || !touchesWest) return geometry;
+  if (geometry.coordinates.some((p) => p.length !== 1)) return null;
+
+  // 标注点在哪一侧，哪一侧就不动；另一侧平移 360° 贴过来。
+  const home = Number.isFinite(labelLon) && labelLon < 0 ? -1 : 1;
+  const seam = 180 * home;
+  const rings = geometry.coordinates.map(([ring]) => {
+    const mean = ring.reduce((sum, [lon]) => sum + lon, 0) / ring.length;
+    if (Math.sign(mean) === home) return ring;
+    return ring.map(([lon, lat]) => [lon + 360 * home, lat]);
+  });
+
+  // 所有切口顶点的纬度：每条切口边都在这些纬度上打断，两侧的边才能一段一段对上。
+  const seamLats = [
+    ...new Set(
+      rings.flat().flatMap(([lon, lat]) => (lon === seam ? [lat] : [])),
+    ),
+  ];
+
+  const edges = new Map();
+  const add = (a, b) => {
+    if (key(a) === key(b)) return;
+    const back = `${key(b)}>${key(a)}`;
+    if (edges.has(back)) edges.delete(back);
+    else edges.set(`${key(a)}>${key(b)}`, [a, b]);
+  };
+  for (const raw of rings) {
+    const ring = area(raw) < 0 ? [...raw].reverse() : raw;
+    for (let i = 0; i < ring.length - 1; i++) {
+      const [a, b] = [ring[i], ring[i + 1]];
+      if (a[0] !== seam || b[0] !== seam) {
+        add(a, b);
+        continue;
+      }
+      const [lo, hi] = a[1] < b[1] ? [a[1], b[1]] : [b[1], a[1]];
+      const cuts = seamLats
+        .filter((lat) => lat > lo && lat < hi)
+        .sort((x, y) => (a[1] < b[1] ? x - y : y - x));
+      let at = a;
+      for (const lat of cuts) {
+        add(at, [seam, lat]);
+        at = [seam, lat];
+      }
+      add(at, b);
+    }
+  }
+
+  const next = new Map();
+  for (const [a, b] of edges.values()) {
+    if (next.has(key(a))) return null;
+    next.set(key(a), b);
+  }
+  const outers = [];
+  const holes = [];
+  const used = new Set();
+  for (const [a] of edges.values()) {
+    if (used.has(key(a))) continue;
+    const ring = [a];
+    used.add(key(a));
+    let at = next.get(key(a));
+    while (key(at) !== key(a)) {
+      if (!at || used.has(key(at))) return null;
+      ring.push(at);
+      used.add(key(at));
+      at = next.get(key(at));
+    }
+    ring.push(a);
+    (area(ring) > 0 ? outers : holes).push(ring);
+  }
+  // 顺时针的是洞：`NFFF` 拼回来之后，斐济（`NFFJ`）就是它中间的一个洞 —— 原来
+  // 那个洞正好被 180° 切成两半，分在两块里各是一个缺口。
+  const polys = outers.map((ring) => [ring]);
+  for (const hole of holes) {
+    const owner = polys.find(([outer]) => contains(outer, hole[0]));
+    if (!owner) return null;
+    owner.push(hole);
+  }
+  return polys.length === 1
+    ? { type: "Polygon", coordinates: polys[0] }
+    : { type: "MultiPolygon", coordinates: polys };
+}
+
+/* 射线法点在环内。只给上面挂洞用，洞的顶点不会落在外环的边上。 */
+function contains(ring, [x, y]) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
 }
 
 const outerRing = (feature) => {
@@ -264,6 +385,14 @@ const round = (c) =>
 const features = kept.map((feature) => {
   const labelLat = Number(feature.properties?.label_lat);
   const labelLon = Number(feature.properties?.label_lon);
+  const geometry = stitchAntimeridian(feature.geometry, labelLon);
+  if (!geometry) {
+    console.error(
+      `${idOf(feature)}：跨 180° 的几块拼不回一个环 —— 切口两侧的边对不上，` +
+        "或者某一块带洞。见文件头「跨 180° 经线的情报区拼回一块」。",
+    );
+    process.exit(1);
+  }
   return {
     type: "Feature",
     properties: {
@@ -277,8 +406,8 @@ const features = kept.map((feature) => {
       labelLon: Number.isFinite(labelLon) ? labelLon : null,
     },
     geometry: {
-      type: feature.geometry.type,
-      coordinates: round(feature.geometry.coordinates),
+      type: geometry.type,
+      coordinates: round(geometry.coordinates),
     },
   };
 });
