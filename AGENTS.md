@@ -336,6 +336,7 @@ datafeed 给的那个经纬度是**管制员自己的视野中心** —— 既�
 | `ZOOM`                       | 每类要素从哪一级出现。`MapSurface` 的取数门槛也读它                     |
 | `WIDTH` / `OPACITY`          | 线宽、透明度，`[缩放, 值]` 锚点                                         |
 | `TEXT` / `ICON`              | 字号、图标尺寸                                                          |
+| `SHIELD`                     | 航路代号牌的字外留白                                                    |
 | `AIRSPACE`                   | 空域平涂透明度、斜线图块参数、危险区虚线                                |
 | `MAJOR_AIRPORT_MIN_RUNWAY_M` | 主要机场门槛（最长跑道，米），默认 2500                                 |
 | `buildStyle(theme)`          | 整份 MapLibre 样式                                                      |
@@ -343,28 +344,54 @@ datafeed 给的那个经纬度是**管制员自己的视野中心** —— 既�
 
 席位色（`lib/atc.ts`）和高度色带（`lib/traffic.ts`）不在 `COLORS` 里。
 
+外观照 Jeppesen 高低空航路图：浅色是白陆地、浅蓝海、低饱和的蓝灰航路、绿色虚线情报区
+边界；夜间同结构，深灰底、浅灰线和字，语义色同色相调明度。
+
 **图层顺序**，自下而上：底图 → 机场地面 → 空域填充 → 空域和情报区边界 → 航路 →
 计划航线 → 航路点 / 导航台 / 机场符号 → 标注 → 在线机组 → 自己的航迹 → 自己。
 
-**标注优先级**靠图层顺序（MapLibre 先放上面的）：机场 > 导航台 > 航路代号 > 航路
-点；同层内用 `symbol-sort-key`。除 `own` 和 `route-labels` 外所有标注参与避让。标注
-层带一份透明的同款图标，下面的标注绕开符号。航路代号每段一个（`line-center`）。
+**标注优先级**靠图层顺序（MapLibre 先放上面的）：机场 > 导航台 > 航路代号牌 > 航
+路点 > 经纬网度数；同层内用 `symbol-sort-key`。除 `own` 和 `route-labels` 外所有标注
+参与避让。标注层带一份透明的同款图标，下面的标注绕开符号。密度由避让决定，门槛不为
+防挤往后推。
 
-**默认缩放门槛**：
+**默认缩放门槛**（z5–6 约等于 50 NM 比例尺）：
 
-| 要素                   | 符号 | 标注 |
-| ---------------------- | ---- | ---- |
-| 主要机场               | 4    | 5    |
-| 其余机场               | 6    | 7    |
-| 跑道线（接替跑道杠）   | 7    | 9    |
-| 高空航路（high、both） | 6    | 8    |
-| 低空航路（low）        | 8    | 8    |
-| VOR 一族               | 6    | 7    |
-| NDB、DME、未知台型     | 8    | 9    |
-| 航路点                 | 8    | 9    |
+| 要素                   | 符号      | 标注                                 |
+| ---------------------- | --------- | ------------------------------------ |
+| 经纬网 10° / 5° / 1°   | 0 / 4 / 6 | 同线                                 |
+| 主要机场               | 4         | 5                                    |
+| 其余机场               | 6         | 6                                    |
+| 跑道线（接替机场符号） | 9         | 11                                   |
+| 高空航路（high、both） | 4.5       | 代号牌 5                             |
+| 低空航路（low）        | 6         | 6                                    |
+| VOR 一族               | 5         | 5 识别码；7 起「台名 D 频率 识别码」 |
+| NDB、DME、未知台型     | 6         | 6                                    |
+| 航路点                 | 5.5       | 5.5                                  |
 
-**符号**在 `lib/chartIcons.ts` 用 canvas 画，两套主题各一份，颜色画进图里。飞机是
-SDF（`icon-color` 着色）。注册的图片名由 `chartStyle.test.ts` 对照 `allImageIds()`。
+**写进 `filter` 的门槛必须是整数**：filter 里的 `["zoom"]` 按瓦片整数级求值。小数只
+用在 `minzoom` 和 paint 里。测试钉着。
+
+**航路代号牌**：`airway-labels` 每段一个（`line-center`），段比牌短就不放。圆角矩形
+可拉伸图（`addImage` 的 `stretchX/stretchY/content`）配 `icon-text-fit: both`，顺线
+转、保持正向。RNAV 蓝底白字，常规深底白字（夜间浅灰底深字）。
+
+**RNAV 判定是启发式**（`lib/airways.ts` 的 `isRnavDesignator`）：can-db 没有 RNAV 标
+记。去掉一个 ICAO 前缀（`U` / `K` / `S`，后面跟字母才算），首字母在 `RNAV_LETTERS`
+（`L M N P Q T Y Z`，加中国的 `W V X`）里就是 RNAV。`W V X` 和 ICAO 的分类不一致，
+是产品决定。
+
+**航路点和导航台去重**（`markNavaidFixes`）：ident 相同且经纬度差都 ≤ 0.01° 的航路点
+打上那个台的 `tier`，样式在那个台画出来的缩放上把航路点藏掉。导航台图层关着时不打。
+
+**情报区标注**是「代号 名字」（`RKRR INCHEON`），沿边界重复。名字是
+`scripts/build-firs.mjs` 从 VATSpy `[FIRs]` 取的 `name`（最后一段，去掉 `FIR`/`ACC`），
+拼接出来的 `RJJJ` 写死 `Fukuoka`。没有名字只写代号。
+
+**符号**在 `lib/chartIcons.ts` 用 canvas 画，两套主题各一份，颜色画进图里。画布按
+符号实际大小裁，`icon-size` 留在 1 附近。航路点空心三角；VOR 六边形、VOR/DME 方框套
+六边形、DME 方框、NDB 点环；机场蓝色小圆，主要机场实心、其余空心。飞机是 SDF
+（`icon-color` 着色）。注册的图片名由 `chartStyle.test.ts` 对照 `allImageIds()`。
 
 **分类映射**在 `lib/aip.ts`：`navaidClass`（can-db 的 `kind`：`VOR/DME`、`VOR`、
 `DME`、`NDB`；`TACAN`、`VORTAC` 预留）和 `airspaceClass`（`restricted` 族的 `P` 禁
@@ -375,13 +402,14 @@ SDF（`icon-color` 着色）。注册的图片名由 `chartStyle.test.ts` 对照
 `airway: "off" | "high" | "low"` 在 `readPrefs` 里折算成 `airways: boolean`。
 
 **主要机场**由 `/aip/runways` 算（`airportRunwaySummary`），所以机场和跑道在
-`ZOOM.airportMajor` 一起取。跑道杠按两端坐标的真方位转，不用磁航向 `hdg`。
+`ZOOM.airportMajor` 一起取。
 
 **自己的航迹**在 `lib/ownTrack.ts`，从 30 秒轮询攒，只活在本次会话；换呼号、断开超
 过 3 分钟、平均地速超过 1200 kt 时重新开始，最多 720 个点。不走 `/api/v1/track`。
 
 **校验**：`check:style` import `buildStyle`，两套主题各验一次。`chartStyle.test.ts`
-钉图层顺序、两套主题结构一致、引用的图片都已注册、按缩放的过滤结果。
+钉图层顺序、两套主题结构一致、引用的图片都已注册、按缩放的过滤结果、filter 门槛为整
+数。
 
 ## 跑道与进离场程序（`lib/procedures.ts` + `ProcedurePicker.vue`）
 

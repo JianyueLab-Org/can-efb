@@ -201,6 +201,39 @@ export function markRouteOnAirways(
   return marked;
 }
 
+/**
+ * RNAV 航路的代号首字母。**启发式**：can-db 没有 RNAV 标记，只能按代号猜。
+ *
+ * ICAO 附件 11 附录 1：`L M N P`（地区）、`Q T Y Z`（国内）是 RNAV；中国的 `W V X`
+ * 系列按 RNAV 画（产品决定，和 ICAO 的 `V W` 属常规不一致）。其余（`A B G R H J`
+ * 等）按常规。
+ */
+export const RNAV_LETTERS = new Set([
+  "L",
+  "M",
+  "N",
+  "P",
+  "Q",
+  "T",
+  "Y",
+  "Z",
+  "W",
+  "V",
+  "X",
+]);
+
+/** ICAO 的前缀字母：`U` 高空、`K` 直升机低空、`S` 超音速。后面还跟一个字母才算前缀。 */
+const DESIGNATOR_PREFIX = /^[UKS](?=[A-Z])/;
+
+/**
+ * 航路是不是 RNAV，决定代号牌的颜色。先去掉一个 ICAO 前缀（`UL888` → `L`），再看
+ * 首字母是否在 `RNAV_LETTERS` 里。
+ */
+export function isRnavDesignator(designator: string): boolean {
+  const d = designator.trim().toUpperCase().replace(DESIGNATOR_PREFIX, "");
+  return RNAV_LETTERS.has(d.charAt(0));
+}
+
 export function toAirwayLines(
   graph: AirwayGraph | TaggedAirwayGraph,
 ): FeatureCollection {
@@ -222,6 +255,7 @@ export function toAirwayLines(
         // 没打过标记的图（单层取的）按 `both` 算：哪一层都不该把它藏掉。
         level: "level" in seg ? seg.level : "both",
         locType: meta?.locType ?? "",
+        rnav: isRnavDesignator(seg.airway) ? 1 : 0,
         minAlt: seg.minAlt ?? 0,
         /* 两端代号带上，`markRouteOnAirways` 靠它算键。**属性里没有它就点不亮** ——
          * 而那不会报错，只会让高亮一条都不出现。 */
@@ -293,10 +327,58 @@ export function toAirwayFixes(
     const [lat, lon] = graph.fixes[ident];
     features.push({
       type: "Feature",
-      properties: { ident, level },
+      properties: { ident, level, navaid: "" },
       // fixes 是 [lat, lon]，GeoJSON 要 [lon, lat]。
       geometry: { type: "Point", coordinates: [lon, lat] },
     });
   }
   return { type: "FeatureCollection", features };
+}
+
+/** 航路点和导航台算同一个点的容差（度，约 0.6 NM）。 */
+export const NAVAID_FIX_TOLERANCE_DEG = 0.01;
+
+/**
+ * 给和导航台重合的航路点打上 `navaid`（那个台的 `tier`：`vor` / `minor`），不重合的
+ * 是空串。重合 = ident 相同且经纬度差都不超过 `NAVAID_FIX_TOLERANCE_DEG`。
+ *
+ * 导航台优先：样式在那个台画出来的缩放上把这个航路点藏掉（`chartStyle.ts` 的
+ * `fixVisible`）。打标记而不是删：NDB 比航路点晚出现，删了中间那一级谁都不画。
+ * 导航台图层关着（`navaids` 为空）时原样返回。
+ */
+export function markNavaidFixes(
+  fixes: FeatureCollection | null,
+  navaids: FeatureCollection | null,
+): FeatureCollection | null {
+  if (!fixes || !navaids?.features.length) return fixes;
+  const byIdent = new Map<
+    string,
+    { lon: number; lat: number; tier: string }[]
+  >();
+  for (const f of navaids.features) {
+    if (f.geometry.type !== "Point") continue;
+    const ident = String(f.properties?.ident ?? "");
+    const [lon, lat] = f.geometry.coordinates;
+    const list = byIdent.get(ident) ?? [];
+    list.push({ lon, lat, tier: String(f.properties?.tier ?? "minor") });
+    byIdent.set(ident, list);
+  }
+  return {
+    ...fixes,
+    features: fixes.features.map((f) => {
+      let navaid = "";
+      if (f.geometry.type === "Point") {
+        const [lon, lat] = f.geometry.coordinates;
+        const hit = byIdent
+          .get(String(f.properties?.ident ?? ""))
+          ?.find(
+            (n) =>
+              Math.abs(n.lon - lon) <= NAVAID_FIX_TOLERANCE_DEG &&
+              Math.abs(n.lat - lat) <= NAVAID_FIX_TOLERANCE_DEG,
+          );
+        if (hit) navaid = hit.tier;
+      }
+      return { ...f, properties: { ...f.properties, navaid } };
+    }),
+  };
 }

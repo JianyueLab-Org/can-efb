@@ -131,6 +131,18 @@ const ACC_IN_FIR = /\bACC\b.* - .*\bFIR\b/;
 const LAYER_ONLY = /\bUp to FL\d+/i;
 const firName = (name) => name.split(" - ").at(-1);
 
+/* 标注用的情报区名：`[FIRs]` 里第一个名字的最后一段，去掉 `FIR` / `ACC` 尾巴
+ * （`Incheon ACC - Incheon` → `Incheon`）。取不到给 null，图层退回只写代号。 */
+const labelName = (id) => {
+  const name = namesByBoundary.get(id)?.[0];
+  if (!name) return null;
+  return (
+    firName(name)
+      .replace(/\s+(FIR|ACC)$/i, "")
+      .trim() || null
+  );
+};
+
 /* 情报区名 → 代表情报区本身的要素。判据见文件头「区调 `fir: false`」。带连字符的
  * 扇区划分不算：它们不进这份文件，也就替不了谁。 */
 const firHolders = new Map();
@@ -159,7 +171,12 @@ const isAcc = (id) => {
 /* VATSpy 里拆开了、实际是一个情报区的。`parts` 拼成一块，`covers` 是落在里面的
  * 区调。见文件头「两个标记」。 */
 const MERGED_FIRS = [
-  { code: "RJJJ", parts: ["RJDG", "RJJJ"], covers: ["RJTG", "RJBG"] },
+  {
+    code: "RJJJ",
+    name: "Fukuoka",
+    parts: ["RJDG", "RJJJ"],
+    covers: ["RJTG", "RJBG"],
+  },
 ];
 const replacedByMerge = new Set(
   MERGED_FIRS.flatMap((m) => [...m.parts, ...m.covers]),
@@ -398,6 +415,7 @@ const features = kept.map((feature) => {
     properties: {
       // `code` 而不是 `id`：图层里读的就是这个名字，和 can-db 那批空域一致。
       code: idOf(feature),
+      name: labelName(idOf(feature)),
       oceanic: String(feature.properties?.oceanic ?? "0") === "1",
       fir: !isAcc(idOf(feature)) && !replacedByMerge.has(idOf(feature)),
       atc: true,
@@ -429,6 +447,7 @@ for (const merge of MERGED_FIRS) {
     type: "Feature",
     properties: {
       code: merge.code,
+      name: merge.name,
       oceanic: false,
       fir: true,
       atc: false,

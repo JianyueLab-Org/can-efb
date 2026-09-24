@@ -11,6 +11,8 @@ import {
 import {
   allImageIds,
   buildStyle,
+  graticule,
+  gridLabel,
   rampCase,
   themedProperties,
   ZOOM,
@@ -126,6 +128,7 @@ describe("图层顺序", () => {
       "navaid-symbols",
       "airport-symbols",
       "markers",
+      "grid-labels",
       "mora-labels",
       "waypoint-labels",
       "airway-labels",
@@ -154,10 +157,12 @@ describe("图层顺序", () => {
     expect(loose).toEqual(["own", "route-labels"]);
   });
 
-  test("航路代号每段一个，放在段中间", () => {
-    expect(layer("airway-labels").layout?.["symbol-placement"]).toBe(
-      "line-center",
-    );
+  test("航路代号每段一个，放在段中间，套在随字拉伸的牌子里", () => {
+    const l = layer("airway-labels").layout;
+    expect(l?.["symbol-placement"]).toBe("line-center");
+    expect(l?.["icon-text-fit"]).toBe("both");
+    expect(JSON.stringify(l?.["icon-image"])).toContain("shield-rnav-light");
+    expect(JSON.stringify(l?.["icon-image"])).toContain("shield-conv-light");
   });
 });
 
@@ -191,6 +196,71 @@ describe("按缩放挑要素", () => {
     expect(shows("airways-low", ZOOM.airwaysLow, lowOnRoute)).toBe(false);
   });
 
+  /**
+   * filter 里的 `["zoom"]` 按瓦片整数级求值，小数门槛在那里永远晚半级。门槛只许
+   * 小数出现在 minzoom 和 paint 里。
+   */
+  test("写进 filter 的缩放门槛都是整数", () => {
+    const used = new Set<number>();
+    const walk = (v: unknown) => {
+      if (!Array.isArray(v)) return;
+      if (
+        [">=", "<", ">", "<="].includes(v[0] as string) &&
+        JSON.stringify(v[1]) === '["zoom"]'
+      ) {
+        used.add(v[2] as number);
+      }
+      v.forEach(walk);
+    };
+    for (const l of layersOf("light")) walk(l.filter);
+    expect(used.size).toBeGreaterThan(0);
+    for (const z of used) expect(Number.isInteger(z)).toBe(true);
+  });
+
+  test("缩小到 z4.5 就有整张高空航路网，z6 加上低空", () => {
+    expect(ZOOM.airwaysHigh).toBe(4.5);
+    expect(ZOOM.airwaysLow).toBe(6);
+    expect(shows("airways", 4.5, { level: "high", onRoute: 0 })).toBe(true);
+    expect(shows("airways", 4.4, { level: "high", onRoute: 0 })).toBe(false);
+    expect(shows("airways-low", 6, { level: "low", onRoute: 0 })).toBe(true);
+    expect(shows("airway-labels", 5, { level: "high", onRoute: 0 })).toBe(true);
+    expect(shows("airway-labels", 5, { level: "low", onRoute: 0 })).toBe(false);
+  });
+
+  test("航路点和点名 z5.5 出现，低空的等低空航路", () => {
+    const high = { level: "high", navaid: "" };
+    const low = { level: "low", navaid: "" };
+    for (const id of ["waypoint-symbols", "waypoint-labels"]) {
+      expect(shows(id, 5.4, high)).toBe(false);
+      expect(shows(id, 5.5, high)).toBe(true);
+      expect(shows(id, 5.5, low)).toBe(false);
+      expect(shows(id, 6, low)).toBe(true);
+    }
+  });
+
+  /** 导航台赢：和 VOR 重合的航路点不画；和 NDB/DME 重合的，等那个台出来再让位。 */
+  test("和导航台重合的航路点让位", () => {
+    const onVor = { level: "high", navaid: "vor" };
+    const onNdb = { level: "high", navaid: "minor" };
+    expect(shows("waypoint-symbols", 5.5, onVor)).toBe(false);
+    expect(shows("waypoint-labels", 8, onVor)).toBe(false);
+    expect(shows("waypoint-symbols", 5.5, onNdb)).toBe(true);
+    expect(shows("waypoint-symbols", ZOOM.minorNavaids, onNdb)).toBe(false);
+    expect(shows("navaid-symbols", ZOOM.minorNavaids, { tier: "minor" })).toBe(
+      true,
+    );
+  });
+
+  test("经纬网 10° 一直画，5° 和 1° 放大后加上", () => {
+    for (const id of ["grid", "grid-labels"]) {
+      expect(shows(id, 2, { step: 10 })).toBe(true);
+      expect(shows(id, 3, { step: 5 })).toBe(false);
+      expect(shows(id, ZOOM.grid5, { step: 5 })).toBe(true);
+      expect(shows(id, ZOOM.grid5, { step: 1 })).toBe(false);
+      expect(shows(id, ZOOM.grid1, { step: 1 })).toBe(true);
+    }
+  });
+
   test("VOR 比 NDB 早出现", () => {
     expect(shows("navaid-symbols", ZOOM.vor, { tier: "vor" })).toBe(true);
     expect(shows("navaid-symbols", ZOOM.vor, { tier: "minor" })).toBe(false);
@@ -208,5 +278,25 @@ describe("按缩放挑要素", () => {
     expect(step[3]).toBe(layer("airways").minzoom);
     const text = layer("route-airways").paint?.["text-opacity"] as unknown[];
     expect(text[3]).toBe(layer("airway-labels").minzoom);
+  });
+});
+
+describe("经纬网", () => {
+  test("度数标注", () => {
+    expect(gridLabel("lat", 35)).toBe("N35°");
+    expect(gridLabel("lat", -10)).toBe("S10°");
+    expect(gridLabel("lon", 120)).toBe("E120°");
+    expect(gridLabel("lon", -75)).toBe("W75°");
+    expect(gridLabel("lon", 0)).toBe("0°");
+    expect(gridLabel("lon", 180)).toBe("180°");
+  });
+
+  test("每条线带它落在的最粗一档", () => {
+    const at = (label: string) =>
+      graticule().features.find((f) => f.properties?.label === label)
+        ?.properties?.step;
+    expect(at("E120°")).toBe(10);
+    expect(at("N35°")).toBe(5);
+    expect(at("E121°")).toBe(1);
   });
 });

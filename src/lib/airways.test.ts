@@ -2,6 +2,8 @@ import { expect, test, describe } from "bun:test";
 import type { FeatureCollection } from "geojson";
 
 import {
+  isRnavDesignator,
+  markNavaidFixes,
   legKey,
   routeLegKeys,
   markRouteOnAirways,
@@ -185,5 +187,102 @@ describe("高低空合成一张图", () => {
     expect(levelAt("DDDDD")).toBe("low");
     // CCCCC 同时连着 W1（both）和 V1（low）。
     expect(levelAt("CCCCC")).toBe("both");
+  });
+});
+
+describe("RNAV 按代号猜", () => {
+  test.each(["L888", "M503", "N892", "P901", "Q1", "T1", "Y1", "Z3"])(
+    "%s 是 RNAV",
+    (d) => expect(isRnavDesignator(d)).toBe(true),
+  );
+  test.each(["W66", "V67", "X41"])("中国的 %s 按 RNAV", (d) =>
+    expect(isRnavDesignator(d)).toBe(true),
+  );
+  test.each(["A461", "B330", "G212", "R343", "H1", "J1"])("%s 是常规", (d) =>
+    expect(isRnavDesignator(d)).toBe(false),
+  );
+
+  /** 前缀 `U` / `K` / `S` 后面跟字母才算前缀：`UL888` 看 `L`，`UA1` 看 `A`。 */
+  test("去掉一个 ICAO 前缀再看", () => {
+    expect(isRnavDesignator("UL888")).toBe(true);
+    expect(isRnavDesignator("UA1")).toBe(false);
+    expect(isRnavDesignator("KB1")).toBe(false);
+    expect(isRnavDesignator("ul888")).toBe(true);
+    expect(isRnavDesignator("")).toBe(false);
+  });
+
+  test("线要素带 rnav", () => {
+    const lines = toAirwayLines({
+      fixes: { AAAAA: [30, 120], BBBBB: [31, 121] },
+      airways: {},
+      segments: [
+        {
+          airway: "Y1",
+          from: "AAAAA",
+          to: "BBBBB",
+          dir: "both",
+          minAlt: null,
+          maxAlt: null,
+        },
+        {
+          airway: "A1",
+          from: "AAAAA",
+          to: "BBBBB",
+          dir: "both",
+          minAlt: null,
+          maxAlt: null,
+        },
+      ],
+    });
+    const rnav = (a: string) =>
+      lines.features.find((f) => f.properties?.airway === a)?.properties?.rnav;
+    expect(rnav("Y1")).toBe(1);
+    expect(rnav("A1")).toBe(0);
+  });
+});
+
+describe("和导航台重合的航路点", () => {
+  const point = (ident: string, lon: number, lat: number, tier?: string) => ({
+    type: "Feature" as const,
+    properties: tier ? { ident, tier } : { ident, level: "high", navaid: "" },
+    geometry: { type: "Point" as const, coordinates: [lon, lat] },
+  });
+  const fc = (...features: ReturnType<typeof point>[]): FeatureCollection => ({
+    type: "FeatureCollection",
+    features,
+  });
+  const fixes = fc(
+    point("SJD", 119.7, 32.5),
+    point("VYK", 116.6, 40.0),
+    point("ABCDE", 120.0, 31.0),
+    point("FAR", 110.0, 30.0),
+  );
+  const navaids = fc(
+    point("SJD", 119.705, 32.495, "vor"),
+    point("VYK", 116.6, 40.0, "minor"),
+    // 同名不同地（ident 不唯一）：差 0.5°，不算。
+    point("FAR", 110.5, 30.0, "vor"),
+  );
+  const tagOf = (out: FeatureCollection | null, ident: string) =>
+    out?.features.find((f) => f.properties?.ident === ident)?.properties
+      ?.navaid;
+
+  test("ident 相同、位置在 0.01° 内才算，打上那个台的档", () => {
+    const out = markNavaidFixes(fixes, navaids);
+    expect(tagOf(out, "SJD")).toBe("vor");
+    expect(tagOf(out, "VYK")).toBe("minor");
+    expect(tagOf(out, "ABCDE")).toBe("");
+    expect(tagOf(out, "FAR")).toBe("");
+    expect(out?.features.length).toBe(4);
+  });
+
+  test("导航台图层关着时原样返回", () => {
+    expect(markNavaidFixes(fixes, null)).toBe(fixes);
+    expect(markNavaidFixes(null, navaids)).toBeNull();
+  });
+
+  test("不改输入", () => {
+    markNavaidFixes(fixes, navaids);
+    expect(tagOf(fixes, "SJD")).toBe("");
   });
 });

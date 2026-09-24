@@ -831,11 +831,9 @@ onMounted(() => {
   /* 比例尺。航图上判断距离靠它，而这张图没有任何别的尺度参照 —— 网格线是整度
    * 的，纬度上一度约 60 海里，经度上随纬度收窄，用它读距离会错。
    *
-   * 公制单位：这张网络的高度用英尺、距离用海里，但比例尺是给"这一段大概多远"用
-   * 的目测参照，而 MapLibre 的 `nautical` 单位在小比例尺下会给出 0.5 海里这种刻
-   * 度。米/公里的刻度更好读，也不会被误当成航图上的精确距离。 */
+   * 海里：和航图、飞行计划的距离单位一致。 */
   map.addControl(
-    new ScaleControl({ maxWidth: 90, unit: "metric" }),
+    new ScaleControl({ maxWidth: 90, unit: "nautical" }),
     "bottom-right",
   );
 

@@ -116,8 +116,8 @@ export function toAirportPoints(
     type: "FeatureCollection",
     features: pins.map((p) => {
       /* 跑道概况（`lib/runways.ts` 的 `airportRunwaySummary`）决定两件事：低缩放下画
-       * 不画（`major`），以及跑道杠符号转多少度（`rwyHdg`）。没有跑道数据的机场画一个
-       * 圆，不冒充朝向。 */
+       * 不画、实心还是空心（`major`），以及跑道线出现后符号让不让位（`hasRwy`）。
+       * `rwyHdg` 目前没有图层读。 */
       const rwy = runways?.get(p.icao);
       return {
         type: "Feature",

@@ -5,7 +5,8 @@
  * ## 怎么改
  *
  * - 颜色：`COLORS`，浅色和夜间**各写一份**，不做反色。语义色（航线的品红、禁区的
- *   红、高空航路的蓝）两套同一个色相，只调明度。
+ *   红、RNAV 代号牌的蓝、情报区的绿）两套同一个色相，只调明度。浅色照 Jeppesen
+ *   高低空航路图：白陆地、浅蓝海、低饱和。
  * - 出现时机：`ZOOM`。一个门槛只在这里写一次，取数门槛（`MapSurface.vue`）也读它。
  * - 粗细和字号：`WIDTH` / `TEXT` / `ICON`。形如 `[[6, 0.7], [9, 1.4]]` 的是「缩放 →
  *   值」的锚点，中间线性插值，两头取端点值。
@@ -37,20 +38,27 @@ export type Theme = "light" | "dark";
 // ---------------------------------------------------------------- 颜色
 
 export interface ColorRoles {
-  /* 底图。浅色是白和浅灰，低饱和；夜间是深灰，不是黑。 */
+  /* 底图。浅色是白陆地、浅蓝海；夜间是深灰，不是黑。 */
   ocean: string;
   land: string;
   landLine: string;
   /** 国界，虚线。 */
   border: string;
   grid: string;
+  /** 经纬网的度数标注。 */
+  gridLabel: string;
   /** 次要标注（地面代号）的文字。其余标注用各自要素的颜色。 */
   textMuted: string;
   /** 标注和符号的描边，取陆地色，让字从线上"挖"出来。 */
   halo: string;
-  /* 航路按层级分：高空蓝、低空灰绿，线宽也不同。 */
+  /* 航路按层级分：高空蓝灰、低空灰，线宽也不同。 */
   airwayHigh: string;
   airwayLow: string;
+  /* 航路代号牌：RNAV 蓝底、常规深底（夜间浅底），字色各一。 */
+  shieldRnav: string;
+  shieldRnavText: string;
+  shieldConv: string;
+  shieldConvText: string;
   /** 计划航线。品红一族，和空域的红分开。 */
   route: string;
   routeCasing: string;
@@ -82,28 +90,33 @@ export interface ColorRoles {
 
 export const COLORS: Record<Theme, ColorRoles> = {
   light: {
-    ocean: "#e8edf0",
-    land: "#fafaf8",
-    landLine: "#c3ccd2",
+    ocean: "#dbeaf5",
+    land: "#ffffff",
+    landLine: "#a9bccb",
     border: "#b4bdc4",
-    grid: "#dde2e6",
+    grid: "#c3d2de",
+    gridLabel: "#6f8799",
     textMuted: "#5d6a73",
-    halo: "#fafaf8",
-    airwayHigh: "#2f6db3",
-    airwayLow: "#7a9a82",
+    halo: "#ffffff",
+    airwayHigh: "#7890a8",
+    airwayLow: "#a3aaaf",
+    shieldRnav: "#1f63ad",
+    shieldRnavText: "#ffffff",
+    shieldConv: "#2b3035",
+    shieldConvText: "#ffffff",
     route: "#9c27b0",
     routeCasing: "#ffffff",
     marker: "#5b1f6b",
-    waypoint: "#4f5b63",
+    waypoint: "#3d4850",
     navaid: "#27435a",
     ndb: "#7b3f73",
-    airport: "#0e6a6a",
+    airport: "#1f6fbf",
     ctr: "#5f7f98",
     app: "#2f8a78",
     restricted: "#c2185b",
     prohibited: "#d32f2f",
     danger: "#ad1457",
-    fir: "#8c979f",
+    fir: "#3aa468",
     mora: "#3d7a48",
     own: "#b8860b",
     ownTrack: "#b8860b",
@@ -118,24 +131,29 @@ export const COLORS: Record<Theme, ColorRoles> = {
     land: "#1f2327",
     landLine: "#3b4249",
     border: "#4a535b",
-    grid: "#2a3035",
+    grid: "#30373d",
+    gridLabel: "#7f8c97",
     textMuted: "#9aa5ad",
     halo: "#1f2327",
-    airwayHigh: "#6fa6e0",
-    airwayLow: "#8fae97",
+    airwayHigh: "#8ea3b6",
+    airwayLow: "#6c757c",
+    shieldRnav: "#3a74b5",
+    shieldRnavText: "#f2f6fa",
+    shieldConv: "#b9c1c8",
+    shieldConvText: "#16191c",
     route: "#e07cf2",
     routeCasing: "#16191c",
     marker: "#f0c9f7",
-    waypoint: "#b3bdc4",
+    waypoint: "#c3cbd1",
     navaid: "#c6d4df",
     ndb: "#d69bcb",
-    airport: "#5fcaca",
+    airport: "#6aa9e6",
     ctr: "#86a5bd",
     app: "#5fc0aa",
     restricted: "#f06292",
     prohibited: "#ff6b6b",
     danger: "#f48fb1",
-    fir: "#6f7a83",
+    fir: "#57b983",
     mora: "#6fbf7c",
     own: "#ffd166",
     ownTrack: "#ffd166",
@@ -153,8 +171,13 @@ export const COLORS: Record<Theme, ColorRoles> = {
  * 各类要素从哪一级缩放开始画。**取数门槛也读这里**（`MapSurface.vue` 的
  * `loadForZoom`），两边不会分叉。
  *
- * 缩小时只剩骨架：情报区、主要机场、高空航路；放大依次加上低空航路、VOR、全部机
- * 场、跑道、NDB 和航路点。
+ * 照 Jeppesen 高低空航路图：比例尺 50 NM 左右（z5–6）就是整张航路网、每个点都有
+ * 名字。放得下几个由 MapLibre 的避让决定，不靠门槛往后推。
+ *
+ * **写进 `filter` 的门槛必须是整数**（`airwaysLow`、`minorNavaids`、
+ * `minorNavaidLabels`、`airportAll`、`airportAllLabels`、`runwayLines`）：filter 里
+ * 的 `["zoom"]` 按瓦片的整数级求值，5.5 在 z5.9 上仍然不成立。`minzoom` 和 paint
+ * 里的可以是小数。`chartStyle.test.ts` 钉着。
  */
 export const ZOOM = {
   /** 细一档的国界从这里画，细节底图从这里开始取。 */
@@ -162,33 +185,38 @@ export const ZOOM = {
   /** 细一档的陆地从这里画，50m 海岸线到这里交棒。 */
   landDetail: 5,
   firLabels: 4,
+  /** 经纬网：10° 一直画，5° 和 1° 从这两级加上。 */
+  grid5: 4,
+  grid1: 6,
 
   /** 主要机场（最长跑道 ≥ `MAJOR_AIRPORT_MIN_RUNWAY_M`）的符号。机场和跑道数据从这里开始取。 */
   airportMajor: 4,
   airportMajorLabels: 5,
   /** 其余机场的符号和代号。 */
   airportAll: 6,
-  airportAllLabels: 7,
-  /** 跑道线接替跑道杠符号。 */
-  runwayLines: 7,
-  runwayLabels: 9,
+  airportAllLabels: 6,
+  /** 跑道线接替机场符号（有跑道数据的机场）。 */
+  runwayLines: 9,
+  runwayLabels: 11,
 
   /** 高空航路（高空和两层都有的）。计划航线在这一级把航路段交给航路网高亮。 */
-  airwaysHigh: 6,
+  airwaysHigh: 4.5,
   /** 只属于低空的航路。 */
-  airwaysLow: 8,
-  /** 航路代号。计划航线的沿线代号在这一级交棒。 */
-  airwayLabels: 8,
+  airwaysLow: 6,
+  /** 航路代号牌。计划航线的沿线代号在这一级交棒。 */
+  airwayLabels: 5,
 
-  /** VOR、VOR/DME、VORTAC、TACAN。 */
-  vor: 6,
-  vorLabels: 7,
+  /** VOR、VOR/DME、VORTAC、TACAN，符号和识别码。 */
+  vor: 5,
+  vorLabels: 5,
+  /** 导航台标注从识别码换成「台名 D 频率 识别码」。 */
+  navaidFullLabels: 7,
   /** NDB、单独的 DME、认不出的台。 */
-  minorNavaids: 8,
-  minorNavaidLabels: 9,
-  /** 航路点。 */
-  waypoints: 8,
-  waypointLabels: 9,
+  minorNavaids: 6,
+  minorNavaidLabels: 6,
+  /** 航路点（空心三角）和点名。 */
+  waypoints: 5.5,
+  waypointLabels: 5.5,
 
   airspaceLabels: 5,
   /** Grid MORA。一度格在 z5.5 是 64px，再小数字排不下，避让会丢掉一半格子。 */
@@ -212,26 +240,26 @@ export const WIDTH = {
   landOutline: 0.6,
   landDetailOutline: 0.7,
   border: 0.8,
-  grid: 0.5,
-  fir: 1.1,
+  grid: 0.4,
+  fir: 1.2,
   atcArea: 1.6,
   ctr: 0.9,
   /** 限制区、禁区、危险区的边线。 */
   sua: 1.5,
   /** 高空航路。和 `airwayOnRoute` 必须是同一组缩放锚点。 */
   airwayHigh: [
-    [6, 0.7],
-    [9, 1.4],
-    [12, 2],
+    [4.5, 0.5],
+    [8, 0.9],
+    [12, 1.6],
   ],
   /** 计划走过的航段，就地加粗。 */
   airwayOnRoute: [
-    [6, 2.8],
-    [9, 3.4],
+    [4.5, 2.6],
+    [8, 3.2],
     [12, 4],
   ],
   airwayLow: [
-    [8, 0.5],
+    [6, 0.5],
     [12, 1.2],
   ],
   route: [
@@ -251,18 +279,18 @@ export const WIDTH = {
 /** 透明度，缩小时航路网淡下去而不是消失。和对应的线宽同一组锚点。 */
 export const OPACITY = {
   airwayHigh: [
-    [6, 0.5],
-    [9, 0.9],
-    [12, 0.9],
+    [4.5, 0.75],
+    [8, 0.95],
+    [12, 0.95],
   ],
   airwayOnRoute: [
-    [6, 1],
-    [9, 1],
+    [4.5, 1],
+    [8, 1],
     [12, 1],
   ],
   airwayLow: [
-    [8, 0.6],
-    [10, 0.9],
+    [6, 0.75],
+    [10, 0.95],
   ],
   ownTrack: 0.85,
 } as const;
@@ -279,9 +307,11 @@ export const TEXT = {
     [11, 12],
   ],
   navaid: 9.5,
-  waypoint: 9,
-  airway: 9,
+  waypoint: 8.5,
+  /** 代号牌里的字。 */
+  airway: 8.5,
   fir: 10,
+  grid: 9,
   airspace: 9,
   mora: 11,
   runway: 12,
@@ -295,21 +325,33 @@ export const TEXT = {
   haloWidth: 1.4,
 } as const;
 
-/** 图标画布 32px、pixelRatio 2，所以 `icon-size: 1` 是 16 CSS px。 */
+/**
+ * 图标按实际大小画（`chartIcons.ts`，pixelRatio 2，画布边长的一半就是 CSS px），
+ * `icon-size` 留在 1 附近：缩小重采样会把细线糊掉。画布贴着符号裁，标注层那份透明
+ * 图标的碰撞框才不会比符号大一圈。
+ */
 export const ICON = {
   airportMajor: [
-    [4, 0.8],
-    [8, 1],
+    [4, 0.85],
+    [8, 1.1],
   ],
   /** 和 `airportMajor` 同一组缩放锚点。 */
   airportMinor: [
-    [4, 0.65],
-    [8, 0.8],
+    [4, 0.85],
+    [8, 1],
   ],
-  navaid: 0.9,
-  waypoint: 0.7,
+  navaid: 1,
+  waypoint: 1,
   /** 标注离符号中心多少 em。 */
-  labelOffset: 0.9,
+  labelOffset: 0.8,
+} as const;
+
+/**
+ * 航路代号牌：圆角矩形随字拉伸（`icon-text-fit: both`），图片按主题和种类各一张，
+ * 画法和可拉伸区在 `chartIcons.ts`。`padding` 是字外留白，CSS px，上右下左。
+ */
+export const SHIELD = {
+  padding: [1, 2.5, 1, 2.5],
 } as const;
 
 // ---------------------------------------------------------------- 空域
@@ -355,10 +397,14 @@ export const THEMED_ICONS = [
   "ndb",
   "navaid",
   "waypoint",
-  "apt-rwy",
-  "apt-circle",
+  "apt-major",
+  "apt-minor",
 ] as const;
 export type ThemedIcon = (typeof THEMED_ICONS)[number];
+
+/** 航路代号牌，可拉伸（`addImage` 的 `stretchX/stretchY/content`），两套主题各一份。 */
+export const SHIELDS = ["shield-rnav", "shield-conv"] as const;
+export type Shield = (typeof SHIELDS)[number];
 
 /** 斜线图块，同样两套主题各一份。 */
 export const PATTERNS = ["hatch-restricted", "hatch-prohibited"] as const;
@@ -378,7 +424,10 @@ export const NAVAID_ICON: Record<NavaidClass, ThemedIcon> = {
   other: "navaid",
 };
 
-export function themedImage(key: ThemedIcon | Pattern, theme: Theme): string {
+export function themedImage(
+  key: ThemedIcon | Pattern | Shield,
+  theme: Theme,
+): string {
   return `${key}-${theme}`;
 }
 
@@ -388,6 +437,7 @@ export function allImageIds(): string[] {
   for (const theme of ["light", "dark"] as const) {
     for (const key of THEMED_ICONS) out.push(themedImage(key, theme));
     for (const key of PATTERNS) out.push(themedImage(key, theme));
+    for (const key of SHIELDS) out.push(themedImage(key, theme));
   }
   return out;
 }
@@ -524,37 +574,49 @@ function navaidIcon(theme: Theme): unknown {
   ];
 }
 
+const isMajor = ["==", ["get", "major"], 1];
+const isRnav = ["==", ["get", "rnav"], 1];
+
 function airportIcon(theme: Theme): unknown {
   return [
     "case",
-    ["==", ["get", "hasRwy"], 1],
-    themedImage("apt-rwy", theme),
-    themedImage("apt-circle", theme),
+    isMajor,
+    themedImage("apt-major", theme),
+    themedImage("apt-minor", theme),
   ];
 }
 
-const isMajor = ["==", ["get", "major"], 1];
-
 // ---------------------------------------------------------------- 经纬网
 
-/** 10° 一条的经纬网。经线按纬度采样成折线，不依赖当前投影。 */
+/** 经纬网标注：`N35°`、`E120°`，0° 和 180° 不带字母。 */
+export function gridLabel(axis: "lat" | "lon", deg: number): string {
+  if (deg === 0 || Math.abs(deg) === 180) return `${Math.abs(deg)}°`;
+  const hemi = axis === "lat" ? (deg > 0 ? "N" : "S") : deg > 0 ? "E" : "W";
+  return `${hemi}${Math.abs(deg)}°`;
+}
+
+/**
+ * 1° 一条的经纬网，每条带 `step`（它落在的最粗一档：10、5、1）和 `label`。经线按
+ * 纬度采样成折线，不依赖当前投影。
+ */
 export function graticule(): FeatureCollection {
   const features: Feature[] = [];
-  for (let lon = -180; lon <= 180; lon += 10) {
+  const step = (deg: number) => (deg % 10 === 0 ? 10 : deg % 5 === 0 ? 5 : 1);
+  for (let lon = -180; lon <= 180; lon += 1) {
     const coords: [number, number][] = [];
     for (let lat = -80; lat <= 80; lat += 5) coords.push([lon, lat]);
     features.push({
       type: "Feature",
-      properties: {},
+      properties: { step: step(lon), label: gridLabel("lon", lon) },
       geometry: { type: "LineString", coordinates: coords },
     });
   }
-  for (let lat = -80; lat <= 80; lat += 10) {
+  for (let lat = -80; lat <= 80; lat += 1) {
     const coords: [number, number][] = [];
     for (let lon = -180; lon <= 180; lon += 5) coords.push([lon, lat]);
     features.push({
       type: "Feature",
-      properties: {},
+      properties: { step: step(lat), label: gridLabel("lat", lat) },
       geometry: { type: "LineString", coordinates: coords },
     });
   }
@@ -636,13 +698,13 @@ const symbolOnly = {
  *   底图（海、陆、国界、经纬网）→ 机场地面 → 空域填充 → 空域和情报区边界 → 航路 →
  *   计划航线 → 航路点 / 导航台 / 机场符号 → 全部标注 → 在线机组 → 自己的航迹 → 自己
  *
- * 标注内部自下而上是：MORA、情报区、空域、地面、航路点、航路代号、导航台、机场、跑
- * 道号、管制、计划航线。MapLibre 先放上面的，所以后者优先。
+ * 标注内部自下而上是：经纬网、MORA、情报区、空域、地面、航路点、航路代号牌、导航台、
+ * 机场、跑道号、管制、计划航线。MapLibre 先放上面的，所以后者优先。
  */
 export function buildStyle(theme: Theme): StyleSpecification {
   const c = COLORS[theme];
   const halo = { "text-halo-color": c.halo, "text-halo-width": TEXT.haloWidth };
-  const img = (key: ThemedIcon | Pattern) => themedImage(key, theme);
+  const img = (key: ThemedIcon | Pattern | Shield) => themedImage(key, theme);
 
   const sources: Record<string, unknown> = {};
   for (const id of SOURCE_IDS) {
@@ -662,7 +724,27 @@ export function buildStyle(theme: Theme): StyleSpecification {
     ["==", ["get", "tier"], "vor"],
     [">=", ["zoom"], ZOOM.minorNavaids],
   ];
-  const fixVisible = ["any", notLow, [">=", ["zoom"], ZOOM.airwaysLow]];
+  /* 航路点：低空的等低空航路出来；和导航台重合的（`markNavaidFixes`）在那个台画出
+   * 来的缩放上让位。 */
+  const fixVisible = [
+    "all",
+    ["any", notLow, [">=", ["zoom"], ZOOM.airwaysLow]],
+    ["!=", ["get", "navaid"], "vor"],
+    [
+      "!",
+      [
+        "all",
+        ["==", ["get", "navaid"], "minor"],
+        [">=", ["zoom"], ZOOM.minorNavaids],
+      ],
+    ],
+  ];
+  const gridVisible = [
+    "any",
+    ["==", ["get", "step"], 10],
+    ["all", ["==", ["get", "step"], 5], [">=", ["zoom"], ZOOM.grid5]],
+    [">=", ["zoom"], ZOOM.grid1],
+  ];
 
   const layers: ChartLayer[] = [
     // ------------------------------------------------ 底图
@@ -714,6 +796,7 @@ export function buildStyle(theme: Theme): StyleSpecification {
       id: "grid",
       type: "line",
       source: "grid",
+      filter: gridVisible,
       paint: { "line-color": c.grid, "line-width": WIDTH.grid },
     },
 
@@ -887,15 +970,15 @@ export function buildStyle(theme: Theme): StyleSpecification {
 
     // ------------------------------------------------ 边界
     {
-      // 情报区边界：虚线，底子。
+      // 情报区边界：绿色虚线。
       id: "fir-line",
       type: "line",
       source: "firs",
       paint: {
         "line-color": c.fir,
         "line-width": WIDTH.fir,
-        "line-dasharray": [5, 3],
-        "line-opacity": 0.75,
+        "line-dasharray": [4, 2.5],
+        "line-opacity": 0.9,
       },
     },
     {
@@ -1058,8 +1141,8 @@ export function buildStyle(theme: Theme): StyleSpecification {
       },
     },
     {
-      /* 机场：低缩放是一根按最长跑道方位转的跑道杠（`rwyHdg`，真方位），跑道线出现
-       * 之后杠就不画了，只留标注。没有跑道数据的机场一直画一个圆。 */
+      /* 机场：蓝色小圆，主要机场实心、其余空心。跑道线出现之后有跑道数据的机场不再
+       * 画符号，只留标注；没有跑道数据的一直画。 */
       id: "airport-symbols",
       type: "symbol",
       source: "airports",
@@ -1076,8 +1159,6 @@ export function buildStyle(theme: Theme): StyleSpecification {
       layout: {
         "icon-image": airportIcon(theme),
         "icon-size": airportSize,
-        "icon-rotate": ["get", "rwyHdg"],
-        "icon-rotation-alignment": "map",
         "symbol-sort-key": ["case", isMajor, 0, 1],
         ...symbolOnly,
       },
@@ -1110,6 +1191,22 @@ export function buildStyle(theme: Theme): StyleSpecification {
 
     // ------------------------------------------------ 标注（越往下优先级越高）
     {
+      // 经纬网度数，沿线重复。优先级最低。
+      id: "grid-labels",
+      type: "symbol",
+      source: "grid",
+      filter: gridVisible,
+      layout: {
+        "symbol-placement": "line",
+        "symbol-spacing": 480,
+        "text-field": ["get", "label"],
+        "text-font": TEXT.font,
+        "text-size": TEXT.grid,
+        "text-max-angle": 30,
+      },
+      paint: { "text-color": c.gridLabel, ...halo },
+    },
+    {
       // Grid MORA：千位大、百位小（`format` 的分段 `font-scale`）。
       id: "mora-labels",
       type: "symbol",
@@ -1129,7 +1226,7 @@ export function buildStyle(theme: Theme): StyleSpecification {
       paint: { "text-color": c.mora, ...halo },
     },
     {
-      // 情报区名沿边界重复，中心点常在几百海里外。
+      // 「代号 名字」（`RKRR INCHEON`）沿边界重复，中心点常在几百海里外。没有名字只写代号。
       id: "fir-labels",
       type: "symbol",
       source: "firs",
@@ -1137,7 +1234,12 @@ export function buildStyle(theme: Theme): StyleSpecification {
       layout: {
         "symbol-placement": "line",
         "symbol-spacing": 400,
-        "text-field": ["get", "code"],
+        "text-field": [
+          "case",
+          ["to-boolean", ["get", "name"]],
+          ["concat", ["get", "code"], " ", ["upcase", ["get", "name"]]],
+          ["get", "code"],
+        ],
         "text-font": TEXT.font,
         "text-size": TEXT.fir,
         "text-letter-spacing": 0.12,
@@ -1240,7 +1342,8 @@ export function buildStyle(theme: Theme): StyleSpecification {
       paint: { "icon-opacity": 0, "text-color": c.waypoint, ...halo },
     },
     {
-      /* 航路代号：每段一个，放在段中间（`line-center`），顺着线、保持正向。高空的
+      /* 航路代号牌：每段一个，放在段中间（`line-center`），顺着线、保持正向；段比牌
+       * 短就不放。圆角牌随字拉伸，RNAV 蓝底、常规深底（`isRnavDesignator`）。高空的
        * 先放。 */
       id: "airway-labels",
       type: "symbol",
@@ -1249,23 +1352,21 @@ export function buildStyle(theme: Theme): StyleSpecification {
       filter: ["any", notLow, onRoute, [">=", ["zoom"], ZOOM.airwaysLow]],
       layout: {
         "symbol-placement": "line-center",
+        "icon-image": ["case", isRnav, img("shield-rnav"), img("shield-conv")],
+        "icon-text-fit": "both",
+        "icon-text-fit-padding": SHIELD.padding,
+        "icon-rotation-alignment": "map",
         "text-field": ["get", "airway"],
         "text-font": TEXT.font,
         "text-size": TEXT.airway,
-        "text-letter-spacing": 0.05,
+        "text-letter-spacing": 0.03,
         "text-rotation-alignment": "map",
         "text-keep-upright": true,
         "text-max-angle": 30,
         "symbol-sort-key": ["case", notLow, 0, 1],
       },
       paint: {
-        "text-color": [
-          "case",
-          ["==", ["get", "level"], "low"],
-          c.airwayLow,
-          c.airwayHigh,
-        ],
-        ...halo,
+        "text-color": ["case", isRnav, c.shieldRnavText, c.shieldConvText],
       },
     },
     {
@@ -1279,7 +1380,14 @@ export function buildStyle(theme: Theme): StyleSpecification {
         [">=", ["zoom"], ZOOM.minorNavaidLabels],
       ],
       layout: labelLayout(navaidIcon(theme), ICON.navaid, {
-        "text-field": ["get", "label"],
+        // 缩小时只写识别码，放大换成「台名 D 频率 识别码」。
+        "text-field": [
+          "step",
+          ["zoom"],
+          ["get", "ident"],
+          ZOOM.navaidFullLabels,
+          ["get", "label"],
+        ],
         "text-size": TEXT.navaid,
         "symbol-sort-key": ["case", ["==", ["get", "tier"], "vor"], 0, 1],
       }),
@@ -1296,8 +1404,6 @@ export function buildStyle(theme: Theme): StyleSpecification {
       minzoom: ZOOM.airportMajorLabels,
       filter: ["any", isMajor, [">=", ["zoom"], ZOOM.airportAllLabels]],
       layout: labelLayout(airportIcon(theme), airportSize, {
-        "icon-rotate": ["get", "rwyHdg"],
-        "icon-rotation-alignment": "map",
         "text-field": ["get", "icao"],
         "text-size": rampCase(isMajor, TEXT.airportMajor, TEXT.airportMinor),
         "text-letter-spacing": 0.05,

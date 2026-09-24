@@ -45,6 +45,7 @@ import {
   fetchAirwayNetwork,
   toAirwayLines,
   toAirwayFixes,
+  markNavaidFixes,
   routeLegKeys,
   markRouteOnAirways,
 } from "@/lib/airways";
@@ -392,6 +393,12 @@ const navaids = ref<FeatureCollection | null>(null);
  * 没有发布完整的边界，沿国境线的那一段不在数据里，闭合成环会切一条直线横穿过
  * 去。由此这一层也不受 aipAccess 影响，没有登录门槛之外的权限要求。
  */
+/* 和导航台重合的航路点打标记，导航台出现时让位（`markNavaidFixes`）。computed：
+ * 两份输入都没变时引用不变，RouteMap 的 setSource 照样跳过。 */
+const shownFixes = computed(() =>
+  markNavaidFixes(airwayFixes.value, navaids.value),
+);
+
 const showFirs = ref(false);
 const firs = ref<FeatureCollection | null>(null);
 let firCache: FeatureCollection | null = null;
@@ -1353,7 +1360,7 @@ onBeforeUnmount(() => {
       :markers="markers"
       :focus="focus"
       :airways="airways"
-      :airway-fixes="airwayFixes"
+      :airway-fixes="shownFixes"
       :airports="airports"
       :runways="runways"
       :highlighted-legs="highlightedLegs"
