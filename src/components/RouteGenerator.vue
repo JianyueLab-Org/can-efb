@@ -54,12 +54,13 @@ const unrestricted = ref(false);
 /**
  * 开关对谁可见。
  *
- * 3–4 级比 1–2 级多出来的恰好是 CAAC 的 NAIP 汇编。持有它的人有两个理由想把它排掉：
+ * 3 级（受限可调用）起比 1–2 级多出来的恰好是 CAAC 的 NAIP 汇编。持有它的人有两个理由想把它排掉：
  * 那是低级别成员实际拿到的答案；受限汇编推出来的航路不能转手给看不到那一份的人。
  *
  * 档下的人不显示 —— 对他们这个开关恒为空转，摆出来只会让人以为自己错过了什么。
  */
-const canChooseTier = computed(() => props.aipAccess >= 3);
+const AIP_RESTRICTED_CALL = 3;
+const canChooseTier = computed(() => props.aipAccess >= AIP_RESTRICTED_CALL);
 
 const busy = ref(false);
 const plan = ref<RoutePlan | null>(null);
