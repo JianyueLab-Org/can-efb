@@ -1227,31 +1227,30 @@ export function buildStyle(theme: Theme): StyleSpecification {
       paint: { "text-color": c.mora, ...halo },
     },
     {
-      // 「代号 名字」（`RKRR INCHEON`）沿边界线写在自己那一侧（`lib/firs.ts` 的
-      // `firLabelEdges`）。没有名字只写代号。
+      // 「代号 名字」（`RKRR INCHEON`）沿边界线写在自己那一侧，文字由 `lib/firs.ts`
+      // 的 `firLabelEdges` 拼好。
       id: "fir-labels",
       type: "symbol",
       source: "firs",
       minzoom: ZOOM.firLabels,
       filter: ["has", "labelEdge"],
       layout: {
-        // `line-center` 而不是 `line` + 间距：`line` 的第一个锚点按字长算，两边名字
-        // 长短不一，锚点就错开。段中点对两边一样。
-        "symbol-placement": "line-center",
+        "symbol-placement": "line",
+        "symbol-spacing": 400,
         "text-keep-upright": false,
         "text-max-angle": 30,
+        // 两侧各一个区的段是一个两行标注（`inside: both`），骑在线上，不偏移。
         "text-offset": [
-          "case",
-          ["==", ["get", "inside"], "left"],
+          "match",
+          ["get", "inside"],
+          "left",
           ["literal", [0, -0.9]],
+          "right",
           ["literal", [0, 0.9]],
+          ["literal", [0, 0]],
         ],
-        "text-field": [
-          "case",
-          ["to-boolean", ["get", "name"]],
-          ["concat", ["get", "code"], " ", ["upcase", ["get", "name"]]],
-          ["get", "code"],
-        ],
+        "text-line-height": 1.9,
+        "text-field": ["get", "label"],
         "text-font": TEXT.font,
         "text-size": TEXT.fir,
         "text-letter-spacing": 0.12,

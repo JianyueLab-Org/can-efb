@@ -386,10 +386,10 @@ datafeed 给的那个经纬度是**管制员自己的视野中心** —— 既�
 
 **情报区标注**是「代号 名字」（`RKRR INCHEON`），照 Jeppesen 沿边界线写在自己那一
 侧，共用边界上两边的名字并排：`lib/firs.ts` 的 `firLabelEdges` 把每条边在别的环的顶
-点处切开，按「两侧各是谁」连成朝东走的段，两边各出一个坐标相同的要素，带 `inside`
-标明范围在哪一侧，`fir-labels` 按它上下偏移。放置用 `line-center`：`line` 的锚点按
-字长算，两边名字长短不一就错开。图层关着 `text-keep-upright`，地图转过去时字会倒，
-但不会写进邻区。名字是
+点处切开，按「两侧各是谁」连成朝东走的段，每段一个标注。两侧都有区时是两行、骑在线
+上（`inside: both`），只有一侧时按 `inside` 上下偏移；沿线每 400 px 重复。两边拆成两
+个要素会错开：`line` 放置的第一个锚点按字长算。图层关着 `text-keep-upright`，地图转
+过去时字会倒，但不会写进邻区。名字是
 `scripts/build-firs.mjs` 从 VATSpy `[FIRs]` 取的 `name`（最后一段，去掉 `FIR`/`ACC`），
 拼接出来的 `RJJJ` 写死 `Fukuoka`。没有名字只写代号。
 

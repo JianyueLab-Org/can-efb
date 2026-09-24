@@ -90,7 +90,7 @@ describe("firBoundaries", () => {
     ]);
   });
 
-  test("共用的边两边各一段，顶点不同也切成同一条几何，各写在自己那侧", () => {
+  test("共用的边切成同一条几何，出一个两行标注，上行是走向左边那个区", () => {
     const shared = edges({
       type: "FeatureCollection",
       features: [feature("ZSHA", west), feature("RKRR", east)],
@@ -99,30 +99,21 @@ describe("firBoundaries", () => {
         f.geometry.type === "LineString" &&
         f.geometry.coordinates.every(([lon]) => lon === 125),
     );
-    expect(shared.map((f) => f.geometry)).toEqual([
-      {
-        type: "LineString",
-        coordinates: [
-          [125, 35],
-          [125, 32],
-          [125, 30],
-        ],
-      },
-      {
-        type: "LineString",
-        coordinates: [
-          [125, 35],
-          [125, 32],
-          [125, 30],
-        ],
-      },
-    ]);
-    expect(
-      shared.map((f) => [f.properties?.code, f.properties?.inside]),
-    ).toEqual([
-      ["ZSHA", "right"],
-      ["RKRR", "left"],
-    ]);
+    expect(shared).toHaveLength(1);
+    expect(shared[0].geometry).toEqual({
+      type: "LineString",
+      coordinates: [
+        [125, 35],
+        [125, 32],
+        [125, 30],
+      ],
+    });
+    // 朝南走，左边是东边的 RKRR。
+    expect(shared[0].properties).toEqual({
+      label: "RKRR RKRR\nZSHA ZSHA",
+      labelEdge: true,
+      inside: "both",
+    });
   });
 
   test("转角小的相邻边连成一段", () => {

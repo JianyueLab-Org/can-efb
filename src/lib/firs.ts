@@ -77,10 +77,13 @@ const EPS = 1e-4;
  *
  * - **并排靠同一条几何。** 两个情报区描同一条边界时顶点常常不一样（一边在中间多一
  *   个点，那是第三个区的角）。所以先把每条边在别的环的顶点处切开，切完两边的小段
- *   就一一对得上；再按「两侧各是谁」连成段，两个名字各出一个要素、坐标完全相同。
- *   MapLibre 在同一条线上按同一个间距取锚点，字因此落在同一处。
- * - 每段都朝东走（正南北的朝南），字因此在正北朝上时是正的；`inside` 说范围在走向
- *   的左边（`left`，字在线上方）还是右边（`right`，字在线下方）。
+ *   就一一对得上；再按「两侧各是谁」连成段。
+ * - **一段一个标注。** 两侧都有区就是两行，上行是线上方那一侧，骑在线上（`inside:
+ *   both`），所以沿线重复时两个名字总在一起。分成两个要素不行：`line` 放置的第一个
+ *   锚点按字长算，两边名字长短不一，锚点就错开。同一侧有几个区（数据里有重叠的）
+ *   用「 / 」连起来。
+ * - 每段都朝东走（正南北的朝南），字因此在正北朝上时是正的；只有一侧有区时
+ *   `inside` 说它在走向的左边（`left`，字在线上方）还是右边（`right`，字在线下方）。
  * - 转角超过 `RUN_MAX_TURN`、走向掉头、两侧换了人或者有岔路的地方断开。
  * - 图层关了 `text-keep-upright`：开着的话 MapLibre 在地图转过去时把字翻过来，偏移
  *   跟着翻到另一侧，名字就写进了邻区。
@@ -181,18 +184,24 @@ export function firLabelEdges(features: Feature[]): Feature[] {
       coordinates.push(edge.b);
       edge = next(edge);
     }
-    for (const side of first.sides) {
-      result.push({
-        type: "Feature",
-        properties: {
-          code: side.code,
-          name: side.name,
-          labelEdge: true,
-          inside: side.inside,
-        },
-        geometry: { type: "LineString", coordinates },
-      });
-    }
+    // 一段只出一个标注：同一侧的区（数据里有重叠的）用「 / 」连起来，两侧都有就是
+    // 两行，上行是线上方那一侧。两行骑在线上，这样两边的名字总是并排。
+    const side = (inside: Side["inside"]) =>
+      first.sides
+        .filter((s) => s.inside === inside)
+        .map(labelText)
+        .join(" / ");
+    const left = side("left");
+    const right = side("right");
+    result.push({
+      type: "Feature",
+      properties: {
+        label: left && right ? `${left}\n${right}` : left || right,
+        labelEdge: true,
+        inside: left && right ? "both" : left ? "left" : "right",
+      },
+      geometry: { type: "LineString", coordinates },
+    });
   };
   // 先从段头开始，剩下的是首尾相接的环。
   for (const edge of edges.values()) if (!hasPrev.has(edge)) emit(edge);
@@ -201,6 +210,11 @@ export function firLabelEdges(features: Feature[]): Feature[] {
 }
 
 type Label = { code: string; name?: string };
+
+/** 「代号 名字」（`RKRR INCHEON`），没有名字只写代号。 */
+function labelText({ code, name }: Label): string {
+  return name ? `${code} ${name.toUpperCase()}` : code;
+}
 type Side = Label & { inside: "left" | "right" };
 type Edge = { a: Position; b: Position; angle: number; sides: Side[] };
 
