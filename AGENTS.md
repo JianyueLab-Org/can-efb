@@ -384,7 +384,8 @@ datafeed 给的那个经纬度是**管制员自己的视野中心** —— 既�
 **航路点和导航台去重**（`markNavaidFixes`）：ident 相同且经纬度差都 ≤ 0.01° 的航路点
 打上那个台的 `tier`，样式在那个台画出来的缩放上把航路点藏掉。导航台图层关着时不打。
 
-**情报区标注**是「代号 名字」（`RKRR INCHEON`），沿边界重复。名字是
+**情报区标注**是「代号 名字」（`RKRR INCHEON`），写在范围内：`lib/firs.ts` 的
+`firLabelPoints` 用数据自带的 `labelLat`/`labelLon` 生成标注点。名字是
 `scripts/build-firs.mjs` 从 VATSpy `[FIRs]` 取的 `name`（最后一段，去掉 `FIR`/`ACC`），
 拼接出来的 `RJJJ` 写死 `Fukuoka`。没有名字只写代号。
 

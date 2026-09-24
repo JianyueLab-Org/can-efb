@@ -1226,14 +1226,13 @@ export function buildStyle(theme: Theme): StyleSpecification {
       paint: { "text-color": c.mora, ...halo },
     },
     {
-      // 「代号 名字」（`RKRR INCHEON`）沿边界重复，中心点常在几百海里外。没有名字只写代号。
+      // 「代号 名字」（`RKRR INCHEON`）写在范围内的标注点上（`lib/firs.ts`）。没有名字只写代号。
       id: "fir-labels",
       type: "symbol",
       source: "firs",
       minzoom: ZOOM.firLabels,
+      filter: ["has", "labelPoint"],
       layout: {
-        "symbol-placement": "line",
-        "symbol-spacing": 400,
         "text-field": [
           "case",
           ["to-boolean", ["get", "name"]],
@@ -1243,7 +1242,6 @@ export function buildStyle(theme: Theme): StyleSpecification {
         "text-font": TEXT.font,
         "text-size": TEXT.fir,
         "text-letter-spacing": 0.12,
-        "text-max-angle": 30,
       },
       paint: { "text-color": c.fir, ...halo },
     },

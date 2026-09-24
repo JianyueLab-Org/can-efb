@@ -23,7 +23,7 @@
  * 因此是开着的。换这份数据之前它是关的，理由是 Natural Earth 属公有领域 —— 那个理
  * 由不再成立。
  */
-import type { FeatureCollection } from "geojson";
+import type { Feature, FeatureCollection } from "geojson";
 
 /**
  * **从 `src/` 里 `?url` 引进来，不放 `public/`** —— 理由和陆地那份一样，完整写在
@@ -53,10 +53,29 @@ export async function fetchFIRs(): Promise<FeatureCollection> {
 export function firBoundaries(
   collection: FeatureCollection,
 ): FeatureCollection {
+  const boundaries = collection.features.filter(
+    (feature) => feature.properties?.fir !== false,
+  );
   return {
     ...collection,
-    features: collection.features.filter(
-      (feature) => feature.properties?.fir !== false,
-    ),
+    features: [...boundaries, ...firLabelPoints(boundaries)],
   };
+}
+
+/**
+ * 标注点：用数据自带的 `labelLat`/`labelLon`，落在范围内。带 `labelPoint`，
+ * `fir-labels` 只画这些，边界线只画面。没有标注位置的情报区不标。
+ */
+export function firLabelPoints(features: Feature[]): Feature[] {
+  const points: Feature[] = [];
+  for (const feature of features) {
+    const { labelLat, labelLon, code, name } = feature.properties ?? {};
+    if (typeof labelLat !== "number" || typeof labelLon !== "number") continue;
+    points.push({
+      type: "Feature",
+      properties: { code, name, labelPoint: true },
+      geometry: { type: "Point", coordinates: [labelLon, labelLat] },
+    });
+  }
+  return points;
 }
