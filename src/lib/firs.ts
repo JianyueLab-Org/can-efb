@@ -23,7 +23,7 @@
  * 因此是开着的。换这份数据之前它是关的，理由是 Natural Earth 属公有领域 —— 那个理
  * 由不再成立。
  */
-import type { Feature, FeatureCollection } from "geojson";
+import type { Feature, FeatureCollection, Position } from "geojson";
 
 /**
  * **从 `src/` 里 `?url` 引进来，不放 `public/`** —— 理由和陆地那份一样，完整写在
@@ -58,24 +58,103 @@ export function firBoundaries(
   );
   return {
     ...collection,
-    features: [...boundaries, ...firLabelPoints(boundaries)],
+    features: [...boundaries, ...firLabelEdges(boundaries)],
   };
 }
 
+/** 一段标注线里相邻两条边的方向最多差这么多度，再大就断开另起一段。 */
+const RUN_MAX_TURN = 30;
+
 /**
- * 标注点：用数据自带的 `labelLat`/`labelLon`，落在范围内。带 `labelPoint`，
- * `fir-labels` 只画这些，边界线只画面。没有标注位置的情报区不标。
+ * 标注线：边界折成若干段，每段带 `labelEdge` 和 `inside`。`fir-labels` 只画这些，
+ * `fir-line` 不画这些。
+ *
+ * 做法照 Jeppesen 航路图：名字写在边界线旁边，写在**自己那一侧**。相邻两个情报区
+ * 共用的那条边各出一段，同一条几何、同一个走向，所以两边的字并排落在同一处。
+ *
+ * - 每段都朝东走（正南北的朝南），字因此在正北朝上时是正的；`inside` 说范围在走向
+ *   的左边（`left`，字在线上方）还是右边（`right`，字在线下方）。
+ * - 转角超过 `RUN_MAX_TURN` 或走向要掉头的地方断开，所以一段之内朝向不变。
+ * - 图层关了 `text-keep-upright`：开着的话 MapLibre 在地图转过去时把字翻过来，偏移
+ *   跟着翻到另一侧，名字就写进了邻区。
  */
-export function firLabelPoints(features: Feature[]): Feature[] {
-  const points: Feature[] = [];
+export function firLabelEdges(features: Feature[]): Feature[] {
+  const edges: Feature[] = [];
   for (const feature of features) {
-    const { labelLat, labelLon, code, name } = feature.properties ?? {};
-    if (typeof labelLat !== "number" || typeof labelLon !== "number") continue;
-    points.push({
-      type: "Feature",
-      properties: { code, name, labelPoint: true },
-      geometry: { type: "Point", coordinates: [labelLon, labelLat] },
-    });
+    const { code, name } = feature.properties ?? {};
+    if (!code) continue;
+    const geometry = feature.geometry;
+    const polygons =
+      geometry.type === "Polygon"
+        ? [geometry.coordinates]
+        : geometry.type === "MultiPolygon"
+          ? geometry.coordinates
+          : [];
+    for (const polygon of polygons) {
+      polygon.forEach((ring, index) => {
+        for (const run of ringRuns(ring, index > 0)) {
+          edges.push({
+            type: "Feature",
+            properties: { code, name, labelEdge: true, inside: run.inside },
+            geometry: { type: "LineString", coordinates: run.coordinates },
+          });
+        }
+      });
+    }
   }
-  return points;
+  return edges;
+}
+
+type Run = { coordinates: Position[]; inside: "left" | "right" };
+
+/** 墨卡托下的 y，和经度同一个单位：方向和转角按屏幕上的算。 */
+function mercatorY(lat: number): number {
+  const rad = Math.PI / 180;
+  return Math.log(Math.tan(Math.PI / 4 + (lat * rad) / 2)) / rad;
+}
+
+/** 环按走向切成段。`hole` 是内环：范围在它外面。 */
+function ringRuns(ring: Position[], hole: boolean): Run[] {
+  // 鞋带公式：正的是逆时针，范围在走向左边。
+  let area = 0;
+  for (let i = 0; i + 1 < ring.length; i++) {
+    area += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+  }
+  const insideLeft = area > 0 !== hole;
+
+  const runs: Run[] = [];
+  let current: Position[] = [];
+  let currentFlip = false;
+  let currentAngle = 0;
+  const flush = () => {
+    if (current.length < 2) return;
+    const coordinates = currentFlip ? [...current].reverse() : current;
+    runs.push({
+      coordinates,
+      inside: insideLeft !== currentFlip ? "left" : "right",
+    });
+  };
+
+  for (let i = 0; i + 1 < ring.length; i++) {
+    const [ax, ay] = ring[i];
+    const [bx, by] = ring[i + 1];
+    const dx = bx - ax;
+    const dy = mercatorY(by) - mercatorY(ay);
+    if (dx === 0 && dy === 0) continue;
+    // 朝西走的、正北走的反过来画。
+    const flip = dx < 0 || (dx === 0 && dy > 0);
+    const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+    let turn = Math.abs(angle - currentAngle);
+    if (turn > 180) turn = 360 - turn;
+    if (current.length > 0 && flip === currentFlip && turn <= RUN_MAX_TURN) {
+      current.push(ring[i + 1]);
+    } else {
+      flush();
+      current = [ring[i], ring[i + 1]];
+      currentFlip = flip;
+    }
+    currentAngle = angle;
+  }
+  flush();
+  return runs;
 }

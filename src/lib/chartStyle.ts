@@ -974,6 +974,7 @@ export function buildStyle(theme: Theme): StyleSpecification {
       id: "fir-line",
       type: "line",
       source: "firs",
+      filter: ["!", ["has", "labelEdge"]],
       paint: {
         "line-color": c.fir,
         "line-width": WIDTH.fir,
@@ -1226,13 +1227,24 @@ export function buildStyle(theme: Theme): StyleSpecification {
       paint: { "text-color": c.mora, ...halo },
     },
     {
-      // 「代号 名字」（`RKRR INCHEON`）写在范围内的标注点上（`lib/firs.ts`）。没有名字只写代号。
+      // 「代号 名字」（`RKRR INCHEON`）沿边界线写在自己那一侧（`lib/firs.ts` 的
+      // `firLabelEdges`）。没有名字只写代号。
       id: "fir-labels",
       type: "symbol",
       source: "firs",
       minzoom: ZOOM.firLabels,
-      filter: ["has", "labelPoint"],
+      filter: ["has", "labelEdge"],
       layout: {
+        "symbol-placement": "line",
+        "symbol-spacing": 400,
+        "text-keep-upright": false,
+        "text-max-angle": 30,
+        "text-offset": [
+          "case",
+          ["==", ["get", "inside"], "left"],
+          ["literal", [0, -0.9]],
+          ["literal", [0, 0.9]],
+        ],
         "text-field": [
           "case",
           ["to-boolean", ["get", "name"]],
