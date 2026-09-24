@@ -16,12 +16,13 @@ const west = {
   ],
 };
 
-/** 顺时针，和 `west` 共用 125° 那条边。 */
+/** 顺时针，和 `west` 共用 125° 那条边，而且在边上多一个顶点。 */
 const east = {
   type: "Polygon" as const,
   coordinates: [
     [
       [125, 30],
+      [125, 32],
       [125, 35],
       [130, 35],
       [130, 30],
@@ -89,7 +90,7 @@ describe("firBoundaries", () => {
     ]);
   });
 
-  test("共用的边两边各一段，同一条几何，各写在自己那侧", () => {
+  test("共用的边两边各一段，顶点不同也切成同一条几何，各写在自己那侧", () => {
     const shared = edges({
       type: "FeatureCollection",
       features: [feature("ZSHA", west), feature("RKRR", east)],
@@ -103,6 +104,7 @@ describe("firBoundaries", () => {
         type: "LineString",
         coordinates: [
           [125, 35],
+          [125, 32],
           [125, 30],
         ],
       },
@@ -110,6 +112,7 @@ describe("firBoundaries", () => {
         type: "LineString",
         coordinates: [
           [125, 35],
+          [125, 32],
           [125, 30],
         ],
       },

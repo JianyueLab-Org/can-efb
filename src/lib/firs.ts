@@ -65,21 +65,28 @@ export function firBoundaries(
 /** 一段标注线里相邻两条边的方向最多差这么多度，再大就断开另起一段。 */
 const RUN_MAX_TURN = 30;
 
+/** 顶点落在别人的边上、两点算同一点的容差，度。 */
+const EPS = 1e-4;
+
 /**
  * 标注线：边界折成若干段，每段带 `labelEdge` 和 `inside`。`fir-labels` 只画这些，
  * `fir-line` 不画这些。
  *
- * 做法照 Jeppesen 航路图：名字写在边界线旁边，写在**自己那一侧**。相邻两个情报区
- * 共用的那条边各出一段，同一条几何、同一个走向，所以两边的字并排落在同一处。
+ * 做法照 Jeppesen 航路图：名字写在边界线旁边，写在**自己那一侧**，共用边界上两边的
+ * 名字并排。
  *
+ * - **并排靠同一条几何。** 两个情报区描同一条边界时顶点常常不一样（一边在中间多一
+ *   个点，那是第三个区的角）。所以先把每条边在别的环的顶点处切开，切完两边的小段
+ *   就一一对得上；再按「两侧各是谁」连成段，两个名字各出一个要素、坐标完全相同。
+ *   MapLibre 在同一条线上按同一个间距取锚点，字因此落在同一处。
  * - 每段都朝东走（正南北的朝南），字因此在正北朝上时是正的；`inside` 说范围在走向
  *   的左边（`left`，字在线上方）还是右边（`right`，字在线下方）。
- * - 转角超过 `RUN_MAX_TURN` 或走向要掉头的地方断开，所以一段之内朝向不变。
+ * - 转角超过 `RUN_MAX_TURN`、走向掉头、两侧换了人或者有岔路的地方断开。
  * - 图层关了 `text-keep-upright`：开着的话 MapLibre 在地图转过去时把字翻过来，偏移
  *   跟着翻到另一侧，名字就写进了邻区。
  */
 export function firLabelEdges(features: Feature[]): Feature[] {
-  const edges: Feature[] = [];
+  const rings: { ring: Position[]; insideLeft: boolean; label: Label }[] = [];
   for (const feature of features) {
     const { code, name } = feature.properties ?? {};
     if (!code) continue;
@@ -92,20 +99,120 @@ export function firLabelEdges(features: Feature[]): Feature[] {
           : [];
     for (const polygon of polygons) {
       polygon.forEach((ring, index) => {
-        for (const run of ringRuns(ring, index > 0)) {
-          edges.push({
-            type: "Feature",
-            properties: { code, name, labelEdge: true, inside: run.inside },
-            geometry: { type: "LineString", coordinates: run.coordinates },
-          });
+        // 鞋带公式：正的是逆时针，范围在走向左边。内环反过来。
+        let area = 0;
+        for (let i = 0; i + 1 < ring.length; i++) {
+          area += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
         }
+        rings.push({
+          ring,
+          insideLeft: area > 0 !== index > 0,
+          label: { code, name },
+        });
       });
     }
   }
-  return edges;
+
+  const grid = vertexGrid(rings.map((r) => r.ring));
+
+  // 切开、朝东、按端点去重：同一条小段两边的情报区记在一起。
+  const edges = new Map<string, Edge>();
+  for (const { ring, insideLeft, label } of rings) {
+    for (let i = 0; i + 1 < ring.length; i++) {
+      const pieces = splitAt(ring[i], ring[i + 1], grid);
+      for (let j = 0; j + 1 < pieces.length; j++) {
+        let a = pieces[j];
+        let b = pieces[j + 1];
+        if (key(a) === key(b)) continue;
+        const dx = b[0] - a[0];
+        const dy = mercatorY(b[1]) - mercatorY(a[1]);
+        // 朝西走的、正北走的反过来画。
+        const flip = dx < 0 || (Math.abs(dx) < EPS && dy > 0);
+        if (flip) [a, b] = [b, a];
+        const id = `${key(a)}>${key(b)}`;
+        let edge = edges.get(id);
+        if (!edge) {
+          edge = { a, b, angle: angleOf(a, b), sides: [] };
+          edges.set(id, edge);
+        }
+        const inside = insideLeft !== flip ? "left" : "right";
+        if (
+          !edge.sides.some((s) => s.code === label.code && s.inside === inside)
+        ) {
+          edge.sides.push({ ...label, inside });
+        }
+      }
+    }
+  }
+
+  // 按「两侧各是谁」连成段。
+  const signature = (e: Edge) =>
+    e.sides
+      .map((s) => `${s.code}:${s.inside}`)
+      .sort()
+      .join("|");
+  const starts = new Map<string, Edge[]>();
+  const ends = new Map<string, Edge[]>();
+  for (const edge of edges.values()) {
+    const sig = signature(edge);
+    push(starts, `${key(edge.a)}|${sig}`, edge);
+    push(ends, `${key(edge.b)}|${sig}`, edge);
+  }
+  const next = (edge: Edge): Edge | null => {
+    const sig = signature(edge);
+    const out = starts.get(`${key(edge.b)}|${sig}`) ?? [];
+    const into = ends.get(`${key(edge.b)}|${sig}`) ?? [];
+    if (out.length !== 1 || into.length !== 1) return null;
+    return turn(edge.angle, out[0].angle) <= RUN_MAX_TURN ? out[0] : null;
+  };
+  const hasPrev = new Set<Edge>();
+  for (const edge of edges.values()) {
+    const n = next(edge);
+    if (n && n !== edge) hasPrev.add(n);
+  }
+
+  const result: Feature[] = [];
+  const used = new Set<Edge>();
+  const emit = (first: Edge) => {
+    const coordinates: Position[] = [first.a];
+    let edge: Edge | null = first;
+    while (edge && !used.has(edge)) {
+      used.add(edge);
+      coordinates.push(edge.b);
+      edge = next(edge);
+    }
+    for (const side of first.sides) {
+      result.push({
+        type: "Feature",
+        properties: {
+          code: side.code,
+          name: side.name,
+          labelEdge: true,
+          inside: side.inside,
+        },
+        geometry: { type: "LineString", coordinates },
+      });
+    }
+  };
+  // 先从段头开始，剩下的是首尾相接的环。
+  for (const edge of edges.values()) if (!hasPrev.has(edge)) emit(edge);
+  for (const edge of edges.values()) if (!used.has(edge)) emit(edge);
+  return result;
 }
 
-type Run = { coordinates: Position[]; inside: "left" | "right" };
+type Label = { code: string; name?: string };
+type Side = Label & { inside: "left" | "right" };
+type Edge = { a: Position; b: Position; angle: number; sides: Side[] };
+
+function push<T>(map: Map<string, T[]>, k: string, value: T) {
+  const list = map.get(k);
+  if (list) list.push(value);
+  else map.set(k, [value]);
+}
+
+function key([lon, lat]: Position): string {
+  return `${Math.round(lon / EPS)},${Math.round(lat / EPS)}`;
+}
 
 /** 墨卡托下的 y，和经度同一个单位：方向和转角按屏幕上的算。 */
 function mercatorY(lat: number): number {
@@ -113,48 +220,61 @@ function mercatorY(lat: number): number {
   return Math.log(Math.tan(Math.PI / 4 + (lat * rad) / 2)) / rad;
 }
 
-/** 环按走向切成段。`hole` 是内环：范围在它外面。 */
-function ringRuns(ring: Position[], hole: boolean): Run[] {
-  // 鞋带公式：正的是逆时针，范围在走向左边。
-  let area = 0;
-  for (let i = 0; i + 1 < ring.length; i++) {
-    area += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
-  }
-  const insideLeft = area > 0 !== hole;
+function angleOf(a: Position, b: Position): number {
+  return (
+    (Math.atan2(mercatorY(b[1]) - mercatorY(a[1]), b[0] - a[0]) * 180) / Math.PI
+  );
+}
 
-  const runs: Run[] = [];
-  let current: Position[] = [];
-  let currentFlip = false;
-  let currentAngle = 0;
-  const flush = () => {
-    if (current.length < 2) return;
-    const coordinates = currentFlip ? [...current].reverse() : current;
-    runs.push({
-      coordinates,
-      inside: insideLeft !== currentFlip ? "left" : "right",
-    });
-  };
+function turn(from: number, to: number): number {
+  const d = Math.abs(from - to);
+  return d > 180 ? 360 - d : d;
+}
 
-  for (let i = 0; i + 1 < ring.length; i++) {
-    const [ax, ay] = ring[i];
-    const [bx, by] = ring[i + 1];
-    const dx = bx - ax;
-    const dy = mercatorY(by) - mercatorY(ay);
-    if (dx === 0 && dy === 0) continue;
-    // 朝西走的、正北走的反过来画。
-    const flip = dx < 0 || (dx === 0 && dy > 0);
-    const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
-    let turn = Math.abs(angle - currentAngle);
-    if (turn > 180) turn = 360 - turn;
-    if (current.length > 0 && flip === currentFlip && turn <= RUN_MAX_TURN) {
-      current.push(ring[i + 1]);
-    } else {
-      flush();
-      current = [ring[i], ring[i + 1]];
-      currentFlip = flip;
+const CELL = 0.5;
+
+/** 所有顶点按 0.5° 格子分桶，切边时只看边经过的格子。 */
+function vertexGrid(rings: Position[][]): Map<string, Position[]> {
+  const grid = new Map<string, Position[]>();
+  const seen = new Set<string>();
+  for (const ring of rings) {
+    for (const p of ring) {
+      const k = key(p);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      push(grid, `${Math.floor(p[0] / CELL)},${Math.floor(p[1] / CELL)}`, p);
     }
-    currentAngle = angle;
   }
-  flush();
-  return runs;
+  return grid;
+}
+
+/** 边 a→b 在落在它上面的别的顶点处切开，按离 a 的远近排好，首尾是 a 和 b。 */
+function splitAt(
+  a: Position,
+  b: Position,
+  grid: Map<string, Position[]>,
+): Position[] {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const length2 = dx * dx + dy * dy;
+  if (length2 === 0) return [a, b];
+  const hits: { t: number; p: Position }[] = [];
+  const x0 = Math.floor((Math.min(a[0], b[0]) - EPS) / CELL);
+  const x1 = Math.floor((Math.max(a[0], b[0]) + EPS) / CELL);
+  const y0 = Math.floor((Math.min(a[1], b[1]) - EPS) / CELL);
+  const y1 = Math.floor((Math.max(a[1], b[1]) + EPS) / CELL);
+  for (let x = x0; x <= x1; x++) {
+    for (let y = y0; y <= y1; y++) {
+      for (const p of grid.get(`${x},${y}`) ?? []) {
+        const t = ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / length2;
+        if (t <= 0 || t >= 1) continue;
+        const ex = a[0] + t * dx - p[0];
+        const ey = a[1] + t * dy - p[1];
+        if (ex * ex + ey * ey > EPS * EPS) continue;
+        hits.push({ t, p });
+      }
+    }
+  }
+  hits.sort((m, n) => m.t - n.t);
+  return [a, ...hits.map((h) => h.p), b];
 }

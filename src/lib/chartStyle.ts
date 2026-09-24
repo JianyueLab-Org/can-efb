@@ -1235,8 +1235,9 @@ export function buildStyle(theme: Theme): StyleSpecification {
       minzoom: ZOOM.firLabels,
       filter: ["has", "labelEdge"],
       layout: {
-        "symbol-placement": "line",
-        "symbol-spacing": 400,
+        // `line-center` 而不是 `line` + 间距：`line` 的第一个锚点按字长算，两边名字
+        // 长短不一，锚点就错开。段中点对两边一样。
+        "symbol-placement": "line-center",
         "text-keep-upright": false,
         "text-max-angle": 30,
         "text-offset": [
