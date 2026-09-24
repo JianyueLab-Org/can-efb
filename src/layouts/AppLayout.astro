@@ -103,11 +103,6 @@ const crossLinks = buildCrossLinks(t);
     }
     <MapSurface
       label={t("route.map.label")}
-      airwayLabels={{
-        off: t("map.airways.off"),
-        high: t("map.airways.high"),
-        low: t("map.airways.low"),
-      }}
       cid={user?.id ?? null}
       t={{
         partial: t("map.partial"),
@@ -123,6 +118,7 @@ const crossLinks = buildCrossLinks(t);
         webgl: t("map.failure.webgl"),
       }}
       layerLabels={{
+        airways: t("map.layers.airways"),
         firs: t("map.layers.firs"),
         navaids: t("map.layers.navaids"),
         mora: t("map.layers.mora"),

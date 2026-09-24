@@ -102,20 +102,35 @@ function coordinate(v: unknown): number {
 const VIEW_PAD_KM = 15;
 
 /**
- * 机场索引 → 地图上的齿轮点。
+ * 机场索引 → 地图上的机场点。
  *
  * **整份都给，不按视野裁。** 433 个点对 MapLibre 是小数目，而按视野裁意味着每次
  * 平移都要重算一遍 GeoJSON 并 `setData` —— 那比让它一直画着贵得多。出不出现由图层
  * 的 `minzoom` 管，那是渲染的事。
  */
-export function toAirportPoints(pins: AirportPin[]): FeatureCollection {
+export function toAirportPoints(
+  pins: AirportPin[],
+  runways?: Map<string, { bearing: number; major: boolean }>,
+): FeatureCollection {
   return {
     type: "FeatureCollection",
-    features: pins.map((p) => ({
-      type: "Feature",
-      geometry: { type: "Point", coordinates: [p.lon, p.lat] },
-      properties: { icao: p.icao, name: p.name ?? "" },
-    })),
+    features: pins.map((p) => {
+      /* 跑道概况（`lib/runways.ts` 的 `airportRunwaySummary`）决定两件事：低缩放下画
+       * 不画（`major`），以及跑道杠符号转多少度（`rwyHdg`）。没有跑道数据的机场画一个
+       * 圆，不冒充朝向。 */
+      const rwy = runways?.get(p.icao);
+      return {
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [p.lon, p.lat] },
+        properties: {
+          icao: p.icao,
+          name: p.name ?? "",
+          major: rwy?.major ? 1 : 0,
+          hasRwy: rwy ? 1 : 0,
+          rwyHdg: rwy ? Math.round(rwy.bearing) : 0,
+        },
+      };
+    }),
   };
 }
 

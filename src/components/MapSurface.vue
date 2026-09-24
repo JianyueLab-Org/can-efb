@@ -42,12 +42,11 @@ import {
   type MapPoint,
 } from "@/lib/mapBus";
 import {
-  fetchAirways,
+  fetchAirwayNetwork,
   toAirwayLines,
   toAirwayFixes,
   routeLegKeys,
   markRouteOnAirways,
-  type AirwayLevel,
 } from "@/lib/airways";
 import {
   fetchNavaids,
@@ -76,7 +75,13 @@ import {
   airportsInView,
   toAirportPoints,
 } from "@/lib/airports";
-import { fetchRunways, toRunwayFeatures } from "@/lib/runways";
+import {
+  airportRunwaySummary,
+  fetchRunways,
+  toRunwayFeatures,
+} from "@/lib/runways";
+import { MAJOR_AIRPORT_MIN_RUNWAY_M, ZOOM } from "@/lib/chartStyle";
+import { appendTrack, toTrackLine, type OwnTrack } from "@/lib/ownTrack";
 import {
   fetchDatafeed,
   hasPosition,
@@ -96,8 +101,6 @@ import { unwrapList } from "@/lib/aip";
 const props = defineProps<{
   /** 地图角上的说明，已翻译。 */
   label: string;
-  /** 航路图层开关的三个文案（关 / 高空 / 低空），已翻译。 */
-  airwayLabels: { off: string; high: string; low: string };
   /**
    * 自己的 CAN ID。没登录是 null。
    *
@@ -107,6 +110,8 @@ const props = defineProps<{
   cid: string | null;
   /** 其余图层开关的文案，已翻译。 */
   layerLabels: {
+    /** 航路。高低空按缩放自动切换，只有开和关。 */
+    airways: string;
     firs: string;
     navaids: string;
     mora: string;
@@ -149,11 +154,9 @@ const RouteMap = defineAsyncComponent({
   },
 });
 
-/** 见 setAirwayLevel 上面的注释：跨组件重建保留。 */
-const airwayCache = new Map<
-  AirwayLevel,
-  { lines: FeatureCollection; fixes: FeatureCollection }
->();
+/** 见 toggleAirways 上面的注释：跨组件重建保留。 */
+let airwayCache: { lines: FeatureCollection; fixes: FeatureCollection } | null =
+  null;
 
 /**
  * 图层偏好存 localStorage。
@@ -167,7 +170,11 @@ const airwayCache = new Map<
 const PREF_KEY = "efb.map.layers";
 
 interface LayerPrefs {
-  airway: AirwayLevel | "off";
+  /**
+   * 航路开关。以前是 `airway: "off" | "high" | "low"` 的三选一，读旧偏好时折算：
+   * 不是 `off` 就算开（见 `readPrefs`）。
+   */
+  airways: boolean;
   firs: boolean;
   mora: boolean;
   /**
@@ -197,7 +204,7 @@ interface LayerPrefs {
  * 一起会把线糊掉，要看的人自己开。
  */
 const DEFAULT_PREFS: LayerPrefs = {
-  airway: "high",
+  airways: true,
   firs: true,
   // **默认关。** 它是全图铺满的数字，和航路点、导航台标注抢同一片空白 —— 开着
   // 好看，但要读航路的时候是噪音。需要它的人（雷达引导、绕飞、备降）自己开。
@@ -219,7 +226,13 @@ function readPrefs(): LayerPrefs {
   try {
     const raw = localStorage.getItem(PREF_KEY);
     if (!raw) return { ...DEFAULT_PREFS };
-    return { ...DEFAULT_PREFS, ...(JSON.parse(raw) as Partial<LayerPrefs>) };
+    const saved = JSON.parse(raw) as Partial<LayerPrefs> & { airway?: string };
+    // 旧的三选一偏好：`off` 以外都是开。折算后丢掉旧键，下次写回时就是新形状。
+    if (typeof saved.airway === "string" && saved.airways === undefined) {
+      saved.airways = saved.airway !== "off";
+    }
+    delete saved.airway;
+    return { ...DEFAULT_PREFS, ...saved };
   } catch {
     return { ...DEFAULT_PREFS };
   }
@@ -291,39 +304,39 @@ const focus = ref<MapPoint | null>(null);
 const label = ref(props.label);
 
 /**
- * 航路图层：关 / 高空 / 低空。
+ * 航路图层：开 / 关。
  *
- * **按需拉，而且拉过的留着。** 整张全国航路网是几百 KB，默认关着 —— 大多数时候
- * 人是来看自己那条航路的，不是来看全国的网。切回已经拉过的那一层不该再打一次
- * 接口，所以按 level 缓存。
+ * **高低空两层一次取齐，按缩放决定画哪层**：缩小只有高空（和两层都有的），放大
+ * 加上低空（门槛在 `lib/chartStyle.ts` 的 `ZOOM`）。以前是一个高空 / 低空的三选
+ * 一，而人在缩放时想要的正是这件事自动发生。
  *
- * 缓存放在组件外的模块作用域：这块地图跨页面存活，但保活失败时组件会重建，那时
- * 缓存还在就不必重拉。
+ * **按需拉，而且拉过的留着。** 整张全国航路网是几百 KB。缓存放在模块作用域：这块
+ * 地图跨页面存活，但保活失败时组件会重建，那时缓存还在就不必重拉。
  */
-const airwayLevel = ref<AirwayLevel | "off">("off");
+const showAirways = ref(false);
 const prefs = { ...DEFAULT_PREFS };
 const airways = ref<FeatureCollection | null>(null);
 const airwayFixes = ref<FeatureCollection | null>(null);
 const airwayBusy = ref(false);
 
-async function setAirwayLevel(level: AirwayLevel | "off") {
-  airwayLevel.value = level;
-  prefs.airway = level;
+async function toggleAirways(on = !showAirways.value) {
+  showAirways.value = on;
+  prefs.airways = on;
   writePrefs(prefs);
-  if (level === "off") {
+  if (!on) {
     airways.value = null;
     airwayFixes.value = null;
+    refreshHighlight();
     clearNotice("airways");
     return;
   }
 
-  const cached = airwayCache.get(level);
-  if (cached) {
-    airways.value = cached.lines;
-    airwayFixes.value = cached.fixes;
+  if (airwayCache) {
+    airways.value = airwayCache.lines;
+    airwayFixes.value = airwayCache.fixes;
     refreshHighlight();
-    // 缓存命中也要判一次空：空的那一层缓存的正是"空"，而提示不该只在第一次出现。
-    if (cached.lines.features.length) clearNotice("airways");
+    // 缓存命中也要判一次空：缓存的正是"空"，而提示不该只在第一次出现。
+    if (airwayCache.lines.features.length) clearNotice("airways");
     else setNotice("airways", props.t.emptyAirways);
     return;
   }
@@ -331,25 +344,25 @@ async function setAirwayLevel(level: AirwayLevel | "off") {
   if (deniedThisSession) return;
   airwayBusy.value = true;
   try {
-    const graph = await fetchAirways(level);
+    const graph = await fetchAirwayNetwork();
     const lines = toAirwayLines(graph);
     // 航路点和线一起来一起走：它们是同一份图的两个面，分开缓存迟早不同步。
     const fixes = toAirwayFixes(graph);
-    airwayCache.set(level, { lines, fixes });
+    airwayCache = { lines, fixes };
+    // 取的途中被关掉了：数据照样缓存，但不许把图层写回来。
+    if (!showAirways.value) return;
     airways.value = lines;
     refreshHighlight();
     airwayFixes.value = fixes;
 
-    // **取回来是空的，不是失败。** 所以不退回"关"：开关停在这一层是对的，人确实
-    // 选了它，只是这一层今天没有数据。退回"关"反而会让人以为自己没点上。
+    // **取回来是空的，不是失败。** 开关留在打开状态，用一句话说明它为什么空。
     if (lines.features.length) clearNotice("airways");
     else setNotice("airways", props.t.emptyAirways);
   } catch (error) {
-    // 这一层是用户明确打开的，不是装饰性底图 —— 失败要说话，而且要退回"关"，
-    // 否则开关停在"高空"上却什么都没画，看起来像这一带没有航路。
+    // 用户明确打开的图层，失败要说话并退回关，否则开关亮着却什么都没画。
     if (isDenied(error)) noteDenied();
     console.error("[efb:map] 航路网加载失败:", error);
-    airwayLevel.value = "off";
+    showAirways.value = false;
     airways.value = null;
     airwayFixes.value = null;
     highlightedLegs.value = null;
@@ -416,7 +429,7 @@ const mora = ref<FeatureCollection | null>(null);
  *     米；分好类的那份是米级的，给它标精度反而误导。
  */
 /**
- * 全部机场的齿轮点。**没有开关，也不按视野裁** —— 见 lib/airports.ts。
+ * 全部机场的点。**没有开关，也不按视野裁** —— 见 lib/airports.ts。
  *
  * 缩放阶梯上它排在情报区之后、航路之前：缩到最小只剩情报区，放一级先看到「这一片
  * 有哪些机场」。出不出现由图层的 minzoom 管，这里只负责把点备好。
@@ -486,6 +499,12 @@ const atc = ref<FeatureCollection | null>(null);
 /** 区域 / 进近 / FSS 管的那片空域。画成范围，不是点。 */
 const atcAreas = ref<FeatureCollection | null>(null);
 const own = ref<FeatureCollection | null>(null);
+/**
+ * 自己的航迹，从每一轮轮询里攒（`lib/ownTrack.ts`）。只活在这次会话；关掉机组那层
+ * 时只是不画，攒下的留着 —— 断得太久的话 `appendTrack` 自己会重新开始。
+ */
+let track: OwnTrack | null = null;
+const ownTrack = ref<FeatureCollection | null>(null);
 /** 在线管制席位数，给按钮上那个角标用。 */
 const atcCount = ref(0);
 /**
@@ -559,6 +578,10 @@ async function refreshLive() {
               callsign: mine.callsign,
             }
           : null;
+      if (ownAt.value) {
+        track = appendTrack(track, { ...ownAt.value, at: Date.now() });
+        ownTrack.value = toTrackLine(track);
+      }
     }
     // 关着就保证是空的，而不只是不画：清空本来由关掉那一下做，这里兜一次底。
     if (!showAtc.value) {
@@ -633,6 +656,7 @@ async function toggleLive(which: "traffic" | "atc") {
       traffic.value = null;
       own.value = null;
       ownAt.value = null;
+      ownTrack.value = null;
     } else {
       clearAtc();
     }
@@ -784,34 +808,38 @@ async function onViewport(v: {
 /**
  * 每一层各自的取数门槛，**和它自己的 `minzoom` 一致**。
  *
- * 从前这些是一进页面就无条件拉的 —— 而地图的开图视野是 z3，那时候机场齿轮（z5）和
- * 跑道（z7）一个像素都画不出来。于是**每打开任何一页都要为看不见的东西付两次请
+ * 从前这些是一进页面就无条件拉的 —— 而地图的开图视野是 z3，那时候机场和跑道一个
+ * 像素都画不出来。于是**每打开任何一页都要为看不见的东西付两次请
  * 求**，而这块地图是常驻的，每一页都会经历一次。
  *
  * 现在按需要才取。门槛必须和图层的 `minzoom` 对齐：定得比它高，会出现「层该显示
  * 了、数据还没到」的空窗；定得低，就退回成白拉。
  */
 const NEED_ZOOM = {
-  /** 机场齿轮，`airport-gear` 的 minzoom。 */
-  airports: 5,
-  /** 跑道，`runways` 的 minzoom。 */
-  runways: 7,
+  /**
+   * 主要机场的符号（`airport-symbols` 的 minzoom）。**跑道也在这一级取**：哪个机场
+   * 算主要、跑道杠朝哪，都是从跑道数据算的（整库 34 kB）。
+   */
+  airports: ZOOM.airportMajor,
 } as const;
 
 /**
  * 按当前缩放，把该有的底数据补上。
  *
- * 三份数据各自记住自己取没取过（`fetchAirportPins` / `fetchRunways` 内部就有那道
+ * 两份数据各自记住自己取没取过（`fetchAirportPins` / `fetchRunways` 内部就有那道
  * 闸），所以这里重复调是廉价的 —— `moveend` 每次都会调。
  */
 async function loadForZoom(zoom: number) {
-  if (zoom >= NEED_ZOOM.airports && !airports.value) {
-    const pins = await fetchAirportPins();
-    if (pins.length) airports.value = toAirportPoints(pins);
-  }
-  if (zoom >= NEED_ZOOM.runways && !runways.value) {
-    const list = await fetchRunways();
-    if (list.length) runways.value = toRunwayFeatures(list);
+  if (zoom < NEED_ZOOM.airports || (airports.value && runways.value)) return;
+  const [pins, list] = await Promise.all([fetchAirportPins(), fetchRunways()]);
+  if (list.length && !runways.value) runways.value = toRunwayFeatures(list);
+  /* 跑道没取到时机场照样画（全部按非主要机场、画圆），下次视野变化再试一次跑道，
+   * 取到后重建一遍机场点，把主要机场和跑道杠补上。 */
+  if (pins.length && (!airports.value || list.length)) {
+    airports.value = toAirportPoints(
+      pins,
+      airportRunwaySummary(list, MAJOR_AIRPORT_MIN_RUNWAY_M),
+    );
   }
 }
 
@@ -1264,7 +1292,7 @@ onMounted(() => {
   // 不 await：地图不该等航路网下载完才出现，底图和航路是两条独立的线。
   const saved = readPrefs();
   Object.assign(prefs, saved);
-  if (saved.airway !== "off") void setAirwayLevel(saved.airway);
+  if (saved.airways) void toggleAirways(true);
   if (saved.firs) void toggleFirs();
   if (saved.mora) void toggleMora();
   // 两层各自恢复。**不调两遍 toggleLive**：两层共用一次取数，直接把状态摆好、
@@ -1338,6 +1366,7 @@ onBeforeUnmount(() => {
       :atc="atc"
       :atc-areas="atcAreas"
       :own="own"
+      :own-track="ownTrack"
       @viewport="onViewport"
       :airspaces="airspaces"
       :label="label"
@@ -1357,24 +1386,19 @@ onBeforeUnmount(() => {
       右边是地图，把它整个换成文字等于把前提拿掉。
     -->
     <!--
-      航路图层开关。放在地图上而不是面板里：地图是跨页面常驻的，而面板每换一页就
+      图层开关。放在地图上而不是面板里：地图是跨页面常驻的，而面板每换一页就
       整个换掉 —— 开关跟着面板走的话，切一页图层状态就没人管了。
     -->
     <div class="map-layers card">
       <button
-        v-for="opt in ['off', 'high', 'low'] as const"
-        :key="opt"
         type="button"
         class="map-layer-btn"
-        :class="airwayLevel === opt ? 'is-on' : ''"
+        :class="showAirways ? 'is-on' : ''"
         :disabled="airwayBusy"
-        @click="setAirwayLevel(opt)"
+        @click="toggleAirways()"
       >
-        {{ airwayLabels[opt] }}
+        {{ layerLabels.airways }}
       </button>
-    </div>
-
-    <div class="map-layers map-layers-2 card">
       <button
         type="button"
         class="map-layer-btn"

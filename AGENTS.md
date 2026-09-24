@@ -196,12 +196,12 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 | `src/components/ui/ThemeLangControls.vue` | 含视图过渡的圆形擦除                                                                                                                                                         |
 | `src/components/ThemeScript.astro`        | 无闪烁主题初始化                                                                                                                                                             |
 | `src/components/icons.ts`                 | **前 47 个键**逐字相同；本站新增的在末尾 `can-efb only` 一段                                                                                                                 |
-| `src/styles/globals.css`                  | **前 957 行**逐字等于 can-radar（Leaflet 那两百行没抄）；本站新增的在末尾 `can-efb only` 一节                                                                                |
+| `src/styles/globals.css`                  | 设计系统来自 `@jianyuelab-org/can-ui/styles`（一行 import）；本站新增的在其后 `can-efb only` 一节                                                                            |
 | `src/lib/geo.ts`                          | `distanceNm` / `greatCircle` / `arc` 逐字取自 can-radar 的 `radar.ts` 与 `RadarMap.vue`                                                                                      |
 | `src/lib/atc.ts`                          | `FACILITY_COLORS` / `facilityRank` / `stationAirport` / `parseFeedTime` 逐字取自 can-radar 的 `radar.ts`；`groupControllers` 是它 `RadarMap.vue` 里 `groupStations` 的列表版 |
 | `src/lib/traffic.ts`                      | 高度色带 / `altitudeBand` / `isOnGround` / `flightLevel` 逐字取自 can-radar 的 `radar.ts`（它又源自 vatsim-radar）                                                           |
 
-前两个文件都按「上游部分在前、本站部分在末尾单独一节」切开，就是为了同步时可以
+`icons.ts` 和 `globals.css` 都按「上游部分在前、本站部分在末尾单独一节」切开，就是为了同步时可以
 整段替换上半截。
 
 `geo.ts` 是**复制**，不是共享包：两个站分属不同仓库、不同 CI，为三个纯函数拉一
@@ -258,8 +258,8 @@ datafeed 给的那个经纬度是**管制员自己的视野中心** —— 既�
 带，也就是同一份读图习惯。
 
 **这套色带跟主题走，席位色不跟。** viridis 有深浅两条，切主题要一起换；而席位色是
-身份编码，两套主题下必须是同一个红。两者在 `applyTheme` 里的待遇因此相反，别顺手统
-一。
+身份编码，两套主题下必须是同一个红。两者都由 `buildStyle(theme)` 给出：色带按主题
+取，席位色两套相同。
 
 三处判断有测试钉着：
 
@@ -325,6 +325,63 @@ datafeed 给的那个经纬度是**管制员自己的视野中心** —— 既�
 `SidebarNav.vue` 虽然形状来自 can-web，但把可折叠的 `children` 换成了**扁平分
 节** —— 理由见 `src/lib/nav.ts`：轨能收成图标态，而手风琴在图标态下没有讲得通
 的交互（点一个图标是展开还是跳转？）。
+
+## 航图样式（`lib/chartStyle.ts`）
+
+地图的外观全部在 `src/lib/chartStyle.ts`。`RouteMap.vue` 只读它，不写颜色、线宽、门槛。
+
+| 常量 / 函数                  | 内容                                                                    |
+| ---------------------------- | ----------------------------------------------------------------------- |
+| `COLORS`                     | 浅色、夜间两套颜色，各自写全，不做反色。语义色同色相，只调明度          |
+| `ZOOM`                       | 每类要素从哪一级出现。`MapSurface` 的取数门槛也读它                     |
+| `WIDTH` / `OPACITY`          | 线宽、透明度，`[缩放, 值]` 锚点                                         |
+| `TEXT` / `ICON`              | 字号、图标尺寸                                                          |
+| `AIRSPACE`                   | 空域平涂透明度、斜线图块参数、危险区虚线                                |
+| `MAJOR_AIRPORT_MIN_RUNWAY_M` | 主要机场门槛（最长跑道，米），默认 2500                                 |
+| `buildStyle(theme)`          | 整份 MapLibre 样式                                                      |
+| `themedProperties(theme)`    | 每个图层的每个 paint / layout 属性；`RouteMap` 切主题时比对后设，无清单 |
+
+席位色（`lib/atc.ts`）和高度色带（`lib/traffic.ts`）不在 `COLORS` 里。
+
+**图层顺序**，自下而上：底图 → 机场地面 → 空域填充 → 空域和情报区边界 → 航路 →
+计划航线 → 航路点 / 导航台 / 机场符号 → 标注 → 在线机组 → 自己的航迹 → 自己。
+
+**标注优先级**靠图层顺序（MapLibre 先放上面的）：机场 > 导航台 > 航路代号 > 航路
+点；同层内用 `symbol-sort-key`。除 `own` 和 `route-labels` 外所有标注参与避让。标注
+层带一份透明的同款图标，下面的标注绕开符号。航路代号每段一个（`line-center`）。
+
+**默认缩放门槛**：
+
+| 要素                  | 符号 | 标注 |
+| --------------------- | ---- | ---- |
+| 主要机场              | 4    | 5    |
+| 其余机场              | 6    | 7    |
+| 跑道线（接替跑道杠）  | 7    | 9    |
+| 高空航路（high）      | 6    | 8    |
+| 低空航路（low、both） | 8    | 8    |
+| VOR 一族              | 6    | 7    |
+| NDB、DME、未知台型    | 8    | 9    |
+| 航路点                | 8    | 9    |
+
+**符号**在 `lib/chartIcons.ts` 用 canvas 画，两套主题各一份，颜色画进图里。飞机是
+SDF（`icon-color` 着色）。注册的图片名由 `chartStyle.test.ts` 对照 `allImageIds()`。
+
+**分类映射**在 `lib/aip.ts`：`navaidClass`（can-db 的 `kind`：`VOR/DME`、`VOR`、
+`DME`、`NDB`；`TACAN`、`VORTAC` 预留）和 `airspaceClass`（`restricted` 族的 `P` 禁
+区 / `R` 限制区 / `D` 危险区）。禁区、限制区画斜线；危险区画虚线边加淡平涂。
+
+**航路只有一个开关。** 高低空一起取（`fetchAirwayNetwork`）：can-db 的响应不带层
+级，按 `?level=high` 和 `?level=low` 各取一次，两边都有的记为 `both`。缩小时只画 `high`；`both` 和 `low` 到 `ZOOM.airwaysLow` 才出现。航路点取连着它的航段里最高的一级。旧偏好
+`airway: "off" | "high" | "low"` 在 `readPrefs` 里折算成 `airways: boolean`。
+
+**主要机场**由 `/aip/runways` 算（`airportRunwaySummary`），所以机场和跑道在
+`ZOOM.airportMajor` 一起取。跑道杠按两端坐标的真方位转，不用磁航向 `hdg`。
+
+**自己的航迹**在 `lib/ownTrack.ts`，从 30 秒轮询攒，只活在本次会话；换呼号、断开超
+过 3 分钟、平均地速超过 1200 kt 时重新开始，最多 720 个点。不走 `/api/v1/track`。
+
+**校验**：`check:style` import `buildStyle`，两套主题各验一次。`chartStyle.test.ts`
+钉图层顺序、两套主题结构一致、引用的图片都已注册、按缩放的过滤结果。
 
 ## 跑道与进离场程序（`lib/procedures.ts` + `ProcedurePicker.vue`）
 
@@ -455,9 +512,10 @@ cookie 名是 **`NEXT_LOCALE`**，Next.js 时代留下来的；四个站共用�
    `toAirwayLines` 得到 0 个要素，一路顺畅地画出一张空图
 
 第 3 种正是线上真实发生过的：can-db 的航段 `level` 一列全是默认值，高空视图因此返
-回 0 条（那个仓库的 TODO 里有整节）。而这个站的航路图层**默认就开在高空**
+回 0 条（那个仓库的 TODO 里有整节）。而这个站的航路图层**默认是开的**
 （`MapSurface.vue` 的 `DEFAULT_PREFS`）—— 于是打开航图，一条航路都没有，控制台一
-个字都没有，看起来像**地图坏了**而不是**这一层没有数据**。
+个字都没有，看起来像**地图坏了**而不是**这一层没有数据**。（现在高低空一起取，见
+〈航图样式〉。）
 
 现在三种都会说话，走 `MapSurface.vue` 里的 `notice`（文案在 `map.emptyLayer.*` 和
 `map.denied`）。两条规矩：
@@ -503,9 +561,10 @@ cookie 名是 **`NEXT_LOCALE`**，Next.js 时代留下来的；四个站共用�
 ```bash
 bun install
 bun run dev          # :4324；后台跑用 bunx astro dev --background
-bun run lint         # format:check + astro check + vue-tsc + check:i18n + bun test，CI 的门就是这个
+bun run lint         # format:check + astro check + vue-tsc + check:i18n + check:style + bun test，CI 的门就是这个
 bun run test         # 只跑测试
 bun run check:i18n   # 查 t("…") 的键在不在词典里，以及四本词典对不对得齐
+bun run check:style  # 两套主题的地图样式过 MapLibre 校验器
 bun run build
 PUBLIC_ORIGIN=http://localhost:4324 bun run preview   # 预览构建产物，前缀别省
 ```
@@ -554,7 +613,7 @@ zh-cn，英文、繁体、日文三个站当场开始把键名画到屏幕上，
 只是**中文用户永远看不到**，于是没人会报。
 
 也就是说「先加中文，翻译以后再补」不是欠一笔债，是当场就坏。四本今天是齐的（各
-211 个键），这道闸让它保持齐。多出来的键也报：那多半是改键名时漏改了一本，只查
+247 个键），这道闸让它保持齐。多出来的键也报：那多半是改键名时漏改了一本，只查
 "缺"会看到一边缺一边多却只报一半。
 
 **预览构建产物时 `PUBLIC_ORIGIN` 不能省。** 写操作要比对 Origin 头，比对的

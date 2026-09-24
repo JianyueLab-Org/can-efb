@@ -26,6 +26,11 @@
  * `window`。`MapSurface` 用 `defineAsyncComponent` + `mounted` 守着它 —— 改成静态
  * import，**每一个**页面都会 500（这块地图挂在外壳上，不再只是 `/route`）。
  *
+ * ## 样式在 `lib/chartStyle.ts`
+ *
+ * 颜色、线宽、字号、缩放门槛、图层顺序全在那一个文件里，这里只把它交给 MapLibre、
+ * 灌数据、切主题。符号是 `lib/chartIcons.ts` 画的。
+ *
  * ## 契约没变
  *
  * props 仍然是 `points`（连成线的航路）/ `markers`（只画点）/ `focus`（对镜头），
@@ -46,50 +51,15 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import type { Feature, FeatureCollection } from "geojson";
 import { arc, type LatLon } from "@/lib/geo";
-import { FACILITY_COLORS } from "@/lib/atc";
-import { altitudeRamp } from "@/lib/traffic";
 import { legKey } from "@/lib/airways";
-import { GROUND_MIN_ZOOM } from "@/lib/ground";
 import { escapeHtml, formatLatLon } from "@/lib/mapText";
-
-/**
- * 航班按高度档取色的 MapLibre 表达式。
- *
- * 要素上带的是 `band`（第几档），分档规则在 `lib/traffic.ts` 里算好 —— 这里只做
- * 「第几档 → 什么颜色」这一步查表。分档是产品判断，写成 `step` 表达式等于把它抄成
- * 第二份。
- *
- * **和席位色不同，这一套跟主题走**：viridis 有深浅两条，切主题时要一起换（见
- * `applyTheme`）。席位色是身份编码所以不换，高度色是读数所以要在两种底色上都读得
- * 出来。
- */
-function altitudeBandColor() {
-  const ramp = altitudeRamp(isDark() ? "dark" : "light");
-  const cases: (string | number)[] = [];
-  ramp.forEach((color, band) => cases.push(band, color));
-  // 兜底取最低那一档：`band` 缺失时给一个真的颜色，而不是让整条表达式失效。
-  return ["match", ["get", "band"], ...cases, ramp[0]];
-}
-
-/**
- * 管制点按 `facility` 分色的 MapLibre 表达式。
- *
- * 用 `match` 而不是在 JS 里把颜色写进要素属性：颜色是显示规则，写进数据之后每 30
- * 秒刷新一次实时图层就要重算一遍几百个要素的颜色，而规则本身根本没变。
- *
- * **这批颜色不跟主题走**，和图上别的东西不一样。它们是席位的身份色（塔台红、地面
- * 绿、进近橙……），深浅两套主题下都得是同一个红 —— 换一套色就等于换一套编码，而
- * 这份编码是和 can-radar 共用的，那边的图例也照着它。
- */
-function facilityCircleColor() {
-  const cases: (string | number)[] = [];
-  for (const [facility, color] of Object.entries(FACILITY_COLORS)) {
-    cases.push(Number(facility), color);
-  }
-  // 末尾是兜底色：datafeed 里出现一个没见过的 facility 时画成 OBS 的灰，而不是让
-  // 整条表达式失效把这一层弄没。
-  return ["match", ["get", "facility"], ...cases, FACILITY_COLORS[0]];
-}
+import {
+  buildStyle,
+  themedProperties,
+  ZOOM,
+  type Theme,
+} from "@/lib/chartStyle";
+import { registerChartIcons } from "@/lib/chartIcons";
 
 /**
  * **告诉 MapLibre 它的 worker 在哪，否则整块地图是死的。**
@@ -197,7 +167,7 @@ const props = defineProps<{
    * 画两遍、位置差十几米，读图的人无法判断该信哪条。
    */
   /**
-   * 全部机场，画成齿轮加 ICAO。
+   * 全部机场，画成跑道杠符号加 ICAO（属性见 `lib/airports.ts` 的 `toAirportPoints`）。
    *
    * 和 `markers` 不是一回事：`markers` 是「面板挑出来给你看的那几个」，这一层是
    * **底图的一部分** —— 缩放到一定程度就该有，不需要谁去点。
@@ -208,8 +178,9 @@ const props = defineProps<{
   /**
    * 计划里**真正在航路网上点亮了**的那些腿。
    *
-   * 这一层据此决定 z6 以上**由谁画**它们（航路网点亮，计划线让位），不是据此把它
-   * 们丢掉 —— 丢掉的话 z6 以下就没人画了，见 routeLines 上面那段。
+   * 这一层据此决定 `ZOOM.airwaysHigh` 以上**由谁画**它们（航路网点亮，计划线让
+   * 位），不是据此把它们丢掉 —— 丢掉的话那一级以下就没人画了，见 routeLines 上面
+   * 那段。
    *
    * 是「标到的」而不是「有 via 的」：同上。
    */
@@ -224,7 +195,7 @@ const props = defineProps<{
   extraAttribution?: string[];
   /** 导航台。 */
   navaids?: FeatureCollection | null;
-  /** 空域多边形（扇区与限制区，按 family 分色）。 */
+  /** 空域多边形（扇区与限制区，按 `cls` 分色，见 `lib/aip.ts` 的 `airspaceClass`）。 */
   airspaces?: FeatureCollection | null;
   /**
    * 飞行情报区边界。
@@ -264,6 +235,8 @@ const props = defineProps<{
   atcAreas?: FeatureCollection | null;
   /** 自己那架飞机，至多一个要素。 */
   own?: FeatureCollection | null;
+  /** 自己这次会话的航迹，一条线（`lib/ownTrack.ts`）。 */
+  ownTrack?: FeatureCollection | null;
   label: string;
   /**
    * 地图起不来时显示的两句话，**已翻译**。
@@ -316,129 +289,6 @@ import LAND_URL from "@/basemap/land-50m.json?url";
 import LAND_DETAIL_URL from "@/basemap/land-10m.json?url";
 import BORDERS_URL from "@/basemap/borders-10m.json?url";
 
-/**
- * 两套配色。深色那套按航路图来：**陆地纯黑、海洋深蓝**，线条压到刚好看得见。
- *
- * 网格线比陆地边界更淡 —— 它是刻度不是内容，抢了注意力就本末倒置。
- */
-const PALETTE = {
-  dark: {
-    ocean: "#0a1628",
-    land: "#000000",
-    landLine: "#1b2836",
-    grid: "#1e2a38",
-    /* 国界。比海岸线暗一档、而且画成虚线 —— 政治边界在航图上从来不是主角，它只
-     * 负责回答「这是哪个国家」。实线会和海岸线抢，而两者常常挨着走。 */
-    border: "#2b3a4a",
-    /* 生成出来的航路。**必须比航路网亮一个量级**：以前它是 #7ab8e0，而航路网
-     * 的高空色是 #6fa8cc —— 同一个色系、亮度也接近，只有一倍宽度差，压在八千段
-     * 网上根本认不出哪条是自己刚算出来的那条。
-     *
-     * 配一条深色的**衬线**（routeCasing）压在下面，这是航图和路网图的通行做法：
-     * 让线自带一圈"沟"，无论它穿过什么都还分得开 —— 光加宽加亮做不到这件事。 */
-    route: "#a8e6ff",
-    routeCasing: "#06131f",
-    marker: "#cfe4f2",
-    // 航路按**代号首字母**分色，这是航图的通行约定：
-    //   V           低空航路
-    //   A / B / G   高空与国际航路
-    //   其余        J / P / R / W 等
-    // 类别就在代号里，不需要等 can-db 的 locType —— 那一列是汇编给的中文
-    // 分类（「国内对外开放航路」之类），和这里的字母分类是两回事。
-    airwayV: "#d8e6ef",
-    airwayHigh: "#6fa8cc",
-    airwayOther: "#4a6b82",
-    label: "#9db4c4",
-    navaid: "#e6f0f7",
-    // 区域管制用浅蓝、进近用青绿、限制区用粉红 —— 照航图的惯例，几类一眼要分
-    // 得开。区域和进近分成两色是因为它们本来就是两件事：一个管巡航段，一个管进
-    // 离场，而且进近整个套在区域里面，同色的话嵌套处根本读不出边界。
-    sector: "#5f93b5",
-    approach: "#6fbfa8",
-    restricted: "#d98a9a",
-    // 情报区边界是**底子**，不是叠加物：偏灰，压在所有内容之下，只负责说清
-    // 这一片归谁管。太亮会和航路抢，而它铺满整张图。
-    fir: "#4c6478",
-    // Grid MORA 用绿色，这是航图的惯例 —— 图上没有第二样东西是绿的，所以它
-    // 一眼就和航路、导航台、边界分得开，哪怕挤在一起。
-    mora: "#5fa86a",
-    // 实时那三层。**自己那架最亮**，这是整层的重点：一眼能在满屏静态数据里找
-    // 到自己。其余航班压到刚好看得见，管制席位用琥珀色 —— 图上另一个没被占用
-    // 的色相。
-    own: "#ffd166",
-    traffic: "#8fa6b8",
-    atc: "#e8934a",
-    /* 机场地面，只在放大之后出现。
-     *
-     * **跑道最亮，其余压下去。** 放到这个尺度上时，读图的人找的是跑道 —— 滑行道
-     * 和机坪是它的上下文，不是主角。机位和等待位置画成点，因为源数据里它们本来
-     * 就常常只有一个点（扇区包那份有 733 个等待位置是点）。
-     *
-     * 和航路网那几色刻意错开色相：地面和航路会在同一个画面里同时出现，同色系会
-     * 让「这条是滑行道还是航路」变成一道需要思考的题。 */
-    /* 机场。**自己一个色相，和别的符号全都错开** —— 航路点、导航台是白线画，航路
-     * 是蓝灰，Grid MORA 绿，自己那架琥珀，管制席位橙。紫留给机场：挤在一起时颜色
-     * 就够分辨，不用先看清是三角还是齿轮。 */
-    airport: "#b9a3e8",
-    groundRunway: "#cdd8e0",
-    groundTaxiway: "#7d8f9c",
-    groundApron: "#3a4854",
-    groundStand: "#9aa8b4",
-    groundHold: "#d98a9a",
-  },
-  light: {
-    ocean: "#dde5ea",
-    land: "#f4f5f3",
-    landLine: "#c8d2d8",
-    grid: "#cbd5db",
-    border: "#b3bfc7",
-    route: "#0b5f96",
-    routeCasing: "#ffffff",
-    marker: "#1d4e70",
-    airwayV: "#5c7180",
-    airwayHigh: "#2f6f9e",
-    airwayOther: "#8aa4b5",
-    label: "#5a6b78",
-    navaid: "#1d4e70",
-    sector: "#4a7fa3",
-    approach: "#2f8a70",
-    restricted: "#b45a6d",
-    fir: "#93a7b5",
-    mora: "#3d7a48",
-    own: "#b8860b",
-    traffic: "#6b8395",
-    atc: "#b8622a",
-    airport: "#6b4fa8",
-    groundRunway: "#4a5b68",
-    groundTaxiway: "#8fa0ad",
-    groundApron: "#c4cdd4",
-    groundStand: "#7b8b98",
-    groundHold: "#b45a6d",
-  },
-};
-
-/**
- * 按代号首字母挑颜色。`slice` 取第一个字母，`match` 分三档。
- *
- * 表达式而不是在 JS 里预先算好写进 properties：颜色跟主题走，主题一变只要换这
- * 个表达式里的三个色值，不必把几千条要素重新生成一遍。
- */
-function airwayColor(c: {
-  airwayV: string;
-  airwayHigh: string;
-  airwayOther: string;
-}) {
-  return [
-    "match",
-    ["slice", ["get", "airway"], 0, 1],
-    "V",
-    c.airwayV,
-    ["A", "B", "G"],
-    c.airwayHigh,
-    c.airwayOther,
-  ];
-}
-
 const container = ref<HTMLDivElement | null>(null);
 const corners = ref({ nw: "", se: "" });
 
@@ -476,7 +326,7 @@ let landCache: unknown = null;
  * MapLibre 6 的 `isStyleLoaded()` 走的是 `style.loaded()`：只要有一个 source 的
  * `setData` 还没处理完、或者还有瓦片在加载，它就是 false。而这张图的 source 几乎
  * 一直在忙 —— 实时那三层每 30 秒换一次数据，底图和细节是异步灌的。于是 render()
- * 和 applyPalette() 拿它当闸，恰好在忙的那一刻进来的 prop 变化（换航路、换焦点、
+ * 和 applyTheme() 拿它当闸，恰好在忙的那一刻进来的 prop 变化（换航路、换焦点、
  * 切主题）就**被整个丢掉**，直到下一次不相干的触发才补上，而之后没有任何东西会
  * 重试。
  *
@@ -484,46 +334,12 @@ let landCache: unknown = null;
  * style 里，没有一个是后来 addSource/addLayer 加的，所以 style 一解析完就全在；
  * `setData` / `setPaintProperty` 自己也只要求 style 的 `_loaded`，不管 source 忙不
  * 忙。`load` 事件之后这个前提就永远成立（这里没有 setStyle），而 `load` 回调本身会
- * 按当前 props 补一次 render 和 applyPalette —— 在那之前被挡掉的调用什么也不丢，
+ * 按当前 props 补一次 render 和 applyTheme —— 在那之前被挡掉的调用什么也不丢，
  * 也就不需要另外挂一个重试。 */
 let styleReady = false;
 
-function isDark(): boolean {
-  return document.documentElement.classList.contains("dark");
-}
-
-function palette() {
-  return isDark() ? PALETTE.dark : PALETTE.light;
-}
-
-/**
- * 经纬网格。**生成出来的，不是一份数据文件。**
- *
- * 10° 一条：再密就在全国视野下糊成一片，再疏就失去刻度的作用。经线按纬度采样成
- * 折线而不是两点一线 —— 墨卡托上经线是直的，但换投影就不是了，采样让这一层不依
- * 赖当前投影。
- */
-function graticule(): FeatureCollection {
-  const features: Feature[] = [];
-  for (let lon = -180; lon <= 180; lon += 10) {
-    const coords: [number, number][] = [];
-    for (let lat = -80; lat <= 80; lat += 5) coords.push([lon, lat]);
-    features.push({
-      type: "Feature",
-      properties: {},
-      geometry: { type: "LineString", coordinates: coords },
-    });
-  }
-  for (let lat = -80; lat <= 80; lat += 10) {
-    const coords: [number, number][] = [];
-    for (let lon = -180; lon <= 180; lon += 5) coords.push([lon, lat]);
-    features.push({
-      type: "Feature",
-      properties: {},
-      geometry: { type: "LineString", coordinates: coords },
-    });
-  }
-  return { type: "FeatureCollection", features };
+function theme(): Theme {
+  return document.documentElement.classList.contains("dark") ? "dark" : "light";
 }
 
 /**
@@ -545,7 +361,7 @@ function graticule(): FeatureCollection {
  * （见 `route` / `route-casing` 的 `line-opacity`）。
  *
  * 从前是直接 `continue` 把它们**整条丢掉**，理由是「航路网会点亮它，别画两条」。
- * 那句话只在 z6 及以上成立 —— 航路网那一层 `minzoom: 6`。缩到全国视野（一条
+ * 那句话只在航路网出现之后（`ZOOM.airwaysHigh`）成立。缩到全国视野（一条
  * ZBAA→ZGGG 的计划正好要 z4）之后航路网整层不画，而这几条腿已经被丢掉了，于是**谁
  * 都不画**：计划线上出现几个洞，剩下的直飞段和程序段照旧画着，看起来完全正常。
  *
@@ -654,68 +470,6 @@ function emitViewport() {
 }
 
 /**
- * 分好类的地面要素按 `kind` 分色。
- *
- * 抽成函数是因为样式里和 `applyPalette` 里各要一份 —— 两处写两遍的话，换主题时其
- * 中一处迟早停在旧配色上，而那是看得见却查不出的那种毛病。
- */
-function groundFeatureColor(c: ReturnType<typeof palette>): unknown {
-  return [
-    "match",
-    ["get", "kind"],
-    "runway",
-    c.groundRunway,
-    "apron",
-    c.groundApron,
-    "terminal",
-    c.groundApron,
-    "parking_position",
-    c.groundStand,
-    "holding_position",
-    c.groundHold,
-    c.groundTaxiway,
-  ];
-}
-
-function groundPointColor(c: ReturnType<typeof palette>): unknown {
-  return [
-    "match",
-    ["get", "kind"],
-    "holding_position",
-    c.groundHold,
-    c.groundStand,
-  ];
-}
-
-/**
- * 地面线宽：**把真实米数换算成像素**，随缩放走。
- *
- * 这一层从前写的是几乎不变的像素值（z12 是 0.5px、z18 才 1px）—— 线确实画出来了，
- * 但细到看不见，症状和「地面没有显示」一模一样。**这是这个网络反复记的那种坏法的
- * 又一例**：不报错、不缺数据，只是屏幕上什么也没有。
- *
- * 换算按 Web Mercator：`米/像素 ≈ 156543 · cos(纬度) / 2^zoom`。取纬度 35°（本网络
- * 覆盖区中部）算出 z12 约 31 米/像素、z18 约 0.49 米/像素。于是一条 23 米宽的滑行
- * 道在 z12 是 0.7 像素、z18 是 47 像素 —— 恰好每升一级翻一倍，正是
- * `["exponential", 2]` 在两个端点之间给出的曲线。
- *
- * 下限是必须的：低缩放上按真实宽度算出来是零点几像素，一整片地面会同时消失，而那
- * 又是一次「看起来完全正常」。`fallbackM` 是这一层缺宽度时按多少米算。
- */
-function groundWidth(fallbackM: number): never {
-  const w = ["case", [">", ["get", "widthM"], 0], ["get", "widthM"], fallbackM];
-  return [
-    "interpolate",
-    ["exponential", 2],
-    ["zoom"],
-    GROUND_MIN_ZOOM,
-    ["max", 0.6, ["/", w, 31.3]],
-    18,
-    ["max", 2, ["/", w, 0.49]],
-  ] as never;
-}
-
-/**
  * 常驻的那几行署名。
  *
  * VATSpy 是 CC BY-SA 4.0，**署名是许可条款不是装饰**；陆地那份（Natural Earth）
@@ -763,218 +517,27 @@ function applyAttribution() {
 }
 
 /**
- * 航路点的三角形符号。**运行时用 canvas 画出来注册**，不引 sprite 文件。
+ * 切主题。**没有手写清单**：`themedProperties` 从 `buildStyle` 里把每个图层的每个
+ * paint / layout 属性列出来，这里逐个比对当前值，变了才设。新加的图层自动跟着换，
+ * 以前那份手写的 `setPaintProperty` 清单漏登记过两次。
  *
- * 一套雪碧图要两个文件（png + json）、一份构建步骤，而这里总共只有几个符号，
- * 画出来比维护那套流程便宜。`pixelRatio: 2` 让它在高分屏上不糊。
+ * 不随主题变的（席位色、过滤、文字）比对后原样跳过，所以席位色不会被换成平色。
  */
-function registerIcons() {
-  if (!map || map.hasImage("fix-triangle")) return;
-  const size = 16;
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-
-  ctx.beginPath();
-  ctx.moveTo(size / 2, 2);
-  ctx.lineTo(size - 2, size - 3);
-  ctx.lineTo(2, size - 3);
-  ctx.closePath();
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = 1.6;
-  ctx.stroke();
-
-  map.addImage("fix-triangle", ctx.getImageData(0, 0, size, size), {
-    pixelRatio: 2,
-  });
-
-  // VOR/DME：圆圈套方框。航图上这个组合表示同址的 VOR 和 DME，两个符号分开画
-  // 会占两倍面积，而它们本来就是一个台。
-  const box = document.createElement("canvas");
-  box.width = box.height = size;
-  const bx = box.getContext("2d");
-  if (!bx) return;
-  bx.strokeStyle = "#ffffff";
-  bx.lineWidth = 1.4;
-  bx.strokeRect(2.5, 2.5, size - 5, size - 5);
-  bx.beginPath();
-  bx.arc(size / 2, size / 2, size / 2 - 4.5, 0, Math.PI * 2);
-  bx.stroke();
-  map.addImage("navaid-vordme", bx.getImageData(0, 0, size, size), {
-    pixelRatio: 2,
-  });
-
-  /* 飞机。**必须按 SDF 注册**，因为这是站里唯一两个用 `icon-color` 的图层（自己
-   * 那架和其余航班共用这一个图标，只有颜色和大小不同）。非 SDF 的图标 MapLibre
-   * 会原样贴上去，`icon-color` 被**静默忽略** —— 结果是两层都画成白色，而且不
-   * 报错。
-   *
-   * 机头朝上（航向 0），`icon-rotate` 直接吃 datafeed 的 `heading`，不用换算。
-   * 画成实心是有意的：其余静态符号都是空心线画，实心让它一眼从图上跳出来。 */
-  const air = document.createElement("canvas");
-  const asize = 22;
-  air.width = air.height = asize;
-  const ax = air.getContext("2d");
-  if (!ax) return;
-  ax.fillStyle = "#ffffff";
-  ax.beginPath();
-  ax.moveTo(asize / 2, 1); // 机头
-  ax.lineTo(asize - 3, asize - 4); // 右翼尖
-  ax.lineTo(asize / 2, asize - 8); // 机腹缺口
-  ax.lineTo(3, asize - 4); // 左翼尖
-  ax.closePath();
-  ax.fill();
-  map.addImage("aircraft", ax.getImageData(0, 0, asize, asize), {
-    pixelRatio: 2,
-    sdf: true,
-  });
-
-  /* 机场：**齿轮**。
-   *
-   * 图上已经有三角形（航路点）、圆套方（VOR/DME）和实心飞机，齿轮和它们没有一处
-   * 轮廓相似 —— 挤在一起时一眼分得开，那是这几个符号唯一要满足的事。
-   *
-   * 按 **SDF** 注册，和飞机一样：这样颜色能跟着主题走。非 SDF 的图标 MapLibre 会
-   * 原样贴上去、`icon-color` 被**静默忽略**，深色底上就是一块白疙瘩。
-   *
-   * 中间那个孔用 `destination-out` 挖掉而不是画一个底色圆 —— 底色圆在深浅两套主题
-   * 下只能对一套。 */
-  /* **和航路点的三角形同尺寸**（同一个 `size`，同样 pixelRatio 2、icon-size 1）。
-   * 先前是 20px 画布再乘 0.32–0.55，画出来只有三到五个像素 —— 那个尺度上它不像齿
-   * 轮，像一粒脏点。同尺寸之后两个符号在图上是一样大的一对，靠形状和颜色区分。 */
-  const gear = document.createElement("canvas");
-  const gsize = size;
-  gear.width = gear.height = gsize;
-  const gx = gear.getContext("2d");
-  if (!gx) return;
-  /* 齿数和齿深是照**这个尺寸**调的，不是照好看调的。
-   *
-   * 8 个浅齿（rIn 0.74）在 8 个 CSS 像素上糊成一粒点 —— 每个齿不到一个像素。6 个
-   * 深齿读得出轮廓，而中心孔放大到 0.48 让它成为一个**环**：这一页其余的静态符号
-   * （三角形、圆套方）都是空心线画，实心齿轮会比它们重一档，而实心是留给自己那架
-   * 飞机的强调手段。 */
-  const gc = gsize / 2;
-  const teeth = 6;
-  const rOut = gc - 1;
-  const rIn = rOut * 0.62;
-  gx.fillStyle = "#ffffff";
-  gx.beginPath();
-  for (let i = 0; i < teeth * 2; i++) {
-    const angle = (i / (teeth * 2)) * Math.PI * 2 - Math.PI / 2;
-    const r = i % 2 === 0 ? rOut : rIn;
-    const x = gc + Math.cos(angle) * r;
-    const y = gc + Math.sin(angle) * r;
-    if (i === 0) gx.moveTo(x, y);
-    else gx.lineTo(x, y);
-  }
-  gx.closePath();
-  gx.fill();
-  gx.globalCompositeOperation = "destination-out";
-  gx.beginPath();
-  gx.arc(gc, gc, rOut * 0.48, 0, Math.PI * 2);
-  gx.fill();
-
-  map.addImage("airport-gear", gx.getImageData(0, 0, gsize, gsize), {
-    pixelRatio: 2,
-    sdf: true,
-  });
-}
-
-function applyPalette() {
+function applyTheme() {
   if (!map || !styleReady) return;
-  const c = palette();
-  map.setPaintProperty("ocean", "background-color", c.ocean);
-  map.setPaintProperty("land", "fill-color", c.land);
-  map.setPaintProperty("land-outline", "line-color", c.landLine);
-  map.setPaintProperty("grid", "line-color", c.grid);
-  map.setPaintProperty("land-detail", "fill-color", c.land);
-  map.setPaintProperty("land-detail-outline", "line-color", c.landLine);
-  map.setPaintProperty("borders", "line-color", c.border);
-  map.setPaintProperty("airways", "line-color", airwayColor(c) as never);
-  for (const id of ["airway-labels", "airway-fixes"]) {
-    map.setPaintProperty(id, "text-color", c.label);
-    map.setPaintProperty(id, "text-halo-color", c.ocean);
+  for (const p of themedProperties(theme())) {
+    if (!map.getLayer(p.layer)) continue;
+    const current =
+      p.kind === "paint"
+        ? map.getPaintProperty(p.layer, p.name as never)
+        : map.getLayoutProperty(p.layer, p.name as never);
+    if (JSON.stringify(current) === JSON.stringify(p.value)) continue;
+    if (p.kind === "paint") {
+      map.setPaintProperty(p.layer, p.name as never, p.value as never);
+    } else {
+      map.setLayoutProperty(p.layer, p.name as never, p.value as never);
+    }
   }
-  // 航路现在是四个图层（衬线 / 航路段 / 程序段 / 沿线航路名），主题一换要一起
-  // 跟上 —— 漏掉哪个，那一层就停在上一套配色里。
-  map.setPaintProperty("route", "line-color", c.route);
-  map.setPaintProperty("route-procedure", "line-color", c.route);
-  map.setPaintProperty("route-casing", "line-color", c.routeCasing);
-  map.setPaintProperty("route-airways", "text-color", c.route);
-  map.setPaintProperty("route-airways", "text-halo-color", c.routeCasing);
-  map.setPaintProperty("route-labels", "text-color", c.marker);
-  map.setPaintProperty("route-labels", "text-halo-color", c.routeCasing);
-  map.setPaintProperty("markers", "circle-color", c.marker);
-  map.setPaintProperty("markers", "circle-stroke-color", c.marker);
-
-  /* 机场和地面那几层也要跟着换主题。
-   *
-   * **这一段是补的漏**：地面图层加进来的时候没有登记到这里，于是深浅色一切换它们
-   * 就停在上一套配色里 —— 而那和「这一层没画出来」在浅色主题上长得很像（浅底上一
-   * 条浅灰线基本看不见）。
-   *
-   * 航图线画那一层（`ground-lines`）**不在这里**，而且不该在：它用的是图上的原色
-   * （`["get","rgb"]`），那是数据不是主题。 */
-  map.setPaintProperty("airport-gear", "icon-color", c.airport);
-  map.setPaintProperty("airport-labels", "text-color", c.airport);
-  map.setPaintProperty("airport-labels", "text-halo-color", c.ocean);
-  map.setPaintProperty("runways", "line-color", c.groundRunway);
-  // 地面按上下分成三层（航站楼与机坪 / 停机位 / 滑行道），配色同一份。
-  for (const id of ["ground-terminals", "ground-stands", "ground-taxiways"]) {
-    map.setPaintProperty(id, "line-color", groundFeatureColor(c) as never);
-  }
-  map.setPaintProperty(
-    "ground-points",
-    "circle-color",
-    groundPointColor(c) as never,
-  );
-  for (const id of [
-    "ground-labels-way",
-    "ground-labels-area",
-    "ground-labels-runway",
-    "ground-labels-spot",
-  ]) {
-    map.setPaintProperty(
-      id,
-      "text-color",
-      id === "ground-labels-runway"
-        ? c.groundRunway
-        : id === "ground-labels-spot"
-          ? c.groundStand
-          : c.label,
-    );
-    map.setPaintProperty(id, "text-halo-color", c.ocean);
-  }
-
-  // 实时那三层也要跟着换主题，否则深浅色一切换它们就留在上一套配色里。
-  //
-  // **管制那两层的颜色故意不在这里换。** 它们按 `facility` 分色（见
-  // `facilityCircleColor`），而席位色是身份编码、两套主题下必须是同一个红同一个
-  // 绿。在这里补一句 `setPaintProperty("atc", "circle-color", …)` 会把那个表达式
-  // 整个换成一个平色 —— 而且只在切主题的那一刻发生，看起来像"切一次深色管制就全
-  // 变一个色"。描边和光晕仍然跟主题，它们是为了在底色上压得住，不是编码。
-  map.setPaintProperty("atc", "circle-stroke-color", c.ocean);
-  map.setPaintProperty("atc-labels", "text-halo-color", c.ocean);
-  // 高度色带**跟主题走**（viridis 有深浅两条），和席位色不一样 —— 后者是身份编码，
-  // 两套主题下必须同一个红；这一套是读数，要在两种底色上都读得出来。
-  map.setPaintProperty("traffic", "icon-color", altitudeBandColor() as never);
-  map.setPaintProperty(
-    "traffic-labels",
-    "text-color",
-    altitudeBandColor() as never,
-  );
-  map.setPaintProperty("traffic-labels", "text-halo-color", c.ocean);
-  map.setPaintProperty("own", "icon-color", c.own);
-  map.setPaintProperty("own", "text-color", c.own);
-  map.setPaintProperty("own", "text-halo-color", c.ocean);
-
-  // 上面几层的颜色也一并跟上 —— 之前漏了，深浅切换后它们停在旧配色上。
-  map.setPaintProperty("fir-line", "line-color", c.fir);
-  map.setPaintProperty("fir-labels", "text-color", c.fir);
-  map.setPaintProperty("fir-labels", "text-halo-color", c.ocean);
-  map.setPaintProperty("mora-labels", "text-color", c.mora);
-  map.setPaintProperty("mora-labels", "text-halo-color", c.ocean);
 }
 
 /** 上一次真正对过焦的那个点，见 render() 里的说明。 */
@@ -1075,6 +638,7 @@ function render() {
   setSource("traffic", props.traffic);
   setSource("atcAreas", props.atcAreas);
   setSource("atc", props.atc);
+  setSource("ownTrack", props.ownTrack);
   setSource("own", props.own);
 
   /* 视野：focus 优先 —— 「在一堆点里挑一个看」不该把用户刚才的缩放丢掉。
@@ -1128,7 +692,7 @@ function render() {
  * 两个文件加起来约 2 MB。开图那个视野（z3，全国）上它们一个像素都体现不出来 ——
  * 在那儿拉等于让每一次首屏都为看不见的东西付两兆。
  *
- * 门槛 4：国界从 z4 开始画，陆地细节 z5。**按最早需要的那一层定**，否则会出现「层
+ * 门槛是 `ZOOM.borders`：国界比陆地细节早一级。**按最早需要的那一层定**，否则会出现「层
  * 该显示了、数据还没到」的一两秒空窗。
  *
  * `detailPending` 挡的是并发：`moveend` 会连着触发，没有它第一次放大就会同时飞出
@@ -1139,7 +703,7 @@ let detailPending = false;
 
 async function loadDetail() {
   if (detailLoaded || detailPending || !map) return;
-  if (map.getZoom() < 4) return;
+  if (map.getZoom() < ZOOM.borders) return;
   detailPending = true;
   try {
     const [land, borders] = await Promise.all([
@@ -1211,1214 +775,11 @@ onMounted(() => {
     webglAvailable = false;
   }
 
-  const c = palette();
-
   try {
     map = new MapLibreMap({
       container: container.value,
-      // 手写 style，不指向任何瓦片服务 —— 见文件顶上。
-      style: {
-        version: 8,
-        sources: {
-          land: {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-          },
-          grid: { type: "geojson", data: graticule() },
-          landDetail: {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-          },
-          borders: {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-          },
-          airways: {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-          },
-          ground: {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-          },
-          airports: {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-          },
-          runways: {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-          },
-          airwayFixes: {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-          },
-          navaids: {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-          },
-          airspaces: {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-          },
-          firs: {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-          },
-          mora: {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-          },
-          traffic: {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-          },
-          atcAreas: {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-          },
-          atc: {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-          },
-          own: {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-          },
-          route: {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-          },
-          markers: {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-          },
-        },
-        // 文字要字体源，否则带 text-field 的图层**一个字都不画，而且不报错**。
-        // 自备在 public/basemap/fonts/ 下，理由和许可见那里的 README。
-        glyphs: "/basemap/fonts/{fontstack}/{range}.pbf",
-        layers: [
-          {
-            id: "ocean",
-            type: "background",
-            paint: { "background-color": c.ocean },
-          },
-          {
-            id: "land",
-            type: "fill",
-            source: "land",
-            paint: { "fill-color": c.land },
-          },
-          {
-            /* 50m 的海岸线。**到 z5 就交棒**给下面那条 10m 的 —— 两条分辨率不同的
-             * 海岸线叠在一起会画出一圈毛边，而那看起来像渲染坏了。 */
-            id: "land-outline",
-            type: "line",
-            source: "land",
-            maxzoom: 5,
-            paint: { "line-color": c.landLine, "line-width": 0.6 },
-          },
-          {
-            // 细一档的陆地，盖在 50m 那层上。数据到 z5 才拉，见 loadDetail。
-            id: "land-detail",
-            type: "fill",
-            source: "landDetail",
-            minzoom: 5,
-            paint: { "fill-color": c.land },
-          },
-          {
-            id: "land-detail-outline",
-            type: "line",
-            source: "landDetail",
-            minzoom: 5,
-            paint: { "line-color": c.landLine, "line-width": 0.7 },
-          },
-          {
-            /* 国界。**只有国与国之间那条**，海岸线不在里面（生成时就滤掉了）。
-             *
-             * 虚线：政治边界在航图上不是主角，而它常常和海岸线、和情报区边界挨着
-             * 走 —— 三条实线并排谁也读不出来。 */
-            id: "borders",
-            type: "line",
-            source: "borders",
-            minzoom: 4,
-            paint: {
-              "line-color": c.border,
-              "line-width": 0.8,
-              "line-dasharray": [3, 2] as never,
-            },
-          },
-          {
-            id: "grid",
-            type: "line",
-            source: "grid",
-            paint: { "line-color": c.grid, "line-width": 0.5 },
-          },
-          {
-            /* 机场地面 —— **航图那份**（从汇编图上抠的线画）。
-             *
-             * `line-color` 取要素自己的 `rgb`：这一份**没有语义**，内容流里只有颜
-             * 色和线宽，没有一个字说哪条是滑行道中线。硬派一个含义上去就是编造，
-             * 所以照图上的原色画，读图的人看到的和纸上那张一致。
-             *
-             * 没有 `rgb` 的要素（也就是分好类的那一份）在这里落到 `transparent`，
-             * 由下面那层按类别画 —— 两层共用一个 source，各画各的那一半。 */
-            id: "ground-lines",
-            type: "line",
-            source: "ground",
-            minzoom: GROUND_MIN_ZOOM + 1,
-            paint: {
-              "line-color": [
-                "coalesce",
-                ["get", "rgb"],
-                "transparent",
-              ] as never,
-              "line-width": groundWidth(1.5),
-              "line-opacity": 0.85,
-            },
-          },
-          {
-            /* 地面按**上下**分三层，加上跑道和齿轮，一共五级：
-             *
-             *     机场标志（齿轮）   ← 最上
-             *     机场跑道
-             *     滑行道
-             *     停机位
-             *     航站楼、机坪       ← 最下
-             *
-             * 拆成三层是因为**一个图层压不出上下**。顺序照的是「哪一样被挡住损失最
-             * 大」：航站楼和机坪是大块的面，压在最下；跑道是这张图的骨架，谁都不该
-             * 盖住它；齿轮是找机场用的，永远在最上。
-             *
-             * 三层的 `minzoom` **一样** —— 上下和出现时机是两回事，这里只管上下。 */
-            id: "ground-terminals",
-            type: "line",
-            source: "ground",
-            minzoom: GROUND_MIN_ZOOM + 1,
-            filter: [
-              "all",
-              ["!", ["has", "rgb"]],
-              ["match", ["get", "kind"], ["terminal", "apron"], true, false],
-            ] as never,
-            paint: {
-              "line-color": groundFeatureColor(c) as never,
-              "line-width": groundWidth(30),
-              "line-opacity": 0.9,
-            },
-          },
-          {
-            // 停机位压在滑行道之下：滑行道是通行路径，被机位盖住就读不出走法。
-            id: "ground-stands",
-            type: "line",
-            source: "ground",
-            minzoom: GROUND_MIN_ZOOM + 1,
-            filter: [
-              "all",
-              ["!", ["has", "rgb"]],
-              ["==", ["get", "kind"], "parking_position"],
-            ] as never,
-            paint: {
-              "line-color": groundFeatureColor(c) as never,
-              "line-width": groundWidth(12),
-              "line-opacity": 0.9,
-            },
-          },
-          {
-            // 滑行道和等待位置，地面里最上的一层，只在跑道之下。
-            id: "ground-taxiways",
-            type: "line",
-            source: "ground",
-            minzoom: GROUND_MIN_ZOOM + 1,
-            filter: [
-              "all",
-              ["!", ["has", "rgb"]],
-              [
-                "match",
-                ["get", "kind"],
-                ["taxiway", "holding_position"],
-                true,
-                false,
-              ],
-            ] as never,
-            paint: {
-              "line-color": groundFeatureColor(c) as never,
-              "line-width": groundWidth(23),
-              "line-opacity": 0.9,
-            },
-          },
-          {
-            /* 跑道。**来自 can-db 的 `/aip/runways`，不是地面数据。**
-             *
-             * 缩放阶梯上它比地面早一档：比例尺 20 公里（约 z9）就该看得到跑道，而
-             * 那个视野有三百公里宽、十几个机场 —— 按机场拉地面等于拉十几兆。整库跑
-             * 道才 34 kB，一次取完。
-             *
-             * 线宽在这个尺度上按像素给而不是按米：z9 上一条 45 米宽的跑道是 0.2 个
-             * 像素，画出来等于没画。真实宽度到 z12 之后才接管。 */
-            id: "runways",
-            type: "line",
-            source: "runways",
-            /* **z7 起**。那个尺度上一条三公里的跑道是三个像素 —— 不是"看清跑道"，
-             * 是"这个机场朝哪个方向"，而那正是缩到那么远时会问的问题。再早一级只有
-             * 一个像素，画出来和一粒点没区别。
-             *
-             * 敢提这么早是因为这一层便宜：整库 966 条、34 kB，覆盖全部 415 个机
-             * 场，一次取完。地面那一份是按机场取的，提不了这么早。 */
-            minzoom: 7,
-            filter: ["==", ["get", "kind"], "runway"] as never,
-            paint: {
-              "line-color": c.groundRunway,
-              "line-width": [
-                "interpolate",
-                ["exponential", 2],
-                ["zoom"],
-                9,
-                1.4,
-                12,
-                4,
-                18,
-                90,
-              ] as never,
-              "line-opacity": 0.95,
-            },
-          },
-          {
-            /* 滑行道和跑道的**代号**，贴着线走。
-             *
-             * `symbol-placement: "line"` 让它跟随走向，MapLibre 的标签避让会自动
-             * 把挤在一起的那些藏掉 —— 和航路代号那一层同一个做法。
-             *
-             * **只标有名字的。** 手工那份 30710 条要素里 6820 条带代号，OSM 那份
-             * 5271 条带 `ref`；其余是真的没有名字，不是这里漏了。而航图线画那一份
-             * **一个名字都没有**（它只有颜色和线宽），所以 `has` 那一条同时把它整
-             * 份挡在外面 —— 不加的话 `["get","name"]` 对它求值是 null，而
-             * `!= ""` 对 null 成立，于是满图都是空标签占着避让位。
-             *
-             * z13 才出：z12 刚够看出跑道形状，这时候铺一层代号只会盖住几何本身。 */
-            id: "ground-labels-way",
-            type: "symbol",
-            source: "ground",
-            minzoom: GROUND_MIN_ZOOM + 2,
-            filter: [
-              "all",
-              ["has", "name"],
-              ["!=", ["get", "name"], ""],
-              // **跑道不在这一层。** 它的号写在两头（`ground-labels-runway`），
-              // 沿线重复是滑行道的画法。
-              ["match", ["get", "kind"], ["taxiway"], true, false],
-            ] as never,
-            layout: {
-              "symbol-placement": "line",
-              "text-field": ["get", "name"] as never,
-              "text-font": ["Noto Sans Regular"],
-              "text-size": 10,
-              "text-letter-spacing": 0.05,
-              // 滑行道很长，一条上重复几次才不用为了看代号来回平移。
-              "symbol-spacing": 220,
-            },
-            paint: {
-              "text-color": c.label,
-              // 描边不是装饰：地面线本身密，没有这一圈底色代号会糊进线里。
-              "text-halo-color": c.ocean,
-              "text-halo-width": 1.4,
-            },
-          },
-          {
-            /* 跑道号，**写在跑道两头**，和航图一样。
-             *
-             * 那两个点是数据层按几何算出来的（`runwayEndLabels`）：取相距最远的一
-             * 对顶点当两端 —— 库里的跑道要素不都是中线，有些是跑道面的轮廓，首尾两
-             * 点挨在一起 —— 再按方位角决定哪一头写哪个号。
-             *
-             * 比别的标注大一档、加粗：放到这个尺度上，读图的人先找的就是它。
-             * `text-allow-overlap` 开着 —— 跑道号是这张图上最不该被别的标注挤掉的
-             * 东西，宁可让它压住一条滑行道代号。 */
-            id: "ground-labels-runway",
-            type: "symbol",
-            source: "runways",
-            /* 跑道号比跑道本身晚两级：z7 上跑道才三个像素，旁边挂一个两位数只会把
-             * 它盖住。z9 上跑道十二个像素，号码才有地方站。 */
-            minzoom: 9,
-            filter: ["==", ["get", "kind"], "runway_end"] as never,
-            layout: {
-              "symbol-placement": "point",
-              "text-field": ["get", "ident"] as never,
-              "text-font": ["Noto Sans Regular"],
-              "text-size": 13,
-              "text-letter-spacing": 0.1,
-              "text-allow-overlap": true,
-            },
-            paint: {
-              "text-color": c.groundRunway,
-              "text-halo-color": c.ocean,
-              "text-halo-width": 1.8,
-            },
-          },
-          {
-            /* 机坪和航站楼的名字。**单独一层，因为它们是地标不是编号。**
-             *
-             * 分开的理由是**出现的时机**：机坪和航站楼各只有几百个、块头大，是「我
-             * 在机场的哪一头」这个问题的答案，所以该和滑行道代号一起早早出现；机位
-             * 号有四千个，早出一级就是一片数字糊在停机坪上。一个图层只有一个
-             * `minzoom`，所以这是两件事，不是一件事的两种样式。
-             *
-             * 线上带名字的：机坪 406、航站楼 329。 */
-            id: "ground-labels-area",
-            type: "symbol",
-            source: "ground",
-            minzoom: GROUND_MIN_ZOOM + 2,
-            filter: [
-              "all",
-              ["has", "name"],
-              ["!=", ["get", "name"], ""],
-              ["match", ["get", "kind"], ["apron", "terminal"], true, false],
-            ] as never,
-            layout: {
-              "symbol-placement": "point",
-              "text-field": ["get", "name"] as never,
-              "text-font": ["Noto Sans Regular"],
-              "text-size": 11,
-              "text-letter-spacing": 0.08,
-              "text-transform": "uppercase",
-            },
-            paint: {
-              "text-color": c.label,
-              "text-halo-color": c.ocean,
-              "text-halo-width": 1.4,
-            },
-          },
-          {
-            /* 机位号和等待位置代号，**贴着那个位置**而不是沿线走。
-             *
-             * 用 `"point"` 而不是 `"line"`：这两类里既有真的单点（等待位置、一部分
-             * 机位），也有画成短线的机位 —— 沿线排一个两位数的机位号既排不下也读不
-             * 出方向。
-             *
-             * z15 才出，比滑行道晚两级：首都 352 个机位，早出一级就是一片数字糊在
-             * 停机坪上。真要一个个看，那个尺度本来也已经凑得很近了。 */
-            id: "ground-labels-spot",
-            type: "symbol",
-            source: "ground",
-            minzoom: GROUND_MIN_ZOOM + 4,
-            filter: [
-              "all",
-              ["has", "name"],
-              ["!=", ["get", "name"], ""],
-              [
-                "match",
-                ["get", "kind"],
-                ["parking_position", "holding_position"],
-                true,
-                false,
-              ],
-            ] as never,
-            layout: {
-              "symbol-placement": "point",
-              "text-field": ["get", "name"] as never,
-              "text-font": ["Noto Sans Regular"],
-              "text-size": 10,
-              // 机位号密，允许它被挤掉而不是彼此叠着画。
-              "text-allow-overlap": false,
-            },
-            paint: {
-              "text-color": c.groundStand,
-              "text-halo-color": c.ocean,
-              "text-halo-width": 1.4,
-            },
-          },
-          {
-            /* 单点要素：等待位置和一部分机位本来就是一个点，不是退化的线。
-             *
-             * 扇区包那份里有 733 个等待位置是点 —— 只画线的话它们会整批消失，而
-             * 等待位置恰恰是地面上最该看见的东西之一。 */
-            id: "ground-points",
-            type: "circle",
-            source: "ground",
-            minzoom: GROUND_MIN_ZOOM + 2,
-            filter: ["==", ["geometry-type"], "Point"] as never,
-            paint: {
-              "circle-radius": [
-                "interpolate",
-                ["linear"],
-                ["zoom"],
-                13,
-                1.5,
-                17,
-                4,
-              ] as never,
-              "circle-color": groundPointColor(c) as never,
-              "circle-opacity": 0.9,
-            },
-          },
-          {
-            /* 有人上席的空域，**填充**。
-             *
-             * 排在情报区边界**之前**（也就是压在它下面），和所有线之下 —— 它是一
-             * 大片色块，盖在线上会把线糊掉，而它要表达的只是"这一片现在有人管"。
-             *
-             * 透明度 0.08 是刻意压得很低的：一个区域席位覆盖的是整个情报区，填得
-             * 再深一点，全图就会均匀蒙上一层，越是几个席位重叠的地方越脏。真正说
-             * 明边界在哪的是下面那条描边。
-             *
-             * 颜色按席位分，和列表、和点那一层共用 `lib/atc.ts` 的同一份色表。 */
-            id: "atc-area-fill",
-            type: "fill",
-            source: "atcAreas",
-            paint: {
-              "fill-color": facilityCircleColor() as never,
-              "fill-opacity": 0.08,
-            },
-          },
-          {
-            /* 同一块空域的描边。**这条才是"边界在哪"的答案**，填充只负责让人一眼
-             * 看到有这么一片。比情报区那条虚线粗、而且是实线 —— 两者会重叠，重叠
-             * 时该让人看出这一块和旁边没人管的不一样。 */
-            id: "atc-area-line",
-            type: "line",
-            source: "atcAreas",
-            paint: {
-              "line-color": facilityCircleColor() as never,
-              "line-width": 1.6,
-              "line-opacity": 0.9,
-            },
-          },
-          {
-            // 情报区边界紧贴网格之上、所有内容之下 —— 它是底子。
-            //
-            // **虚线是航图的惯例**，不是装饰：实线在这张图上已经归航路和海岸
-            // 线了，边界再用实线，三者在缩小时会混成一片。
-            id: "fir-line",
-            type: "line",
-            source: "firs",
-            paint: {
-              "line-color": c.fir,
-              "line-width": 1.1,
-              "line-dasharray": [5, 3],
-              "line-opacity": 0.75,
-            },
-          },
-          {
-            // 空域在最底层：它是一大片填充，压在任何线之上都会把线糊掉。
-            id: "airspace-fill",
-            type: "fill",
-            source: "airspaces",
-            paint: {
-              "fill-color": [
-                "match",
-                ["get", "cls"],
-                "restricted",
-                c.restricted,
-                "app",
-                c.approach,
-                c.sector,
-              ] as never,
-              // 半透明，而且很淡 —— 它是背景，不是内容。
-              "fill-opacity": 0.07,
-            },
-          },
-          {
-            id: "airspace-line",
-            type: "line",
-            source: "airspaces",
-            paint: {
-              "line-color": [
-                "match",
-                ["get", "cls"],
-                "restricted",
-                c.restricted,
-                "app",
-                c.approach,
-                c.sector,
-              ] as never,
-              "line-width": 0.9,
-              "line-opacity": 0.85,
-            },
-          },
-          {
-            // 代号 + 垂直范围，落在多边形的中心。symbol 图层遇到面要素会自己取
-            // 中心点，不必预先算。
-            id: "airspace-labels",
-            type: "symbol",
-            source: "airspaces",
-            minzoom: 5,
-            layout: {
-              "text-field": [
-                "concat",
-                ["get", "code"],
-                "\n",
-                ["get", "vertical"],
-              ],
-              "text-font": ["Noto Sans Regular"],
-              "text-size": 9,
-              "text-line-height": 1.1,
-            },
-            paint: {
-              "text-color": c.label,
-              "text-halo-color": c.ocean,
-              "text-halo-width": 1.2,
-            },
-          },
-          {
-            /* 机场：齿轮加 ICAO。
-             *
-             * **缩放阶梯上它排在情报区之后、航路之前**（见 ZOOM 那段注释）：把地图
-             * 缩到最小时只剩情报区，再放一级才是「这一片有哪些机场」—— 那是从大往
-             * 小看时第一个有用的问题，而航路网在那个尺度上只是一团灰雾。
-             *
-             * 齿轮和文字分两层：z5 先出符号，z6 才出代号。四百多个机场的代号在 z5
-             * 上根本排不下，而「这儿有个机场」本身已经是信息。 */
-            id: "airport-gear",
-            type: "symbol",
-            source: "airports",
-            minzoom: 5,
-            layout: {
-              "icon-image": "airport-gear",
-              // 和 `airway-fixes` 的三角形一样：1。两个符号一样大。
-              "icon-size": 1,
-              "icon-allow-overlap": true,
-            },
-            paint: { "icon-color": c.airport as never },
-          },
-          {
-            id: "airport-labels",
-            type: "symbol",
-            source: "airports",
-            minzoom: 6,
-            layout: {
-              "text-field": ["get", "icao"] as never,
-              "text-font": ["Noto Sans Regular"],
-              "text-size": [
-                "interpolate",
-                ["linear"],
-                ["zoom"],
-                6,
-                9,
-                11,
-                12,
-              ] as never,
-              "text-offset": [0, 1.1],
-              "text-anchor": "top",
-              "text-letter-spacing": 0.05,
-            },
-            paint: {
-              "text-color": c.airport,
-              "text-halo-color": c.ocean,
-              "text-halo-width": 1.4,
-            },
-          },
-          {
-            // 航路网压在计划航路**之下**：它是背景参考，不该盖住你正在看的那条。
-            id: "airways",
-            minzoom: 6,
-            type: "line",
-            source: "airways",
-            paint: {
-              /* **计划走过的那几段就地点亮**，不另画一条线压在上面。
-               *
-               * 从前是在航路网之上再画一条亮线 —— 于是沿着航路那一段有两条线叠着，
-               * 一粗一细、一亮一暗，看着杂乱。而这张图上本来就已经有那条航段了，要
-               * 表达「这一段我要飞」，把它本身点亮比在它旁边再放一条更直接。
-               *
-               * 高亮的段还要**加粗**：只换颜色的话，在八千条线里仍然认不出来。 */
-              "line-color": [
-                "case",
-                ["==", ["get", "onRoute"], 1],
-                c.route,
-                airwayColor(c),
-              ] as never,
-              /* **随缩放变粗变实**，不是一个定值。
-               *
-               * 覆盖框内是八千多个航段。在开图那个视野（z3，全国）上，八千条
-               * 0.7px 的线彼此间距只有几个像素 —— 画出来不是一张航路网，是一片
-               * 灰雾，底下的海岸线和边界全被它盖住。
-               *
-               * 但也不该在低缩放直接藏掉：「这一带有航路网」本身就是信息，而且
-               * 藏了之后放大时会突然长出一张网。所以让它淡下去而不是消失，到
-               * z6（一度约 91px）恢复成正常的航图线宽。 */
-              /* 淡入曲线跟着 minzoom 挪到 6 起 —— 原来是 3 起，而 3–6 那一段现在
-               * 根本不画，留着就是一段死表达式，下一个人会以为它还在生效。 */
-              /* **`interpolate` 必须在最外层，`case` 放进 stop 里。**
-               *
-               * 反过来写（`case` 外、`interpolate` 内）MapLibre 会拒绝整条 paint：
-               *
-               *     Only one zoom-based "step" or "interpolate" subexpression
-               *     may be used in an expression.
-               *
-               * 而拒绝的后果是**整个图层加载失败** —— 航路网一条线都不画，控制台
-               * 里一行错，图上什么也没有。规格里那条限制是「zoom 只能作为顶层
-               * step/interpolate 的输入」，两种写法在 JS 里长得几乎一样，但只有这
-               * 一种是合法的。 */
-              "line-width": [
-                "interpolate",
-                ["linear"],
-                ["zoom"],
-                6,
-                ["case", ["==", ["get", "onRoute"], 1], 2.8, 0.5],
-                9,
-                ["case", ["==", ["get", "onRoute"], 1], 3.4, 1.1],
-              ] as never,
-              // 高亮的段不跟着淡入：它是你正在看的东西，不是背景参考。
-              // 同上：zoom 在外层，case 在 stop 里。
-              "line-opacity": [
-                "interpolate",
-                ["linear"],
-                ["zoom"],
-                6,
-                ["case", ["==", ["get", "onRoute"], 1], 1, 0.45],
-                9,
-                ["case", ["==", ["get", "onRoute"], 1], 1, 0.85],
-              ] as never,
-            },
-          },
-          {
-            // 航路代号，贴着线走。`symbol-placement: line` 让它跟随走向，而
-            // MapLibre 的标签避让会自动把挤在一起的那些藏掉 —— 这正是当初从
-            // Leaflet 换过来的理由。
-            id: "airway-labels",
-            type: "symbol",
-            source: "airways",
-            minzoom: 8,
-            layout: {
-              "symbol-placement": "line",
-              "text-field": ["get", "airway"],
-              "text-font": ["Noto Sans Regular"],
-              "text-size": 9,
-              "text-letter-spacing": 0.05,
-              "symbol-spacing": 300,
-            },
-            paint: {
-              "text-color": c.label,
-              // 描边不是装饰：白字压在浅色陆地上会糊，这一圈底色让它在两种主题
-              // 下都读得出来。
-              "text-halo-color": c.ocean,
-              "text-halo-width": 1.2,
-            },
-          },
-          {
-            // 航路点。三角形图标是运行时用 canvas 画出来注册的（见 addImage），
-            // 不引 sprite —— 为四五个符号挂一套雪碧图不划算。
-            /* 名字比三角形**晚一档**出现（见下面的 text-opacity）。
-             *
-             * 航路网自己的点集有五千多个。z5 上一度是 45px，五个字母的代号大约
-             * 40px 宽 —— 挨着的两个点必然打架，于是避让会丢掉大部分名字，屏幕上
-             * 剩下一批看起来随机的标注。三角形本身很小，那一档先画出来说明「这
-             * 里有一个航路点」，名字等放到读得出的比例尺再出现。 */
-            /* 航路点**和航路同时出现**（都是 z6）。
-             *
-             * 一张只有线没有点的航路图读不了：航路是「从哪个点到哪个点」，点才是那
-             * 条线的意义。先前这一层被推到 z8，于是 z6–7 那两级只有线 —— 看得见网，
-             * 却说不出任何一段是什么。
-             *
-             * 代号仍然晚两级（下面那条 `text-opacity` 的 step）：z6 上五千多个代号
-             * 排不下，而三角形本身已经回答了「这儿有个点」。 */
-            id: "airway-fixes",
-            type: "symbol",
-            source: "airwayFixes",
-            minzoom: 6,
-            layout: {
-              "icon-image": "fix-triangle",
-              "icon-size": 1,
-              "icon-allow-overlap": true,
-              "text-field": ["get", "ident"],
-              "text-font": ["Noto Sans Regular"],
-              "text-size": 9,
-              "text-offset": [0, 0.9],
-              "text-anchor": "top",
-            },
-            paint: {
-              "text-color": c.label,
-              "text-halo-color": c.ocean,
-              "text-halo-width": 1.2,
-              // 名字在 z8 才出现，三角形从 z6 起就和航路一起在。见上面那段注释。
-              "text-opacity": ["step", ["zoom"], 0, 8, 1] as never,
-            },
-          },
-          {
-            // 导航台。圆圈套方框是航图上 VOR/DME 的画法，符号同样是运行时画的。
-            id: "navaids",
-            type: "symbol",
-            source: "navaids",
-            minzoom: 5,
-            layout: {
-              "icon-image": "navaid-vordme",
-              "icon-size": 1,
-              "icon-allow-overlap": true,
-              "text-field": ["get", "label"],
-              "text-font": ["Noto Sans Regular"],
-              "text-size": 9,
-              "text-offset": [0, 1.1],
-              "text-anchor": "top",
-            },
-            paint: {
-              "text-color": c.navaid,
-              "text-halo-color": c.ocean,
-              "text-halo-width": 1.2,
-            },
-          },
-          {
-            // Grid MORA：千位大、百位小，这是航图上的画法。
-            //
-            // `format` 的分段 `font-scale` 是唯一能在一个标注里换字号的办法。
-            // 基线是对齐的，所以小字自然坐在下方 —— 正好是要的下标样子。
-            //
-            /* **minzoom 5.5**，不是 4。
-             *
-             * 一度格子的像素宽是 `360 / (512 · 2^z)` 的倒数：z4 是 22.8px，z5 是
-             * 45.5px，z5.5 是 64px。而一个「31¹」样式的标注在 11px 字号下大约
-             * 20px 宽，还要留出不贴着邻格的余量。
-             *
-             * z4 上放不下的后果不是"挤"，是**避让会丢掉大部分格子** —— 而一张只
-             * 填了一部分的 MORA 网格比不画更糟：读图的人会把空格当成"这里没有数
-             * 据"，而不是"这里的数字被挤掉了"。要么整片都在，要么整片都不在。 */
-            id: "mora-labels",
-            type: "symbol",
-            source: "mora",
-            minzoom: 5.5,
-            layout: {
-              "text-field": [
-                "format",
-                ["get", "thousands"],
-                {},
-                ["get", "hundreds"],
-                { "font-scale": 0.68 },
-              ],
-              "text-font": ["Noto Sans Regular"],
-              "text-size": 11,
-              // 让开航路和导航台：它们是内容，这是背景参考。
-              "text-allow-overlap": false,
-              "text-ignore-placement": false,
-            },
-            paint: {
-              "text-color": c.mora,
-              "text-halo-color": c.ocean,
-              "text-halo-width": 1.4,
-            },
-          },
-          {
-            // 情报区名字**沿着边界重复**（symbol-placement: line），而不是落在
-            // 多边形中心 —— 情报区大到中心点常常在几百海里之外，那个位置的标注
-            // 对着屏幕上的边界说不出话。这也是纸质航图的画法。
-            //
-            // 排在导航台**之后**：MapLibre 的符号避让按图层顺序定优先级，靠前
-            // 的赢。边界名是背景信息，撞上导航台时该让它。
-            id: "fir-labels",
-            type: "symbol",
-            source: "firs",
-            minzoom: 4,
-            layout: {
-              "symbol-placement": "line",
-              "symbol-spacing": 400,
-              "text-field": ["get", "code"],
-              "text-font": ["Noto Sans Regular"],
-              "text-size": 10,
-              "text-letter-spacing": 0.12,
-              "text-max-angle": 30,
-            },
-            paint: {
-              "text-color": c.fir,
-              "text-halo-color": c.ocean,
-              "text-halo-width": 1.4,
-            },
-          },
-          {
-            /* 衬线：比主线宽，深色，压在它下面。见配色里 routeCasing 那段。 */
-            id: "route-casing",
-            type: "line",
-            source: "route",
-            layout: { "line-cap": "round", "line-join": "round" },
-            paint: {
-              "line-color": c.routeCasing,
-              "line-width": [
-                "interpolate",
-                ["linear"],
-                ["zoom"],
-                3,
-                4,
-                8,
-                6.5,
-              ] as never,
-              /* **交接给航路网的那几条腿在 z6 以上让位。**
-               *
-               * z6 正是 `airways` 那一层的 `minzoom` —— 它从那一级起接手把这几段
-               * 点亮，所以计划线自己画到那儿为止。数字写死成 6 是因为它就是那个
-               * 图层的 minzoom，改一个必须改另一个（下面 `route` 同）。
-               *
-               * 用透明度而不是 `filter`：`filter` 是按要素判的，判不了缩放；而把
-               * 要素从源里拿掉正是这次要修的那个毛病。 */
-              "line-opacity": [
-                "step",
-                ["zoom"],
-                0.9,
-                6,
-                ["case", ["==", ["get", "onAirway"], 1], 0, 0.9],
-              ] as never,
-            },
-          },
-          {
-            /* 航路段和程序段分成**两个图层**，靠 filter 分，而不是用一个
-             * `case` 表达式去喂 `line-dasharray`。
-             *
-             * 表达式那条路在这个版本的规范里其实是允许的（`line-dasharray` 是
-             * `cross-faded-data-driven`，参数含 feature，查过），但"实线"得写成
-             * `[1, 0]` —— 一个零长度的间隔。那是个赌运气的写法：规范没说零间隔
-             * 该怎么画，而画错的样子是整条线变成一串点，还不报错。两个图层没有
-             * 这种含糊。 */
-            id: "route",
-            type: "line",
-            source: "route",
-            filter: ["!=", ["get", "procedure"], 1],
-            layout: { "line-cap": "round", "line-join": "round" },
-            paint: {
-              "line-color": c.route,
-              // 比航路网粗一倍以上，而且随缩放一起长 —— 缩小时它仍然要是图上最
-              // 显眼的那条线，那正是缩小时最难做到的。
-              "line-width": [
-                "interpolate",
-                ["linear"],
-                ["zoom"],
-                3,
-                2,
-                8,
-                3.4,
-              ] as never,
-              // 同 route-casing：z6 起交给航路网点亮那几段。
-              "line-opacity": [
-                "step",
-                ["zoom"],
-                1,
-                6,
-                ["case", ["==", ["get", "onAirway"], 1], 0, 1],
-              ] as never,
-            },
-          },
-          {
-            /* 程序段（SID/STAR）画虚线：它们是"按图走"的部分，和航路段不是一回
-             * 事，航图上也这么分。 */
-            id: "route-procedure",
-            type: "line",
-            source: "route",
-            filter: ["==", ["get", "procedure"], 1],
-            layout: { "line-cap": "butt", "line-join": "round" },
-            paint: {
-              "line-color": c.route,
-              "line-width": [
-                "interpolate",
-                ["linear"],
-                ["zoom"],
-                3,
-                2,
-                8,
-                3.4,
-              ] as never,
-              "line-dasharray": [2, 1.5],
-            },
-          },
-          {
-            /* 沿着航路标航路代号。航图上读一条计划就是"点—航路—点"，只画线不
-             * 说走哪条，等于把这条航路里一半的信息藏起来了。
-             *
-             * `symbol-placement: line` 让它贴着线走；间距给得大一些，因为一条
-             * 腿往往横跨半个屏幕，重复太密反而吵。 */
-            id: "route-airways",
-            type: "symbol",
-            source: "route",
-            minzoom: 4,
-            filter: ["!=", ["get", "via"], ""],
-            layout: {
-              "symbol-placement": "line",
-              "symbol-spacing": 220,
-              "text-field": ["get", "via"],
-              "text-font": ["Noto Sans Regular"],
-              "text-size": 10,
-              "text-letter-spacing": 0.08,
-              "text-max-angle": 25,
-              "text-offset": [0, -0.9],
-            },
-            paint: {
-              "text-color": c.route,
-              "text-halo-color": c.routeCasing,
-              "text-halo-width": 1.6,
-              /* 标注的交接点是 **z8**，不是线的 z6 —— 接手标注的是
-               * `airway-labels`，而它的 minzoom 是 8。
-               *
-               * 两个交接点不同不是疏漏：z6–8 那两级里，航路网的线已经画着、名字还
-               * 没出来，这时候计划自己的沿线标注是那一段唯一写着航路代号的东西。
-               * 跟着线一起在 z6 让位，就会有两级只有一条亮线而说不出它是哪条航路。 */
-              "text-opacity": [
-                "step",
-                ["zoom"],
-                1,
-                8,
-                ["case", ["==", ["get", "onAirway"], 1], 0, 1],
-              ] as never,
-            },
-          },
-          {
-            // 管制席位。圆点加「呼号 频率」——**频率是飞行员真正要的那一样**，
-            // 所以它和呼号一起进标注，而不是等人去点。
-            id: "atc",
-            type: "circle",
-            source: "atc",
-            paint: {
-              "circle-radius": 4,
-              // **按席位分色，不再是一律琥珀。** 以前这一层所有点同一个颜色，塔台
-              // 和区域在图上分不开 —— 而对飞行员那是"我现在该叫谁"和"我巡航时该
-              // 叫谁"的区别。色表在 `lib/atc.ts`，列表和这里共用一份。
-              "circle-color": facilityCircleColor() as never,
-              "circle-stroke-width": 1,
-              "circle-stroke-color": c.ocean,
-            },
-          },
-          {
-            id: "atc-labels",
-            type: "symbol",
-            source: "atc",
-            layout: {
-              "text-field": [
-                "concat",
-                ["get", "callsign"],
-                "  ",
-                ["get", "frequency"],
-              ],
-              "text-font": ["Noto Sans Regular"],
-              "text-size": 10,
-              "text-offset": [0, 1.1],
-              "text-anchor": "top",
-            },
-            paint: {
-              // 标注和点用同一个席位色 —— 点是红的、字是琥珀的，会让人以为那是两
-              // 样东西。
-              "text-color": facilityCircleColor() as never,
-              "text-halo-color": c.ocean,
-              "text-halo-width": 1.4,
-            },
-          },
-          {
-            /* 有人上席的空域，标上是谁、频率多少。
-             *
-             * `symbol-placement: "line"` 让字**沿着边界走**而不是堆在多边形中心：
-             * 一个区域席位覆盖整个情报区，中心那一点往往在荒无人烟的地方，而且几
-             * 个嵌套的空域中心会叠在一起。沿边走还有一个好处 —— 它天然回答了"这
-             * 条边界是谁的"。
-             *
-             * 和情报区那层的名字（`fir-labels`）用同一种放法，但排在它**之后**，
-             * 所以重叠时保留的是这一条：有人管的席位比一个静态的区名要紧。 */
-            id: "atc-area-labels",
-            type: "symbol",
-            source: "atcAreas",
-            minzoom: 4,
-            layout: {
-              "symbol-placement": "line",
-              "symbol-spacing": 500,
-              "text-field": [
-                "concat",
-                ["get", "callsign"],
-                "  ",
-                ["get", "frequency"],
-              ],
-              "text-font": ["Noto Sans Regular"],
-              "text-size": 10,
-              "text-letter-spacing": 0.08,
-              "text-max-angle": 30,
-            },
-            paint: {
-              "text-color": facilityCircleColor() as never,
-              "text-halo-color": c.ocean,
-              "text-halo-width": 1.6,
-            },
-          },
-          {
-            // 其余在线航班：小三角，按航向转。**没有标注** —— 满屏呼号会把航图
-            // 盖掉，而"别人在哪"这件事看点就够了。
-            /* 其余在线航班。
-             *
-             * **按高度分色**（`lib/traffic.ts` 的 viridis 色带，和 can-radar 同一
-             * 套）。以前整层是一个颜色，只看得出"有人在"；分色之后一眼分得出谁在爬
-             * 升、谁在巡航 —— 而那正是看这一层的目的。
-             *
-             * **地面上的画小一号、压淡。** 一个大机场停着几十架飞机全叠在一个点
-             * 上，会把周围的航路和航路点整片糊掉，而"谁停在机坪上"是这张图上最不需
-             * 要的信息。不是隐藏：它们仍然在，只是让位。 */
-            id: "traffic",
-            type: "symbol",
-            source: "traffic",
-            layout: {
-              "icon-image": "aircraft",
-              /* 尺寸 = 随缩放的基准 × 在不在地面。
-               *
-               * **底图是 22px 画布、`pixelRatio: 2`**，所以 `icon-size: 1` 只画出
-               * 11 CSS px。原来在飞的是 0.62，也就是**不到 7px** —— 一个三角形在
-               * 那个尺寸上基本只是个点，看不出机头朝哪儿。
-               *
-               * 随缩放变而不是给一个定值：全国视野下几十架大图标会糊成一团，而放
-               * 大到看一个机场周围时恰恰要看清朝向。三个锚点覆盖了这张图的常用范
-               * 围（4 是全国、7 是一个情报区、10 是一个终端区）。
-               *
-               * **`interpolate` 必须是最外层，`case` 放进取值里。** 上一版写成了
-               * `["*", ["interpolate", …], ["case", …]]`，而 MapLibre 要求
-               * `["zoom"]` 只能作为**顶层** step/interpolate 的输入 —— 包进乘法之
-               * 后整个 style 校验失败，这一层和下面 own 那层一起不画。它不抛异常，
-               * 只从 `map.on("error")` 出来一行 console，所以在浏览器之外看不见：
-               * lint 和 build 都当它是普通数组。`atc.test.ts` 现在拿真的表达式解析
-               * 器钉住这一条。
-               *
-               * 地面那一档因此写进每个锚点（×0.65），不是再乘一次。 */
-              "icon-size": [
-                "interpolate",
-                ["linear"],
-                ["zoom"],
-                4,
-                ["case", ["==", ["get", "onGround"], 1], 0.52, 0.8],
-                7,
-                ["case", ["==", ["get", "onGround"], 1], 0.68, 1.05],
-                10,
-                ["case", ["==", ["get", "onGround"], 1], 0.88, 1.35],
-              ],
-              "icon-rotate": ["get", "heading"],
-              "icon-rotation-alignment": "map",
-              "icon-allow-overlap": true,
-            },
-            paint: {
-              "icon-color": altitudeBandColor() as never,
-              "icon-opacity": [
-                "case",
-                ["==", ["get", "onGround"], 1],
-                0.45,
-                1,
-              ] as never,
-            },
-          },
-          {
-            /* 航班标注：呼号加高度层。
-             *
-             * **放大到 7 级才出现**，而且地面上的不标。以前这一层完全没有标注，理由
-             * 是"满屏呼号会把航图盖掉" —— 那句话在全国视野下是对的，但放大到看一个
-             * 机场周围的时候，"那架是谁、在什么高度"恰恰是要知道的，而 MapLibre 自
-             * 带碰撞检测，密的地方它会自己让位。
-             *
-             * `icon-allow-overlap` 只给了图标，没给文字：飞机符号该全画出来（它是位
-             * 置），标注可以互相挤掉（它是补充）。 */
-            id: "traffic-labels",
-            type: "symbol",
-            source: "traffic",
-            minzoom: 7,
-            filter: ["!=", ["get", "onGround"], 1],
-            layout: {
-              "text-field": [
-                "concat",
-                ["get", "callsign"],
-                "  ",
-                ["get", "level"],
-              ],
-              "text-font": ["Noto Sans Regular"],
-              "text-size": 9,
-              "text-offset": [0, 1.2],
-              "text-anchor": "top",
-            },
-            paint: {
-              "text-color": altitudeBandColor() as never,
-              "text-halo-color": c.ocean,
-              "text-halo-width": 1.4,
-            },
-          },
-          {
-            // 自己那架。大一号、最亮、**永远画在最上面**，而且带呼号高度地速。
-            id: "own",
-            type: "symbol",
-            source: "own",
-            layout: {
-              "icon-image": "aircraft",
-              /* 跟着 traffic 一起提，**而且必须比它大**。
-               *
-               * 这一层原来是定值 1，而 traffic 提到 z7 上的 1.05 之后，自己那架反
-               * 而会比别人小 —— 「大一号」那句话就成了假的。所以用同一条缩放曲线，
-               * 每个锚点都是 traffic 在飞那一档的 1.35 倍。
-               *
-               * **1.35 直接乘进锚点，不写成 `["*", …]`** —— 同 traffic 那段的理由：
-               * `["zoom"]` 只能作为顶层 interpolate 的输入。 */
-              "icon-size": [
-                "interpolate",
-                ["linear"],
-                ["zoom"],
-                4,
-                1.08,
-                7,
-                1.42,
-                10,
-                1.82,
-              ],
-              "icon-rotate": ["get", "heading"],
-              "icon-rotation-alignment": "map",
-              "icon-allow-overlap": true,
-              "text-field": [
-                "concat",
-                ["get", "callsign"],
-                "\n",
-                ["to-string", ["get", "altitude"]],
-                "ft  ",
-                ["to-string", ["get", "groundspeed"]],
-                "kt",
-              ],
-              "text-font": ["Noto Sans Regular"],
-              "text-size": 11,
-              "text-offset": [0, 1.4],
-              "text-anchor": "top",
-              "text-line-height": 1.1,
-              // 自己那架的标注**不参与避让**：它被别的标注挤掉就等于这一层白做了。
-              "text-allow-overlap": true,
-              "text-ignore-placement": true,
-            },
-            paint: {
-              "icon-color": c.own,
-              "text-color": c.own,
-              "text-halo-color": c.ocean,
-              "text-halo-width": 1.6,
-            },
-          },
-          {
-            id: "markers",
-            type: "circle",
-            source: "markers",
-            paint: {
-              "circle-color": c.marker,
-              "circle-radius": ["case", ["==", ["get", "airport"], 1], 4, 2.5],
-              "circle-stroke-color": c.marker,
-              "circle-stroke-width": 0.8,
-              "circle-opacity": [
-                "case",
-                ["==", ["get", "airport"], 1],
-                1,
-                0.45,
-              ],
-            },
-          },
-          {
-            /* 航路点的名字。**只标这条航路上的点**（filter 见下），理由写在
-             * Point.onRoute 上面。
-             *
-             * 标注不参与避让：这条航路是用户刚刚亲手算出来的东西，它的点名被背景
-             * 里的导航台或航路点标注挤掉，是这张图上最说不通的一种让路。 */
-            id: "route-labels",
-            type: "symbol",
-            source: "markers",
-            filter: ["==", ["get", "onRoute"], 1],
-            layout: {
-              "text-field": ["get", "ident"],
-              "text-font": ["Noto Sans Regular"],
-              "text-size": 10,
-              "text-offset": [0, 0.8],
-              "text-anchor": "top",
-              "text-allow-overlap": true,
-              "text-ignore-placement": true,
-            },
-            paint: {
-              "text-color": c.marker,
-              "text-halo-color": c.routeCasing,
-              "text-halo-width": 1.6,
-            },
-          },
-        ],
-      },
+      // 手写 style，不指向任何瓦片服务 —— 见文件顶上。内容在 `lib/chartStyle.ts`。
+      style: buildStyle(theme()),
       center: [110, 34],
       zoom: 3,
       // 内建的那个关掉，换成下面手动加的一个 —— 要的是自己那行字（VATSpy 的
@@ -2478,12 +839,18 @@ onMounted(() => {
     "bottom-right",
   );
 
+  /* 符号在 `load` 之前就可能被要（瓦片先于 load 解析），缺了就当场补上。
+   * `registerChartIcons` 跳过已注册的，重复调无害。 */
+  map.on("styleimagemissing", () => {
+    if (map) registerChartIcons(map);
+  });
+
   map.on("load", () => {
     styleReady = true;
-    registerIcons();
-    // 构造时的配色是那一刻取的；`load` 之前切过主题的话，那次 applyPalette 被闸挡
+    registerChartIcons(map!);
+    // 构造时的配色是那一刻取的；`load` 之前切过主题的话，那次 applyTheme 被闸挡
     // 掉了，这里补上。
-    applyPalette();
+    applyTheme();
     render();
     updateCorners();
     emitViewport();
@@ -2496,7 +863,7 @@ onMounted(() => {
   resizeObserver.observe(container.value);
   window.addEventListener("resize", syncScrollZoom);
 
-  themeObserver = new MutationObserver(applyPalette);
+  themeObserver = new MutationObserver(applyTheme);
   themeObserver.observe(document.documentElement, {
     attributes: true,
     attributeFilter: ["class"],
@@ -2537,6 +904,7 @@ watch(
     props.traffic,
     props.atc,
     props.atcAreas,
+    props.ownTrack,
     props.own,
   ],
   render,

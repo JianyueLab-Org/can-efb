@@ -18,6 +18,7 @@
  * 「其余那些机场不存在」。34 kB 整份给，一次取完，出不出现交给图层的 minzoom。
  */
 import type { FeatureCollection } from "geojson";
+import { distanceNm } from "@/lib/geo";
 
 export interface NetworkRunway {
   icao: string;
@@ -114,4 +115,54 @@ export function toRunwayFeatures(runways: NetworkRunway[]): FeatureCollection {
       })),
     ],
   };
+}
+
+/** 一个机场的跑道概况：最长那条有多长、朝哪，够不够「主要机场」。 */
+export interface AirportRunwaySummary {
+  lengthM: number;
+  /**
+   * 最长那条跑道的**真**方位，0–180°（一条跑道两个朝向画出来是同一根杠）。
+   *
+   * 按两端坐标算，不用 `hdg`：`hdg` 是磁航向，图标按它转会偏一个磁差。
+   */
+  bearing: number;
+  major: boolean;
+}
+
+/** 两点间的初始真方位，度。 */
+function bearingDeg(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const rad = Math.PI / 180;
+  const y = Math.sin((lon2 - lon1) * rad) * Math.cos(lat2 * rad);
+  const x =
+    Math.cos(lat1 * rad) * Math.sin(lat2 * rad) -
+    Math.sin(lat1 * rad) * Math.cos(lat2 * rad) * Math.cos((lon2 - lon1) * rad);
+  return (((Math.atan2(y, x) / rad) % 360) + 360) % 360;
+}
+
+/**
+ * 按机场汇总跑道：最长一条的长度和方位，以及是否算主要机场。
+ *
+ * 「主要机场」= 最长跑道 ≥ `majorMinM` 米，门槛在 `lib/chartStyle.ts`
+ * （`MAJOR_AIRPORT_MIN_RUNWAY_M`）。低缩放下只画这一批。
+ *
+ * 长度按两端坐标的大圆距离算，库里没有长度列。同一条跑道两头各一行，长度一样，取
+ * 哪行都行。
+ */
+export function airportRunwaySummary(
+  runways: NetworkRunway[],
+  majorMinM: number,
+): Map<string, AirportRunwaySummary> {
+  const out = new Map<string, AirportRunwaySummary>();
+  for (const r of runways) {
+    if (!r.icao) continue;
+    const lengthM = distanceNm([r.lat, r.lon], [r.endLat, r.endLon]) * 1852;
+    const prev = out.get(r.icao);
+    if (prev && prev.lengthM >= lengthM) continue;
+    out.set(r.icao, {
+      lengthM,
+      bearing: bearingDeg(r.lat, r.lon, r.endLat, r.endLon) % 180,
+      major: lengthM >= majorMinM,
+    });
+  }
+  return out;
 }

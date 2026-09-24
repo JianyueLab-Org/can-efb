@@ -63,14 +63,70 @@ export function navaidLabel(n: Navaid): string {
   return `${name} ${n.ident}`;
 }
 
+/**
+ * 导航台的图上类别，决定画哪个符号、从哪一级缩放开始出现。
+ *
+ * can-db 里 `kind` 的实际取值（查自它的两个导入脚本和 NAIP 2609 原表）：
+ *
+ * | 来源                          | 取值                              |
+ * | ----------------------------- | --------------------------------- |
+ * | NAIP `VOR.csv` 的 `CODE_TYPE` | `VOR/DME`（362 个，全部）         |
+ * | NAIP `NDB.csv`                | `NDB`（77 个）                    |
+ * | Navigraph（`build-navdata`）  | `VOR`、`VOR/DME`、`DME`、`NDB`    |
+ *
+ * `TACAN`、`VORTAC` 今天库里没有，按 AIXM 的写法预留。认不出的归 `other`，画一个
+ * 不冒充任何台型的通用符号。
+ */
+export type NavaidClass =
+  | "vor"
+  | "vordme"
+  | "dme"
+  | "tacan"
+  | "vortac"
+  | "ndb"
+  | "other";
+
+export function navaidClass(kind: string | null | undefined): NavaidClass {
+  const k = (kind ?? "").toUpperCase().replace(/\s+/g, "");
+  if (!k) return "other";
+  if (k.includes("NDB")) return "ndb";
+  if (k.includes("VORTAC")) return "vortac";
+  if (k.includes("TACAN")) return "tacan";
+  if (k.includes("VOR") && k.includes("DME")) return "vordme";
+  if (k.includes("VOR")) return "vor";
+  if (k.includes("DME")) return "dme";
+  return "other";
+}
+
+/**
+ * 缩放上的两档：VOR 一族中等缩放出现，NDB、单独的 DME 和认不出的放大后才出现。
+ * 门槛在 `lib/chartStyle.ts` 的 `ZOOM`。
+ */
+export function navaidTier(cls: NavaidClass): "vor" | "minor" {
+  return cls === "vor" ||
+    cls === "vordme" ||
+    cls === "vortac" ||
+    cls === "tacan"
+    ? "vor"
+    : "minor";
+}
+
 export function toNavaidPoints(list: Navaid[]): FeatureCollection {
   return {
     type: "FeatureCollection",
-    features: list.map((n) => ({
-      type: "Feature",
-      properties: { ident: n.ident, label: navaidLabel(n) },
-      geometry: { type: "Point", coordinates: [n.lon, n.lat] },
-    })),
+    features: list.map((n) => {
+      const cls = navaidClass(n.kind);
+      return {
+        type: "Feature",
+        properties: {
+          ident: n.ident,
+          label: navaidLabel(n),
+          cls,
+          tier: navaidTier(cls),
+        },
+        geometry: { type: "Point", coordinates: [n.lon, n.lat] },
+      };
+    }),
   };
 }
 
@@ -185,11 +241,43 @@ function circleRing(
  */
 export type ControlledKind = "CTA" | "APP";
 
-/** 图层分色用的类别。见要素属性里的 `cls`。 */
-function airspaceClass(a: Airspace): string {
-  if (a.family === "restricted" || a.family === "special") return "restricted";
-  if (a.kind === "CTA") return "ctr";
-  if (a.kind === "APP") return "app";
+/**
+ * 图层分色用的类别。见要素属性里的 `cls`。
+ *
+ * 映射按 can-db 的实际取值定（NAIP 2609 原表 `RESTRICTED.csv`，经 `build-naip.mjs`
+ * 原样进 `kind` / `local_type`）：
+ *
+ * | family       | kind | local_type | cls          | 数量 |
+ * | ------------ | ---- | ---------- | ------------ | ---- |
+ * | `restricted` | `P`  | 禁区       | `prohibited` | 1    |
+ * | `restricted` | `R`  | 限制区     | `restricted` | 47   |
+ * | `restricted` | `D`  | 危险区     | `danger`     | 11   |
+ * | `special`    | `HAS`| 等待空域   | `other`      | 3    |
+ * | `controlled` | `CTA`|            | `ctr`        |      |
+ * | `controlled` | `APP`|            | `app`        |      |
+ *
+ * `kind` 缺席时退到 `local_type` 的中文名。`restricted` 族里两者都认不出的按限制区
+ * 画 —— 少画一个禁区的斜线比把它画成普通扇区安全。
+ */
+export type AirspaceClass =
+  | "ctr"
+  | "app"
+  | "restricted"
+  | "prohibited"
+  | "danger"
+  | "other";
+
+export function airspaceClass(
+  a: Pick<Airspace, "family" | "kind" | "localType">,
+): AirspaceClass {
+  const kind = (a.kind ?? "").toUpperCase();
+  const local = a.localType ?? "";
+  if (kind === "P" || local.includes("禁区")) return "prohibited";
+  if (kind === "D" || local.includes("危险区")) return "danger";
+  if (kind === "R" || local.includes("限制区")) return "restricted";
+  if (a.family === "restricted") return "restricted";
+  if (kind === "CTA") return "ctr";
+  if (kind === "APP") return "app";
   return "other";
 }
 

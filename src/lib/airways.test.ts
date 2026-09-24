@@ -1,7 +1,16 @@
 import { expect, test, describe } from "bun:test";
 import type { FeatureCollection } from "geojson";
 
-import { legKey, routeLegKeys, markRouteOnAirways } from "@/lib/airways";
+import {
+  legKey,
+  routeLegKeys,
+  markRouteOnAirways,
+  mergeAirwayLevels,
+  toAirwayFixes,
+  toAirwayLines,
+  type AirwayGraph,
+  type AirwaySegment,
+} from "@/lib/airways";
 
 const seg = (airway: string, from: string, to: string) => ({
   type: "Feature" as const,
@@ -114,5 +123,67 @@ describe("返回的是真正标到的", () => {
     const marked = markRouteOnAirways(fc, new Set());
     expect(marked.size).toBe(0);
     expect(fc.features[0].properties?.onRoute).toBe(0);
+  });
+});
+
+describe("高低空合成一张图", () => {
+  const leg = (airway: string, from: string, to: string): AirwaySegment => ({
+    airway,
+    from,
+    to,
+    dir: "both",
+    minAlt: null,
+    maxAlt: null,
+  });
+  const fixes: AirwayGraph["fixes"] = {
+    AAAAA: [30, 120],
+    BBBBB: [31, 121],
+    CCCCC: [32, 122],
+    DDDDD: [33, 123],
+  };
+  const graph = (...segments: AirwaySegment[]): AirwayGraph => ({
+    fixes,
+    airways: {},
+    segments,
+  });
+
+  /**
+   * can-db 的 `?level=high` 给 high + both + NULL，`low` 给 low + both + NULL，响应
+   * 里不带层级。两边都有的就是 `both`，而且只画一条。
+   */
+  const merged = mergeAirwayLevels(
+    graph(leg("J1", "AAAAA", "BBBBB"), leg("W1", "BBBBB", "CCCCC")),
+    graph(leg("V1", "CCCCC", "DDDDD"), leg("W1", "BBBBB", "CCCCC")),
+  );
+  const levelOf = (airway: string) =>
+    merged.segments.find((s) => s.airway === airway)?.level;
+
+  test("按出现在哪一边打标记", () => {
+    expect(levelOf("J1")).toBe("high");
+    expect(levelOf("V1")).toBe("low");
+    expect(levelOf("W1")).toBe("both");
+  });
+
+  test("两边都有的只留一条", () => {
+    expect(merged.segments.filter((s) => s.airway === "W1").length).toBe(1);
+    expect(merged.segments.length).toBe(3);
+  });
+
+  test("线要素带层级", () => {
+    const lines = toAirwayLines(merged);
+    const v1 = lines.features.find((f) => f.properties?.airway === "V1");
+    expect(v1?.properties?.level).toBe("low");
+  });
+
+  /** 只被低空航段用到的点，只在低空那层出现时才画；有高空航段连着就是高空的点。 */
+  test("航路点跟着连它的航段分层", () => {
+    const pts = toAirwayFixes(merged);
+    const levelAt = (ident: string) =>
+      pts.features.find((f) => f.properties?.ident === ident)?.properties
+        ?.level;
+    expect(levelAt("AAAAA")).toBe("high");
+    expect(levelAt("DDDDD")).toBe("low");
+    // CCCCC 同时连着 W1（both）和 V1（low）。
+    expect(levelAt("CCCCC")).toBe("both");
   });
 });

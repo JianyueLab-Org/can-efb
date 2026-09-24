@@ -305,16 +305,12 @@
     },
     "map": {
       "emptyLayer": {
-        "airways": "The aeronautical database has no segments at this level. Until the data is re-imported the upper network is empty — switch to low to see the full route network.",
+        "airways": "The aeronautical database has no airway segments.",
         "navaids": "The aeronautical database has no navaid data.",
         "generic": "The aeronautical database has no data for this layer."
       },
-      "airways": {
-        "off": "No airways",
-        "high": "Upper",
-        "low": "Lower"
-      },
       "layers": {
+        "airways": "Airways",
         "firs": "FIRs",
         "navaids": "Navaids",
         "mora": "MORA",

@@ -1,6 +1,10 @@
 import { expect, test, describe } from "bun:test";
 
-import { toRunwayFeatures, type NetworkRunway } from "@/lib/runways";
+import {
+  airportRunwaySummary,
+  toRunwayFeatures,
+  type NetworkRunway,
+} from "@/lib/runways";
 
 // 一条南北向跑道的两头，形状和 can-db 的 /aip/runways 一致：**按端给**，
 // 每一行带着自己那一头的入口，外加对端。
@@ -78,5 +82,42 @@ describe("跑道", () => {
 
   test("空输入不炸", () => {
     expect(toRunwayFeatures([]).features).toEqual([]);
+  });
+});
+
+describe("主要机场按最长跑道判", () => {
+  // ZAAA 那条南北向跑道长 0.1° 纬度，约 11.1 公里。另配一个短跑道机场。
+  const short: NetworkRunway = {
+    icao: "ZBBB",
+    ident: "09",
+    lat: 30,
+    lon: 120,
+    endLat: 30,
+    endLon: 120.02,
+    hdg: 90,
+  };
+
+  test("门槛以上是主要机场，以下不是", () => {
+    const m = airportRunwaySummary([...ZAAA, short], 2500);
+    expect(m.get("ZAAA")?.major).toBe(true);
+    // 0.02° 经度在北纬 30° 约 1.9 公里。
+    expect(m.get("ZBBB")?.major).toBe(false);
+    expect(m.get("ZBBB")?.lengthM).toBeGreaterThan(1800);
+    expect(m.get("ZBBB")?.lengthM).toBeLessThan(2000);
+  });
+
+  test("门槛是参数，不是写死的", () => {
+    expect(airportRunwaySummary([short], 1500).get("ZBBB")?.major).toBe(true);
+  });
+
+  /** 跑道杠两头一样，方位折进 0–180°；按坐标算真方位，不用磁航向 `hdg`。 */
+  test("方位取最长那条，按坐标算", () => {
+    expect(airportRunwaySummary(ZAAA, 2500).get("ZAAA")?.bearing).toBeCloseTo(
+      0,
+      0,
+    );
+    expect(
+      airportRunwaySummary([short], 2500).get("ZBBB")?.bearing,
+    ).toBeCloseTo(90, 0);
   });
 });

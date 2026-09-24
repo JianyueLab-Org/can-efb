@@ -45,6 +45,22 @@ export interface AirwayMeta {
 export type AirwayLevel = "high" | "low";
 
 /**
+ * 一条航段在图上归哪一层。`both` 是两个视图里都有的那些（can-db 的 `both` 加上没有
+ * 高低空这根轴的 `NULL`，那边两个视图都给）。
+ */
+export type SegmentLevel = "high" | "low" | "both";
+
+const LEVEL_RANK: Record<SegmentLevel, number> = { low: 0, both: 1, high: 2 };
+
+export interface TaggedSegment extends AirwaySegment {
+  level: SegmentLevel;
+}
+
+export interface TaggedAirwayGraph extends Omit<AirwayGraph, "segments"> {
+  segments: TaggedSegment[];
+}
+
+/**
  * 拉航路网。走本站的 can-db 反代，不直连 —— 理由见
  * `pages/api/db/[...path].ts` 顶上。
  *
@@ -59,6 +75,56 @@ export async function fetchAirways(level: AirwayLevel): Promise<AirwayGraph> {
   const body = (await response.json()) as { data?: AirwayGraph } & AirwayGraph;
   // can-db 大部分接口包着 {status, data}，少数裸奔 —— 和 canApi 那边同一个拆法。
   return (body.data ?? body) as AirwayGraph;
+}
+
+/**
+ * 两个层级一起取，合成一张带层级标记的图。
+ *
+ * can-db 的响应里**没有 level 这一列**（`AirwaySegment` 不带它），只能按 `?level=`
+ * 分两次取：`high` 给 high + both + NULL，`low` 给 low + both + NULL。两边都出现的
+ * 就是 `both`。地图按缩放决定画哪一层（`lib/chartStyle.ts` 的 `ZOOM`），不再让人去
+ * 选。
+ */
+export async function fetchAirwayNetwork(): Promise<TaggedAirwayGraph> {
+  const [high, low] = await Promise.all([
+    fetchAirways("high"),
+    fetchAirways("low"),
+  ]);
+  return mergeAirwayLevels(high, low);
+}
+
+/** 同一行航段在两次响应里一模一样，按这几项认。 */
+function segmentKey(s: AirwaySegment): string {
+  return `${s.airway}|${s.from}|${s.to}|${s.dir}`;
+}
+
+/**
+ * 合并两个视图，每条航段只留一份并打上层级。
+ *
+ * 点集和航路属性两边本来就是全量（can-db 不按 level 筛它们），取并集只是防御。同
+ * 一视图里重复出现的航段也收成一条 —— 两条重合的线画出来没有区别，高亮时却会算两
+ * 遍。
+ */
+export function mergeAirwayLevels(
+  high: AirwayGraph,
+  low: AirwayGraph,
+): TaggedAirwayGraph {
+  const byKey = new Map<string, TaggedSegment>();
+  for (const seg of high.segments) {
+    const key = segmentKey(seg);
+    if (!byKey.has(key)) byKey.set(key, { ...seg, level: "high" });
+  }
+  for (const seg of low.segments) {
+    const key = segmentKey(seg);
+    const seen = byKey.get(key);
+    if (!seen) byKey.set(key, { ...seg, level: "low" });
+    else if (seen.level === "high") seen.level = "both";
+  }
+  return {
+    fixes: { ...low.fixes, ...high.fixes },
+    airways: { ...low.airways, ...high.airways },
+    segments: [...byKey.values()],
+  };
 }
 
 /**
@@ -135,7 +201,9 @@ export function markRouteOnAirways(
   return marked;
 }
 
-export function toAirwayLines(graph: AirwayGraph): FeatureCollection {
+export function toAirwayLines(
+  graph: AirwayGraph | TaggedAirwayGraph,
+): FeatureCollection {
   const features: Feature[] = [];
   let dropped = 0;
 
@@ -151,6 +219,8 @@ export function toAirwayLines(graph: AirwayGraph): FeatureCollection {
       type: "Feature",
       properties: {
         airway: seg.airway,
+        // 没打过标记的图（单层取的）按 `both` 算：哪一层都不该把它藏掉。
+        level: "level" in seg ? seg.level : "both",
         locType: meta?.locType ?? "",
         minAlt: seg.minAlt ?? 0,
         /* 两端代号带上，`markRouteOnAirways` 靠它算键。**属性里没有它就点不亮** ——
@@ -200,22 +270,30 @@ export function toAirwayLines(graph: AirwayGraph): FeatureCollection {
  * 的航段在那边被丢掉，它引用的顶点在这边也就不该留下。两处各写一套判断，迟早会出
  * 现"线没画、点还在"的孤点。
  */
-export function toAirwayFixes(graph: AirwayGraph): FeatureCollection {
-  const used = new Set<string>();
+export function toAirwayFixes(
+  graph: AirwayGraph | TaggedAirwayGraph,
+): FeatureCollection {
+  /* 点的层级跟着连着它的航段走，取最高的那一级：high > both > low。只有高空航段用
+   * 到的点才在缩小时出现。 */
+  const used = new Map<string, SegmentLevel>();
   for (const seg of graph.segments) {
     // 两端都要在 —— 和 toAirwayLines 的丢弃条件同一句话。
     if (graph.fixes[seg.from] && graph.fixes[seg.to]) {
-      used.add(seg.from);
-      used.add(seg.to);
+      const level: SegmentLevel = "level" in seg ? seg.level : "both";
+      for (const ident of [seg.from, seg.to]) {
+        const prev = used.get(ident);
+        if (!prev || LEVEL_RANK[level] > LEVEL_RANK[prev])
+          used.set(ident, level);
+      }
     }
   }
 
   const features: Feature[] = [];
-  for (const ident of used) {
+  for (const [ident, level] of used) {
     const [lat, lon] = graph.fixes[ident];
     features.push({
       type: "Feature",
-      properties: { ident },
+      properties: { ident, level },
       // fixes 是 [lat, lon]，GeoJSON 要 [lon, lat]。
       geometry: { type: "Point", coordinates: [lon, lat] },
     });
