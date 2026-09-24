@@ -173,9 +173,9 @@ export const ZOOM = {
   runwayLines: 7,
   runwayLabels: 9,
 
-  /** 只属于高空的航路。计划航线在这一级把航路段交给航路网高亮。 */
+  /** 高空航路（高空和两层都有的）。计划航线在这一级把航路段交给航路网高亮。 */
   airwaysHigh: 6,
-  /** 低空航路，连同高低空共用的（`both`）。 */
+  /** 只属于低空的航路。 */
   airwaysLow: 8,
   /** 航路代号。计划航线的沿线代号在这一级交棒。 */
   airwayLabels: 8,
@@ -429,7 +429,7 @@ export function rampCase(
 }
 
 const onRoute = ["==", ["get", "onRoute"], 1];
-const isHigh = ["==", ["get", "level"], "high"];
+const notLow = ["!=", ["get", "level"], "low"];
 
 /** 管制席位色。**不跟主题**：席位色是和 can-radar 共用的身份编码。 */
 export function facilityColor(): unknown {
@@ -662,7 +662,7 @@ export function buildStyle(theme: Theme): StyleSpecification {
     ["==", ["get", "tier"], "vor"],
     [">=", ["zoom"], ZOOM.minorNavaids],
   ];
-  const fixVisible = ["any", isHigh, [">=", ["zoom"], ZOOM.airwaysLow]];
+  const fixVisible = ["any", notLow, [">=", ["zoom"], ZOOM.airwaysLow]];
 
   const layers: ChartLayer[] = [
     // ------------------------------------------------ 底图
@@ -946,15 +946,9 @@ export function buildStyle(theme: Theme): StyleSpecification {
       type: "line",
       source: "airways",
       minzoom: ZOOM.airwaysLow,
-      filter: ["all", ["!", isHigh], ["!", onRoute]],
+      filter: ["all", ["==", ["get", "level"], "low"], ["!", onRoute]],
       paint: {
-        // 高低空共用的段放大后才出现，颜色仍按高空。
-        "line-color": [
-          "case",
-          ["==", ["get", "level"], "low"],
-          c.airwayLow,
-          c.airwayHigh,
-        ],
+        "line-color": c.airwayLow,
         "line-width": ramp(WIDTH.airwayLow),
         "line-opacity": ramp(OPACITY.airwayLow),
       },
@@ -967,7 +961,7 @@ export function buildStyle(theme: Theme): StyleSpecification {
       type: "line",
       source: "airways",
       minzoom: ZOOM.airwaysHigh,
-      filter: ["any", isHigh, onRoute],
+      filter: ["any", notLow, onRoute],
       paint: {
         "line-color": [
           "case",
@@ -1252,7 +1246,7 @@ export function buildStyle(theme: Theme): StyleSpecification {
       type: "symbol",
       source: "airways",
       minzoom: ZOOM.airwayLabels,
-      filter: ["any", isHigh, onRoute, [">=", ["zoom"], ZOOM.airwaysLow]],
+      filter: ["any", notLow, onRoute, [">=", ["zoom"], ZOOM.airwaysLow]],
       layout: {
         "symbol-placement": "line-center",
         "text-field": ["get", "airway"],
@@ -1262,7 +1256,7 @@ export function buildStyle(theme: Theme): StyleSpecification {
         "text-rotation-alignment": "map",
         "text-keep-upright": true,
         "text-max-angle": 30,
-        "symbol-sort-key": ["case", isHigh, 0, 1],
+        "symbol-sort-key": ["case", notLow, 0, 1],
       },
       paint: {
         "text-color": [

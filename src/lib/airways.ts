@@ -273,8 +273,8 @@ export function toAirwayLines(
 export function toAirwayFixes(
   graph: AirwayGraph | TaggedAirwayGraph,
 ): FeatureCollection {
-  /* 点的层级跟着连着它的航段走，取最高的那一级：high > both > low。只有高空航段用
-   * 到的点才在缩小时出现。 */
+  /* 点的层级跟着连着它的航段走，取最高的那一级：high > both > low。只被低空航段用
+   * 到的点，只在低空那一层出现时才画。 */
   const used = new Map<string, SegmentLevel>();
   for (const seg of graph.segments) {
     // 两端都要在 —— 和 toAirwayLines 的丢弃条件同一句话。

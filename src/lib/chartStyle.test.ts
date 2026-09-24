@@ -180,10 +180,9 @@ describe("按缩放挑要素", () => {
     const both = { level: "both", onRoute: 0 };
     const high = { level: "high", onRoute: 0 };
     expect(shows("airways", ZOOM.airwaysHigh, high)).toBe(true);
-    // 高低空共用的段不算高空，放大到低空那级才出现。
-    expect(shows("airways", ZOOM.airwaysHigh, both)).toBe(false);
-    expect(shows("airways-low", ZOOM.airwaysHigh, both)).toBe(false);
-    expect(shows("airways-low", ZOOM.airwaysLow, both)).toBe(true);
+    expect(shows("airways", ZOOM.airwaysHigh, both)).toBe(true);
+    // 同一段不在两层里各画一遍。
+    expect(shows("airways-low", ZOOM.airwaysLow, both)).toBe(false);
     expect(shows("airways", ZOOM.airwaysHigh, low)).toBe(false);
     expect(shows("airways-low", ZOOM.airwaysHigh, low)).toBe(false);
     expect(shows("airways-low", ZOOM.airwaysLow, low)).toBe(true);

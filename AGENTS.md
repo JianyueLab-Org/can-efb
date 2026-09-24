@@ -352,16 +352,16 @@ datafeed 给的那个经纬度是**管制员自己的视野中心** —— 既�
 
 **默认缩放门槛**：
 
-| 要素                  | 符号 | 标注 |
-| --------------------- | ---- | ---- |
-| 主要机场              | 4    | 5    |
-| 其余机场              | 6    | 7    |
-| 跑道线（接替跑道杠）  | 7    | 9    |
-| 高空航路（high）      | 6    | 8    |
-| 低空航路（low、both） | 8    | 8    |
-| VOR 一族              | 6    | 7    |
-| NDB、DME、未知台型    | 8    | 9    |
-| 航路点                | 8    | 9    |
+| 要素                   | 符号 | 标注 |
+| ---------------------- | ---- | ---- |
+| 主要机场               | 4    | 5    |
+| 其余机场               | 6    | 7    |
+| 跑道线（接替跑道杠）   | 7    | 9    |
+| 高空航路（high、both） | 6    | 8    |
+| 低空航路（low）        | 8    | 8    |
+| VOR 一族               | 6    | 7    |
+| NDB、DME、未知台型     | 8    | 9    |
+| 航路点                 | 8    | 9    |
 
 **符号**在 `lib/chartIcons.ts` 用 canvas 画，两套主题各一份，颜色画进图里。飞机是
 SDF（`icon-color` 着色）。注册的图片名由 `chartStyle.test.ts` 对照 `allImageIds()`。
@@ -371,7 +371,7 @@ SDF（`icon-color` 着色）。注册的图片名由 `chartStyle.test.ts` 对照
 区 / `R` 限制区 / `D` 危险区）。禁区、限制区画斜线；危险区画虚线边加淡平涂。
 
 **航路只有一个开关。** 高低空一起取（`fetchAirwayNetwork`）：can-db 的响应不带层
-级，按 `?level=high` 和 `?level=low` 各取一次，两边都有的记为 `both`。缩小时只画 `high`；`both` 和 `low` 到 `ZOOM.airwaysLow` 才出现。航路点取连着它的航段里最高的一级。旧偏好
+级，按 `?level=high` 和 `?level=low` 各取一次，两边都有的记为 `both`。缩小时画 `high` 和 `both`；`low` 到 `ZOOM.airwaysLow` 才出现。航路点取连着它的航段里最高的一级。旧偏好
 `airway: "off" | "high" | "low"` 在 `readPrefs` 里折算成 `airways: boolean`。
 
 **主要机场**由 `/aip/runways` 算（`airportRunwaySummary`），所以机场和跑道在
