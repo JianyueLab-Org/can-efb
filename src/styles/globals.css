@@ -611,3 +611,20 @@
     display: none;
   }
 }
+
+/* 表单两列排布（FieldGrid.vue）。按面板宽度判：standard 面板 26rem 恒为一列，wide
+   面板 44rem 才分两列。36rem 这道线落在两者之间，离哪一边都够远，不会在某个宽度上
+   来回跳。 */
+.field-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+@container efb-panel (min-width: 36rem) {
+  .field-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .field-grid > .field-wide {
+    grid-column: 1 / -1;
+  }
+}
