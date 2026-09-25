@@ -120,6 +120,10 @@ const disabled = computed(
 async function load(fillForm = true) {
   loading.value = true;
   const result = await api<StoredPlan | null>("/api/v1/pilot/flightplan");
+  // 同 file()/remove()：请求还在路上时可能已经导航走了，回来的这些不再写
+  // loading/loadFailed/stored，也不再 fillPlan/applyDraft —— onMounted 里的
+  // void load() 和 recheck() 都会走到这里。
+  if (disposed.value) return;
   loading.value = false;
 
   if (!result.ok) {
