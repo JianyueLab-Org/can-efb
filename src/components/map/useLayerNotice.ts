@@ -17,6 +17,20 @@ export type LayerId =
   | "restricted"
   | "live";
 
+/**
+ * 取自 can-db、会被 aipAccess 拒掉的那几层。`live`（can-fsd 的 datafeed）和
+ * `firs`（随站发的静态文件）不在里面：can-db 的拒绝和它们无关，拿它去压这两层的失
+ * 败提示，就是把「没取到」画成「没有」。
+ */
+const CAN_DB_LAYERS: ReadonlySet<LayerId> = new Set<LayerId>([
+  "airways",
+  "navaids",
+  "mora",
+  "ctr",
+  "app",
+  "restricted",
+]);
+
 export interface LayerNotice {
   notice: Ref<{ layer: string; text: string } | null>;
   failure: Ref<LayerId | null>;
@@ -87,12 +101,12 @@ export function useLayerNotice(deniedText: string): LayerNotice {
     deniedThisSession = true;
     notice.value = { layer: "denied", text: deniedText };
     // 被拒不是失败：那一句由权限提示来说，再挂一个「重试」只会让人去点一个永远
-    // 不会成功的按钮。
-    failure.value = null;
+    // 不会成功的按钮。只撤 can-db 那几层的 —— 实时和边界的失败和权限无关，照样挂着。
+    if (failure.value && CAN_DB_LAYERS.has(failure.value)) failure.value = null;
   }
 
   function noteFailure(layer: LayerId) {
-    if (deniedThisSession) return;
+    if (deniedThisSession && CAN_DB_LAYERS.has(layer)) return;
     failure.value = layer;
   }
 
