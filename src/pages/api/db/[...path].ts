@@ -38,17 +38,17 @@ const ALLOW_LIST: Record<string, Allowed> = {
   //
   // 机场（`aip/airports`）**特意不在这里**：那一页是 SSR 取的，浏览器不需要这条
   // 路。哪天真有岛屿要在浏览器里查机场再加，别为对称而开。
-  "aip/airways": { methods: ["GET"], who: "RouteMap.vue 的航路图层" },
+  "aip/airways": { methods: ["GET"], who: "useChartLayers.ts 的航路图层" },
   // 航路生成。规划逻辑在 can-db（internal/aip/route.go）—— 这一条只是把它开给
   // 浏览器，EFB 一行规划代码都没有。
   "aip/route": { methods: ["GET"], who: "RouteGenerator.vue" },
   // 导航台与空域图层。空域按 `?family=` 分批取 —— 扇区（controlled）和限制区
   // （restricted）画法不同，也各自开关，没必要一次全拉。
-  "aip/navaids": { methods: ["GET"], who: "RouteMap.vue 的导航台图层" },
-  "aip/airspaces": { methods: ["GET"], who: "RouteMap.vue 的空域图层" },
+  "aip/navaids": { methods: ["GET"], who: "useChartLayers.ts 的导航台图层" },
+  "aip/airspaces": { methods: ["GET"], who: "useChartLayers.ts 的空域图层" },
   // 格子最低超障高度。**必须带 `?bbox=`**，can-db 那边没有「取全世界」的形式 ——
   // 这一层是画在图上的标注，而一张显示 180 度纬度的图没地方画它们。
-  "aip/mora": { methods: ["GET"], who: "MapSurface.vue 的 Grid MORA 图层" },
+  "aip/mora": { methods: ["GET"], who: "useChartLayers.ts 的 Grid MORA 图层" },
   // 机场索引。**上面那句「特意不在这里」到期了**：地面图层要按机场取数据，而地
   // 图只知道自己在看哪一块地 —— 中间缺的就是一张 ICAO → 坐标的表。这正是那句话
   // 说的「哪天真有岛屿要在浏览器里查机场」。
@@ -72,7 +72,10 @@ const ALLOW_LIST: Record<string, Allowed> = {
   // `aipAccess >= 1`，但**这张图上每一个航行图层本来就都要**（航路、导航台、空
   // 域、MORA、地面全走 can-db）—— 拿不到的成员看到的本来就是一张空底图，所以这
   // 条不多挡任何人。
-  "aip/resolve": { methods: ["GET"], who: "MapSurface.vue 画已提交的飞行计划" },
+  "aip/resolve": {
+    methods: ["GET"],
+    who: "useRouteLayer.ts 画已提交的飞行计划；routePreview.ts 画正在填的航路",
+  },
   // 全库跑道，整份 34 kB。**不是**按机场那条的批量版：地图在比例尺 20 公里那一档
   // （约 z9）就要画跑道，而那个视野三百公里宽、十几个机场 —— 按机场拉地面等于拉十
   // 几兆。而且它按**端**给权威入口坐标，跑道号因此不用从几何里推。
