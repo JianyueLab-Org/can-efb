@@ -59,7 +59,7 @@ const props = defineProps<{
   cid: string | null;
   /** 九个图层开关的文案，已翻译。 */
   layerLabels: Record<LayerToggle, string>;
-  /** 图层相关的几句话，已翻译。`partial` 带 `{n}`，`groundAccuracy` 带 `{m}`，
+  /** 图层相关的几句话，已翻译。`partial` 带 `{n}`，
    *  `planOnMap` 带 `{from}` / `{to}`，`layerFailed` 带 `{layer}`。 */
   t: {
     partial: string;
@@ -67,7 +67,6 @@ const props = defineProps<{
     emptyAirways: string;
     emptyNavaids: string;
     emptyGeneric: string;
-    groundAccuracy: string;
     planOnMap: string;
     layersMenu: string;
     layerFailed: string;
@@ -114,11 +113,7 @@ const chart = useChartLayers({
   },
   onAirwaysChange: route.refreshHighlight,
 });
-const groundLayer = useGroundLayer({
-  notice,
-  aip,
-  text: { groundAccuracy: props.t.groundAccuracy },
-});
+const groundLayer = useGroundLayer({ aip });
 const live = useTrafficLayer({
   cid: props.cid,
   prefs,

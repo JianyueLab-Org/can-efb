@@ -422,6 +422,13 @@ datafeed 给的那个经纬度是**管制员自己的视野中心** —— 既�
 级，按 `?level=high` 和 `?level=low` 各取一次，两边都有的记为 `both`。缩小时画 `high` 和 `both`；`low` 到 `ZOOM.airwaysLow` 才出现。航路点取连着它的航段里最高的一级。旧偏好
 `airway: "off" | "high" | "low"` 在 `readPrefs` 里折算成 `airways: boolean`。
 
+**机场地面**在 `lib/ground.ts`。z9 起按机场取 can-db 的
+`/aip/airports/{ICAO}/ground`，视野里只取最近的 4 个场。数据只有一份：扇区包手工
+做的要素，源自 OSM，由 Ground 仓库维护。按 `kind` 分层画：航站楼与机坪、机位、滑
+行道与等待位置；单点要素画圆点。画了地面就在署名控件里显示
+`© OpenStreetMap contributors (ODbL)`，can-db 没给 `attribution` 时用
+`GROUND_ATTRIBUTION`。
+
 **主要机场**由 `/aip/runways` 算（`airportRunwaySummary`），所以机场和跑道在
 `ZOOM.airportMajor` 一起取。
 
@@ -664,7 +671,7 @@ zh-cn，英文、繁体、日文三个站当场开始把键名画到屏幕上，
 只是**中文用户永远看不到**，于是没人会报。
 
 也就是说「先加中文，翻译以后再补」不是欠一笔债，是当场就坏。四本今天是齐的（各
-276 个键），这道闸让它保持齐。多出来的键也报：那多半是改键名时漏改了一本，只查
+275 个键），这道闸让它保持齐。多出来的键也报：那多半是改键名时漏改了一本，只查
 "缺"会看到一边缺一边多却只报一半。
 
 **预览构建产物时 `PUBLIC_ORIGIN` 不能省。** 写操作要比对 Origin 头，比对的

@@ -803,29 +803,12 @@ export function buildStyle(theme: Theme): StyleSpecification {
 
     // ------------------------------------------------ 机场地面
     {
-      /* 航图线画那一份：照图上的原色（要素的 `rgb`）画，它没有语义可分。分好类的
-       * 那一份没有 `rgb`，在这里落到透明，由下面三层按类别画。 */
-      id: "ground-lines",
-      type: "line",
-      source: "ground",
-      minzoom: ZOOM.ground + 1,
-      paint: {
-        "line-color": ["coalesce", ["get", "rgb"], "transparent"],
-        "line-width": groundWidth(1.5),
-        "line-opacity": 0.85,
-      },
-    },
-    {
       // 自下而上：航站楼与机坪、停机位、滑行道、跑道。被挡住损失越大的越靠上。
       id: "ground-terminals",
       type: "line",
       source: "ground",
       minzoom: ZOOM.ground + 1,
-      filter: [
-        "all",
-        ["!", ["has", "rgb"]],
-        ["match", ["get", "kind"], ["terminal", "apron"], true, false],
-      ],
+      filter: ["match", ["get", "kind"], ["terminal", "apron"], true, false],
       paint: {
         "line-color": groundFeatureColor(c),
         "line-width": groundWidth(30),
@@ -837,11 +820,7 @@ export function buildStyle(theme: Theme): StyleSpecification {
       type: "line",
       source: "ground",
       minzoom: ZOOM.ground + 1,
-      filter: [
-        "all",
-        ["!", ["has", "rgb"]],
-        ["==", ["get", "kind"], "parking_position"],
-      ],
+      filter: ["==", ["get", "kind"], "parking_position"],
       paint: {
         "line-color": groundFeatureColor(c),
         "line-width": groundWidth(12),
@@ -854,15 +833,11 @@ export function buildStyle(theme: Theme): StyleSpecification {
       source: "ground",
       minzoom: ZOOM.ground + 1,
       filter: [
-        "all",
-        ["!", ["has", "rgb"]],
-        [
-          "match",
-          ["get", "kind"],
-          ["taxiway", "holding_position"],
-          true,
-          false,
-        ],
+        "match",
+        ["get", "kind"],
+        ["taxiway", "holding_position"],
+        true,
+        false,
       ],
       paint: {
         "line-color": groundFeatureColor(c),
@@ -1298,7 +1273,7 @@ export function buildStyle(theme: Theme): StyleSpecification {
       paint: { "text-color": c.groundStand, ...halo },
     },
     {
-      // 滑行道代号贴着线走。`has name` 同时挡掉没有名字的航图线画那一份。
+      // 滑行道代号贴着线走。
       id: "ground-labels-way",
       type: "symbol",
       source: "ground",

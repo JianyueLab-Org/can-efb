@@ -1,6 +1,6 @@
 /**
- * 署名控件。VATSpy 是 CC BY-SA 4.0，**署名是许可条款不是装饰**；OSM 那份地面数据
- * 是 ODbL，同样。从 RouteMap.vue 472–517 搬来，注释原样。
+ * 署名控件。VATSpy 是 CC BY-SA 4.0，**署名是许可条款不是装饰**；机场地面数据是
+ * ODbL，同样。从 RouteMap.vue 472–517 搬来，注释原样。
  */
 import { AttributionControl, type Map as MapLibreMap } from "maplibre-gl";
 import { escapeHtml } from "@/lib/mapText";

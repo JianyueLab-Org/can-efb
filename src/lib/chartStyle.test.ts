@@ -114,7 +114,7 @@ describe("图层顺序", () => {
     const order = [
       "ocean",
       "grid",
-      "ground-lines",
+      "ground-terminals",
       "runways",
       "atc-area-fill",
       "airspace-hatch",

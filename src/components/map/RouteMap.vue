@@ -118,13 +118,6 @@ const props = defineProps<{
   /** 航路点（航路网自己的点集），和 airways 一起来一起走。 */
   airwayFixes?: FeatureCollection | null;
   /**
-   * 机场地面（滑行道、机位、等待位置、跑道线画），放大之后才有。
-   *
-   * 传进来已经是选好的那一份 —— **有分好类的要素就不带航图线画**，两者不同时画。
-   * 那个取舍在 `lib/ground.ts` 里，理由也写在那儿：两份并排画等于把同一条滑行道
-   * 画两遍、位置差十几米，读图的人无法判断该信哪条。
-   */
-  /**
    * 全部机场，画成跑道杠符号加 ICAO（属性见 `lib/airports.ts` 的 `toAirportPoints`）。
    *
    * 和 `markers` 不是一回事：`markers` 是「面板挑出来给你看的那几个」，这一层是
@@ -143,9 +136,10 @@ const props = defineProps<{
    * 是「标到的」而不是「有 via 的」：同上。
    */
   highlightedLegs?: Set<string> | null;
+  /** 机场地面（滑行道、机位、等待位置、机坪），放大之后才有。见 `lib/ground.ts`。 */
   ground?: FeatureCollection | null;
   /**
-   * 随数据变化的额外署名，例如 OSM 的 ODbL 那一行。
+   * 随数据变化的额外署名：机场地面的 ODbL 那一行。
    *
    * **和常驻的那几行一起进同一个署名控件**，不另起一块：署名被放到第二个地方，
    * 等于让人得知道该去哪儿找。空数组就是这一屏没有需要额外署名的数据。
