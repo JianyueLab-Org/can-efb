@@ -16,7 +16,7 @@ import { onBeforeUnmount, onMounted, ref, useId, watch } from "vue";
 import { api, describeFailure, signOut } from "@/lib/canApi";
 import { createTranslator } from "@/lib/i18n";
 import { hideNaip, setHideNaip } from "@/lib/naip";
-import { currentRail } from "@/lib/railState";
+import { currentRail, setRail } from "@/lib/railState";
 import type { NavSection } from "@/lib/nav";
 import { Icon, ThemeLangControls } from "@jianyuelab-org/can-ui";
 import PanelSection from "@/components/ui/PanelSection.vue";
@@ -129,12 +129,7 @@ function syncRail() {
 }
 
 function toggleRail(next: boolean) {
-  document.documentElement.dataset.rail = next ? "collapsed" : "expanded";
-  try {
-    localStorage.setItem("efb.rail", next ? "collapsed" : "expanded");
-  } catch {
-    // 见 AppRail 里同一处的说明。
-  }
+  setRail(next ? "collapsed" : "expanded");
 }
 
 /*

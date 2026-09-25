@@ -26,7 +26,7 @@ import { createTranslator } from "@/lib/i18n";
 import { Icon, ThemeLangControls, useOverlay } from "@jianyuelab-org/can-ui";
 import SidebarNav from "@/components/SidebarNav.vue";
 import { isCurrentPath, type NavSection } from "@/lib/nav";
-import { currentRail } from "@/lib/railState";
+import { currentRail, setRail } from "@/lib/railState";
 import type { EfbUser } from "@/lib/session";
 
 const props = withDefaults(
@@ -60,13 +60,7 @@ function applyCollapsed(next: boolean) {
   // 的「收起侧栏」开关也只写 data-rail，状态要是这里另存一份，那一份就会过期
   // —— 箭头朝向和折叠态的 title 对不上，轨上第一次点击还会被吞掉（它把同一
   // 个值再写一遍）。data-rail 是唯一的来源，这个 ref 只是它的镜像。
-  document.documentElement.dataset.rail = next ? "collapsed" : "expanded";
-  try {
-    localStorage.setItem("efb.rail", next ? "collapsed" : "expanded");
-  } catch {
-    // 隐私模式下 localStorage 会抛。折叠这件事不值得为它中断，本次会话内仍然
-    // 生效，只是下次打开回到默认（按宽度定，见 RailScript）。
-  }
+  setRail(next ? "collapsed" : "expanded");
 }
 
 let railObserver: MutationObserver | null = null;
