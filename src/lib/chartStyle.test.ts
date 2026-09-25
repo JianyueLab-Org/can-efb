@@ -272,14 +272,21 @@ describe("按缩放挑要素", () => {
     for (const z of used) expect(Number.isInteger(z)).toBe(true);
   });
 
-  test("缩小到 z4.5 就有整张高空航路网，z6 加上低空", () => {
-    expect(ZOOM.airwaysHigh).toBe(4.5);
+  test("比例尺 50 NM（z5.5）起有整张高空航路网，z6 加上低空", () => {
+    expect(ZOOM.airwaysHigh).toBe(5.5);
     expect(ZOOM.airwaysLow).toBe(6);
-    expect(shows("airways", 4.5, { level: "high", onRoute: 0 })).toBe(true);
-    expect(shows("airways", 4.4, { level: "high", onRoute: 0 })).toBe(false);
+    expect(shows("airways", 5.5, { level: "high", onRoute: 0 })).toBe(true);
+    expect(shows("airways", 5.4, { level: "high", onRoute: 0 })).toBe(false);
     expect(shows("airways-low", 6, { level: "low", onRoute: 0 })).toBe(true);
-    expect(shows("airway-labels", 5, { level: "high", onRoute: 0 })).toBe(true);
-    expect(shows("airway-labels", 5, { level: "low", onRoute: 0 })).toBe(false);
+    expect(shows("airway-labels", 5.5, { level: "high", onRoute: 0 })).toBe(
+      true,
+    );
+    expect(shows("airway-labels", 5.4, { level: "high", onRoute: 0 })).toBe(
+      false,
+    );
+    expect(shows("airway-labels", 5.5, { level: "low", onRoute: 0 })).toBe(
+      false,
+    );
   });
 
   test("航路点和点名 z5.5 出现，低空的等低空航路", () => {

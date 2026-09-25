@@ -205,11 +205,11 @@ export const ZOOM = {
   runwayLabels: 11,
 
   /** 高空航路（高空和两层都有的）。计划航线在这一级把航路段交给航路网高亮。 */
-  airwaysHigh: 4.5,
+  airwaysHigh: 5.5,
   /** 只属于低空的航路。 */
   airwaysLow: 6,
   /** 航路代号牌。计划航线的沿线代号在这一级交棒。 */
-  airwayLabels: 5,
+  airwayLabels: 5.5,
 
   /** VOR、VOR/DME、VORTAC、TACAN，符号和识别码。 */
   vor: 5,
@@ -253,13 +253,13 @@ export const WIDTH = {
   sua: 1.5,
   /** 高空航路。和 `airwayOnRoute` 必须是同一组缩放锚点。 */
   airwayHigh: [
-    [4.5, 0.5],
+    [5.5, 0.5],
     [8, 0.9],
     [12, 1.6],
   ],
   /** 计划走过的航段，就地加粗。 */
   airwayOnRoute: [
-    [4.5, 2.6],
+    [5.5, 2.6],
     [8, 3.2],
     [12, 4],
   ],
@@ -284,12 +284,12 @@ export const WIDTH = {
 /** 透明度，缩小时航路网淡下去而不是消失。和对应的线宽同一组锚点。 */
 export const OPACITY = {
   airwayHigh: [
-    [4.5, 0.75],
+    [5.5, 0.75],
     [8, 0.95],
     [12, 0.95],
   ],
   airwayOnRoute: [
-    [4.5, 1],
+    [5.5, 1],
     [8, 1],
     [12, 1],
   ],
