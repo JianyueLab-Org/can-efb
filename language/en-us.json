@@ -211,8 +211,6 @@
         "toFlightPlan": "Fill into flight plan",
         "restrictedLegs": "These legs are restricted",
         "restrictionTextWithheld": "The restriction's text needs a higher database tier",
-        "unrestricted": "Without the restricted compilation",
-        "unrestrictedHint": "Plan from tier 1–2 data only, leaving out NAIP. The result may be shared with members who do not hold that tier.",
         "withoutRestricted": "restricted compilation not used"
       },
       "expand": {
@@ -300,6 +298,8 @@
         "hint": "Stored on this device only; never synced to your account.",
         "rail": "Collapse the sidebar by default",
         "railHint": "Shrinks the rail to a column of icons and gives the width back to the page.",
+        "hideNaip": "Hide the restricted compilation",
+        "hideNaipHint": "Every AIP layer on this site uses tier 1–2 data only, leaving out NAIP: the chart layers, runways, airport ground, procedures and route generation alike. Anything you produce may be shared with members who do not hold that tier.",
         "themeHint": "Theme and language are at the foot of the sidebar."
       }
     },

@@ -1,4 +1,5 @@
 import type { MapPoint } from "@/lib/mapBus";
+import { dbFetch } from "@/lib/naip";
 
 /**
  * 进离场程序与跑道：取回来、筛出来、画出去。
@@ -127,7 +128,7 @@ export async function fetchAirportProcedures(
   icao: string,
 ): Promise<AirportProcedures> {
   const code = icao.trim().toUpperCase();
-  const response = await fetch(`/api/db/aip/airports/${code}`);
+  const response = await dbFetch(`aip/airports/${code}`);
   if (!response.ok) throw new ProcedureError(response.status);
   const data = unwrapObject<AirportProcedures>(await response.json());
   if (!data) throw new ProcedureError(response.status);

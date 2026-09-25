@@ -7,12 +7,13 @@
  * 2. **SimBrief 绑定** —— 真的写 can-api（`/api/v1/pilot/simbrief`）。绑的时候
  *    那边会先向 SimBrief 验证再存，而且**存的是数字 ID 而不是你输入的别名**，
  *    所以绑定成功后回显的值可能和输入的不一样，这是对的。
- * 3. **本机偏好** —— 主题、语言、侧栏，全部只存在这台设备上。它们不值得占用
+ * 3. **本机偏好** —— 主题、语言、侧栏、「不使用受限汇编」，全部只存在这台设备上。它们不值得占用
  *    can-api 的一张表，而且换一台设备本来就该重新选。
  */
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { api, describeFailure } from "@/lib/canApi";
 import { createTranslator } from "@/lib/i18n";
+import { hideNaip, setHideNaip } from "@/lib/naip";
 import { Icon } from "@jianyuelab-org/can-ui";
 
 const props = defineProps<{
@@ -21,6 +22,8 @@ const props = defineProps<{
   userId: string;
   email: string;
   rating: number;
+  /** 只决定「不使用受限汇编」那一行出不出，不是权限判断（can-db 那边是 cap）。 */
+  aipAccess: number;
 }>();
 const t = createTranslator(props.messages);
 
@@ -107,7 +110,22 @@ function toggleRail(next: boolean) {
   }
 }
 
+/*
+ * 「不使用受限汇编」。3 级（受限可调用）以下不显示：对他们 can-db 那边恒为空转，摆
+ * 出来只会让人以为自己错过了什么。
+ *
+ * 本地镜像一份、挂载后才读：服务端不知道 localStorage，直接绑 `hideNaip` 会让水合
+ * 前后对不上。之后跟着它走，别的标签页改了这里也变。
+ */
+const AIP_RESTRICTED_CALL = 3;
+const canHideNaip = props.aipAccess >= AIP_RESTRICTED_CALL;
+const naipHidden = ref(false);
+watch(hideNaip, (on) => {
+  naipHidden.value = on;
+});
+
 onMounted(() => {
+  naipHidden.value = hideNaip.value;
   syncRail();
   railObserver = new MutationObserver(syncRail);
   railObserver.observe(document.documentElement, {
@@ -265,6 +283,38 @@ onBeforeUnmount(() => railObserver?.disconnect());
             :class="[
               'my-0.5 size-5 rounded-full bg-white shadow-card transition-transform',
               railCollapsed ? 'translate-x-5' : 'translate-x-0.5',
+            ]"
+          ></span>
+        </button>
+      </div>
+
+      <div
+        v-if="canHideNaip"
+        class="mt-4 flex items-center justify-between gap-4"
+      >
+        <div class="min-w-0">
+          <p class="text-sm font-medium text-ink">
+            {{ t("settings.local.hideNaip") }}
+          </p>
+          <p class="text-xs text-muted">
+            {{ t("settings.local.hideNaipHint") }}
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          :aria-checked="naipHidden"
+          :class="[
+            'relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors',
+            naipHidden ? 'bg-can' : 'bg-surface-sunken',
+          ]"
+          @click="setHideNaip(!naipHidden)"
+        >
+          <span class="sr-only">{{ t("settings.local.hideNaip") }}</span>
+          <span
+            :class="[
+              'my-0.5 size-5 rounded-full bg-white shadow-card transition-transform',
+              naipHidden ? 'translate-x-5' : 'translate-x-0.5',
             ]"
           ></span>
         </button>

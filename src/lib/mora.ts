@@ -18,6 +18,7 @@ import type { Feature, FeatureCollection } from "geojson";
 
 import { unwrapList } from "@/lib/aip";
 import { wrapLon } from "@/lib/mapText";
+import { dbFetch } from "@/lib/naip";
 
 export interface MORACell {
   /** 格子北边纬度。 */
@@ -83,9 +84,7 @@ export async function fetchMORABlock(
   const maxLon = Math.min(lon + MORA_BLOCK, 179);
   const bbox = `${minLat},${minLon},${maxLat},${maxLon}`;
 
-  const response = await fetch(
-    `/api/db/aip/mora?bbox=${encodeURIComponent(bbox)}`,
-  );
+  const response = await dbFetch(`aip/mora?bbox=${encodeURIComponent(bbox)}`);
   if (!response.ok) throw new Error(`mora ${bbox}: ${response.status}`);
   return unwrapList<MORACell>(await response.json());
 }

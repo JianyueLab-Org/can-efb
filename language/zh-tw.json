@@ -211,8 +211,6 @@
         "toFlightPlan": "填入飛行計劃",
         "restrictedLegs": "以下航段受限",
         "restrictionTextWithheld": "限制原文需要更高的資料庫權限",
-        "unrestricted": "不使用受限彙編",
-        "unrestrictedHint": "按 1–2 級的資料規劃，也就是不用 NAIP。結果可以給看不到那一份的人。",
         "withoutRestricted": "未使用受限彙編"
       },
       "expand": {
@@ -300,6 +298,8 @@
         "hint": "只存在這台裝置上，不會同步到帳戶。",
         "rail": "預設收合側欄",
         "railHint": "把左側導覽收成一列圖示，給正文讓出寬度。",
+        "hideNaip": "不使用受限彙編",
+        "hideNaipHint": "所有航行資料都按 1–2 級取，也就是全站不用 NAIP：航圖各圖層、跑道、機場地面、進離場程序和航路生成都一樣。結果可以給看不到那一份的人。",
         "themeHint": "主題和語言在側欄底部切換。"
       }
     },

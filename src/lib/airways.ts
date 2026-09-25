@@ -1,4 +1,5 @@
 import type { Feature, FeatureCollection } from "geojson";
+import { dbFetch } from "@/lib/naip";
 
 /**
  * 航路网：从 can-db 取回来，转成地图能画的线。
@@ -68,7 +69,7 @@ export interface TaggedAirwayGraph extends Omit<AirwayGraph, "segments"> {
  * 一张空图会被当成「这一带没有航路」，那是错的信息，比一个错误提示糟得多。
  */
 export async function fetchAirways(level: AirwayLevel): Promise<AirwayGraph> {
-  const response = await fetch(`/api/db/aip/airways?level=${level}`);
+  const response = await dbFetch(`aip/airways?level=${level}`);
   if (!response.ok) {
     throw new Error(`airways ${level}: ${response.status}`);
   }

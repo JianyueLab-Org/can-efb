@@ -1,4 +1,5 @@
 import type { MapPoint } from "@/lib/mapBus";
+import { dbFetch } from "@/lib/naip";
 
 /**
  * 航路生成：从 A 到 B 该怎么飞。数据来自 **can-db 的 `/api/v1/aip/route`**。
@@ -100,7 +101,8 @@ export interface RoutePlan {
   notes?: string[];
 
   /**
-   * 这份计划是**不带受限汇编**算出来的 —— 调用方要么没有那一档，要么勾了开关。
+   * 这份计划是**不带受限汇编**算出来的 —— 调用方要么没有那一档，要么在设置里打
+   * 开了「不使用受限汇编」（lib/naip.ts）。
    *
    * 由 can-db 报，不是这边推的：答案该由产出它的那一方描述，而不是由发起请求的一方
    * 记着自己传了什么。
@@ -128,14 +130,12 @@ export async function planRoute(
   from: string,
   to: string,
   level?: number,
-  unrestricted?: boolean,
 ): Promise<RoutePlan> {
   const params = new URLSearchParams({ from, to });
   if (level && level > 0) params.set("level", String(level));
-  // 不勾就不带参数，而不是带 `unrestricted=0` —— 两者等价，少一个参数少一份歧义。
-  if (unrestricted) params.set("unrestricted", "1");
+  // 隐藏 NAIP 的 `unrestricted=1` 由 dbFetch 统一加（lib/naip.ts），这里不另带。
 
-  const response = await fetch(`/api/db/aip/route?${params}`);
+  const response = await dbFetch(`aip/route?${params}`);
   const body = (await response.json().catch(() => ({}))) as {
     data?: RoutePlan;
     message?: string;

@@ -35,6 +35,7 @@ import {
   onBeforeUnmount,
   onMounted,
   ref,
+  watch,
 } from "vue";
 import {
   PLAN_CHANGED_EVENT,
@@ -98,6 +99,7 @@ import { altitudeBand, flightLevel, isOnGround } from "@/lib/traffic";
 import type { FeatureCollection } from "geojson";
 import { api } from "@/lib/canApi";
 import { unwrapList } from "@/lib/aip";
+import { dbFetch, hideNaip } from "@/lib/naip";
 
 const props = defineProps<{
   /** 地图角上的说明，已翻译。 */
@@ -154,6 +156,12 @@ const RouteMap = defineAsyncComponent({
     console.error("[efb] 地图组件加载失败:", error);
   },
 });
+
+/**
+ * 「不使用受限汇编」每变一次加一。取数 await 回来时号不对，就是按旧值取的，不许进缓
+ * 存也不许上图 —— 见 `reloadAip`。
+ */
+let aipGen = 0;
 
 /** 见 toggleAirways 上面的注释：跨组件重建保留。 */
 let airwayCache: { lines: FeatureCollection; fixes: FeatureCollection } | null =
@@ -344,8 +352,10 @@ async function toggleAirways(on = !showAirways.value) {
 
   if (deniedThisSession) return;
   airwayBusy.value = true;
+  const gen = aipGen;
   try {
     const graph = await fetchAirwayNetwork();
+    if (gen !== aipGen) return;
     const lines = toAirwayLines(graph);
     // 航路点和线一起来一起走：它们是同一份图的两个面，分开缓存迟早不同步。
     const fixes = toAirwayFixes(graph);
@@ -368,7 +378,8 @@ async function toggleAirways(on = !showAirways.value) {
     airwayFixes.value = null;
     highlightedLegs.value = null;
   } finally {
-    airwayBusy.value = false;
+    // 过期的这一次不收忙碌态：重取的那一次还在路上。
+    if (gen === aipGen) airwayBusy.value = false;
   }
 }
 
@@ -468,6 +479,7 @@ let lastViewport: {
   west: number;
   north: number;
   east: number;
+  zoom: number;
 } | null = null;
 
 /**
@@ -743,8 +755,11 @@ async function toggleNavaids() {
   }
   if (deniedThisSession) return;
   layerBusy.value = true;
+  const gen = aipGen;
   try {
-    navaidCache = toNavaidPoints(await fetchNavaids());
+    const list = await fetchNavaids();
+    if (gen !== aipGen) return;
+    navaidCache = toNavaidPoints(list);
     navaids.value = navaidCache;
     showNavaids.value = true;
     // 和航路那层同一条：空不是错，开关留在打开状态，用一句话说明它为什么空。
@@ -838,7 +853,9 @@ const NEED_ZOOM = {
  */
 async function loadForZoom(zoom: number) {
   if (zoom < NEED_ZOOM.airports || (airports.value && runways.value)) return;
+  const gen = aipGen;
   const [pins, list] = await Promise.all([fetchAirportPins(), fetchRunways()]);
+  if (gen !== aipGen) return;
   if (list.length && !runways.value) runways.value = toRunwayFeatures(list);
   /* 跑道没取到时机场照样画（全部按非主要机场、画圆），下次视野变化再试一次跑道，
    * 取到后重建一遍机场点，把主要机场和跑道杠补上。 */
@@ -891,6 +908,7 @@ async function loadGroundFor(v: {
     return;
   }
 
+  const gen = aipGen;
   const pins = await fetchAirportPins();
   if (seq !== groundSeq || !pins.length) return;
 
@@ -913,7 +931,7 @@ async function loadGroundFor(v: {
         const g = await fetchGround(p.icao);
         // null = 这个场没有地面数据。`fetchGround` 自己记住了，这里不必再记 ——
         // 它不进 groundCache，所以下面拼装时自然跳过。
-        if (g) groundCache.set(p.icao, g);
+        if (g && gen === aipGen) groundCache.set(p.icao, g);
       }),
   );
   // 过期的请求照样把取回来的场放进缓存（上面那行），只是不许再碰显示状态。
@@ -977,10 +995,12 @@ async function loadMoraFor(v: {
   // 先记下来再取：同一块的第二次请求在第一次回来之前就该被挡掉。
   for (const b of wanted) moraBlocks.add(`${b.lat},${b.lon}`);
 
+  const gen = aipGen;
   try {
     const batches = await Promise.all(
       wanted.map((b) => fetchMORABlock(b.lat, b.lon)),
     );
+    if (gen !== aipGen) return;
     for (const cells of batches) {
       for (const c of cells) moraCells.set(`${c.lat},${c.lon}`, c);
     }
@@ -995,6 +1015,7 @@ async function loadMoraFor(v: {
   } catch (error) {
     if (isDenied(error)) noteDenied();
     // 取失败的块要放回去，否则这次会话里再也不会重试它。
+    if (gen !== aipGen) return;
     for (const b of wanted) moraBlocks.delete(`${b.lat},${b.lon}`);
     console.error("[efb:map] Grid MORA 加载失败:", error);
   }
@@ -1038,14 +1059,23 @@ function locateOwn() {
   focus.value = { ident: at.callsign, lat: at.lat, lon: at.lon, kind: "own" };
 }
 
+/* 取的途中「不使用受限汇编」变了：旧那份不进缓存，按新值再取一次。 */
 async function loadControlled(): Promise<Airspace[]> {
-  if (!controlledCache) controlledCache = await fetchAirspaces("controlled");
-  return controlledCache;
+  if (controlledCache) return controlledCache;
+  const gen = aipGen;
+  const list = await fetchAirspaces("controlled");
+  if (gen !== aipGen) return loadControlled();
+  controlledCache = list;
+  return list;
 }
 
 async function loadRestricted(): Promise<Airspace[]> {
-  if (!restrictedCache) restrictedCache = await fetchAirspaces("restricted");
-  return restrictedCache;
+  if (restrictedCache) return restrictedCache;
+  const gen = aipGen;
+  const list = await fetchAirspaces("restricted");
+  if (gen !== aipGen) return loadRestricted();
+  restrictedCache = list;
+  return list;
 }
 
 /**
@@ -1209,9 +1239,7 @@ async function loadPlanRoute() {
    * 它要 `aipAccess >= 1`，但这张图上**每一个航行图层本来就都要**（航路、导航
    * 台、空域、MORA、地面全走 can-db）—— 拿不到的成员看到的本来就是一张空底图，
    * 所以这里不多挡任何人。 */
-  const response = await fetch(`/api/db/aip/resolve?${params}`).catch(
-    () => null,
-  );
+  const response = await dbFetch(`aip/resolve?${params}`).catch(() => null);
   if (seq !== planSeq || panelPublished) return;
   const resolved = response?.ok
     ? unwrapList<MapPoint>(await response.json().catch(() => null))
@@ -1272,6 +1300,74 @@ function refreshHighlight() {
      步不便宜。 */
   airways.value = { ...collection, features: [...collection.features] };
 }
+
+/**
+ * 「不使用受限汇编」变了（设置页，或另一个标签页）。
+ *
+ * 图上每一层 can-db 数据都是按旧值取的，**全部作废、开着的重取**。只重取一部分，
+ * 图上就同时画着两个级别的资料 —— 看起来完全正常，而那正是这个开关要避免的。
+ * 情报区边界不来自 can-db，不动。
+ */
+function reloadAip() {
+  aipGen++;
+  airwayCache = null;
+  navaidCache = null;
+  controlledCache = null;
+  restrictedCache = null;
+  groundCache.clear();
+  groundShown = "";
+  moraCells.clear();
+  moraBlocks.clear();
+  airports.value = null;
+  runways.value = null;
+
+  if (showAirways.value) void toggleAirways(true);
+  if (showNavaids.value) {
+    // toggleNavaids 是翻转式的：先摆回关，它再按新值打开。
+    showNavaids.value = false;
+    navaids.value = null;
+    void toggleNavaids();
+  }
+  if (showCtr.value || showApp.value || showRestricted.value) {
+    void reloadAirspaces();
+  }
+  if (showMora.value) {
+    mora.value = null;
+    if (lastViewport) void loadMoraFor(lastViewport);
+  }
+  if (lastViewport) {
+    void loadForZoom(lastViewport.zoom);
+    void loadGroundFor(lastViewport);
+  }
+  if (planShown) {
+    planKey = "";
+    void loadPlanRoute();
+  }
+}
+
+async function reloadAirspaces() {
+  const gen = aipGen;
+  layerBusy.value = true;
+  try {
+    await Promise.all([
+      showCtr.value || showApp.value ? loadControlled() : null,
+      showRestricted.value ? loadRestricted() : null,
+    ]);
+  } catch (error) {
+    if (gen !== aipGen) return;
+    // 和打开时同一条规矩：失败要退回关，否则开关亮着却画的是空。
+    if (isDenied(error)) noteDenied();
+    console.error("[efb:map] 空域加载失败:", error);
+    showCtr.value = false;
+    showApp.value = false;
+    showRestricted.value = false;
+  } finally {
+    layerBusy.value = false;
+  }
+  if (gen === aipGen) composeAirspaces();
+}
+
+watch(hideNaip, reloadAip);
 
 let unsubscribe: (() => void) | null = null;
 

@@ -1,4 +1,5 @@
 import type { Feature, FeatureCollection, Position } from "geojson";
+import { dbFetch } from "@/lib/naip";
 
 /**
  * 导航台与空域：从 can-db 取回来，转成地图能画的东西。
@@ -42,7 +43,7 @@ export interface Navaid {
 }
 
 export async function fetchNavaids(): Promise<Navaid[]> {
-  const response = await fetch("/api/db/aip/navaids");
+  const response = await dbFetch("aip/navaids");
   if (!response.ok) throw new Error(`navaids: ${response.status}`);
   return unwrapList<Navaid>(await response.json());
 }
@@ -170,7 +171,7 @@ export interface Airspace {
 export async function fetchAirspaces(
   family: AirspaceFamily,
 ): Promise<Airspace[]> {
-  const response = await fetch(`/api/db/aip/airspaces?family=${family}`);
+  const response = await dbFetch(`aip/airspaces?family=${family}`);
   if (!response.ok) throw new Error(`airspaces ${family}: ${response.status}`);
   return unwrapList<Airspace>(await response.json());
 }

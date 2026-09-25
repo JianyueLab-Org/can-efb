@@ -28,6 +28,7 @@
  * 汇编那一份的规矩正好相反 —— **来源不能外露**，所以 `lines` 这边一个字都不提。
  */
 import type { Feature, FeatureCollection } from "geojson";
+import { aipScope, dbFetch } from "@/lib/naip";
 
 /** 手工/OSM 做的地面要素。`points` 是 [纬, 经]，**可能只有一个点**。 */
 export interface GroundFeature {
@@ -89,6 +90,7 @@ export const GROUND_MIN_ZOOM = 9;
  */
 export const GROUND_MAX_AIRPORTS = 4;
 
+/** 键带 `aipScope()`：隐藏 NAIP 的开关一变，旧那份就不能再被命中。 */
 const cache = new Map<string, Ground | null>();
 
 /**
@@ -100,12 +102,13 @@ const cache = new Map<string, Ground | null>();
  */
 export async function fetchGround(icao: string): Promise<Ground | null> {
   const key = icao.toUpperCase();
-  const hit = cache.get(key);
+  const cacheKey = `${aipScope()}:${key}`;
+  const hit = cache.get(cacheKey);
   if (hit !== undefined) return hit;
 
   let out: Ground | null = null;
   try {
-    const response = await fetch(`/api/db/aip/airports/${key}/ground`);
+    const response = await dbFetch(`aip/airports/${key}/ground`);
     if (response.ok) {
       const body = await response.json();
       /* 拆信封。can-db 大部分接口包着 `{status, data}`，少数裸奔 —— 两种都收，和
@@ -132,7 +135,7 @@ export async function fetchGround(icao: string): Promise<Ground | null> {
     return null;
   }
 
-  cache.set(key, out);
+  cache.set(cacheKey, out);
   return out;
 }
 

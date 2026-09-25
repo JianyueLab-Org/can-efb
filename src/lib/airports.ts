@@ -10,6 +10,7 @@
  * 的代价本来就不高。
  */
 import type { FeatureCollection } from "geojson";
+import { aipScope, dbFetch } from "@/lib/naip";
 
 export interface AirportPin {
   icao: string;
@@ -18,8 +19,9 @@ export interface AirportPin {
   lon: number;
 }
 
-let pending: Promise<AirportPin[]> | null = null;
-let loaded: AirportPin[] | null = null;
+/** 按 `aipScope()` 分开记：隐藏 NAIP 的开关一变，旧那份就不能再被命中。 */
+const pending = new Map<string, Promise<AirportPin[]>>();
+const loaded = new Map<string, AirportPin[]>();
 
 /**
  * 取机场索引，整趟会话只取一次。
@@ -29,12 +31,15 @@ let loaded: AirportPin[] | null = null;
  * 一段窗口。
  */
 export async function fetchAirportPins(): Promise<AirportPin[]> {
-  if (loaded) return loaded;
-  if (pending) return pending;
+  const scope = aipScope();
+  const hit = loaded.get(scope);
+  if (hit) return hit;
+  const inFlight = pending.get(scope);
+  if (inFlight) return inFlight;
 
-  pending = (async () => {
+  const job = (async () => {
     try {
-      const response = await fetch("/api/db/aip/airports");
+      const response = await dbFetch("aip/airports");
       if (!response.ok) return [];
       const body = await response.json();
       const rows = Array.isArray(body)
@@ -47,18 +52,19 @@ export async function fetchAirportPins(): Promise<AirportPin[]> {
         const pin = toAirportPin(r);
         if (pin) out.push(pin);
       }
-      loaded = out;
+      loaded.set(scope, out);
       return out;
     } catch {
       /* 失败不写 `loaded`，所以下一次视野变化会再试。但要清掉 `pending`，否则这
          一个失败的 Promise 会被永远返回下去 —— 图层从此再也不会恢复。 */
       return [];
     } finally {
-      pending = null;
+      pending.delete(scope);
     }
   })();
 
-  return pending;
+  pending.set(scope, job);
+  return job;
 }
 
 /**

@@ -23,6 +23,7 @@ const session = Astro.locals.user;
     userId={session?.username ?? ""}
     email={session?.email ?? ""}
     rating={session?.rating ?? 0}
+    aipAccess={session?.aipAccess ?? 0}
     client:load
   />
 </AppLayout>

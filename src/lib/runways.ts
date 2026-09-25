@@ -19,6 +19,7 @@
  */
 import type { FeatureCollection } from "geojson";
 import { distanceNm } from "@/lib/geo";
+import { aipScope, dbFetch } from "@/lib/naip";
 
 export interface NetworkRunway {
   icao: string;
@@ -32,8 +33,9 @@ export interface NetworkRunway {
   hdg: number | null;
 }
 
-let pending: Promise<NetworkRunway[]> | null = null;
-let loaded: NetworkRunway[] | null = null;
+/** 按 `aipScope()` 分开记：隐藏 NAIP 的开关一变，旧那份就不能再被命中。 */
+const pending = new Map<string, Promise<NetworkRunway[]>>();
+const loaded = new Map<string, NetworkRunway[]>();
 
 /**
  * 取全库跑道，整趟会话只取一次。
@@ -42,12 +44,15 @@ let loaded: NetworkRunway[] | null = null;
  * 变化」那段窗口。失败不写 `loaded`，所以下次还会重试。
  */
 export async function fetchRunways(): Promise<NetworkRunway[]> {
-  if (loaded) return loaded;
-  if (pending) return pending;
+  const scope = aipScope();
+  const hit = loaded.get(scope);
+  if (hit) return hit;
+  const inFlight = pending.get(scope);
+  if (inFlight) return inFlight;
 
-  pending = (async () => {
+  const job = (async () => {
     try {
-      const response = await fetch("/api/db/aip/runways");
+      const response = await dbFetch("aip/runways");
       if (!response.ok) return [];
       const body = await response.json();
       const rows = Array.isArray(body)
@@ -72,16 +77,17 @@ export async function fetchRunways(): Promise<NetworkRunway[]> {
           hdg: r.hdg == null ? null : Number(r.hdg),
         });
       }
-      loaded = out;
+      loaded.set(scope, out);
       return out;
     } catch {
       return [];
     } finally {
-      pending = null;
+      pending.delete(scope);
     }
   })();
 
-  return pending;
+  pending.set(scope, job);
+  return job;
 }
 
 /**

@@ -29,6 +29,7 @@
 import { computed, ref, watch } from "vue";
 import { createTranslator } from "@/lib/i18n";
 import { publishToMap, type MapPoint } from "@/lib/mapBus";
+import { aipScope } from "@/lib/naip";
 import {
   composeRoutePoints,
   fetchAirportProcedures,
@@ -68,6 +69,8 @@ const t = createTranslator(props.messages);
 /**
  * 按 ICAO 缓存，**模块级而不是组件级**：换一次目的地再换回来是常见操作，而每个
  * 机场是一次几百 KB 的下载。组件级的缓存活不过一次卸载。
+ *
+ * 键带 `aipScope()`：隐藏 NAIP 的开关一变，旧那份就不能再被命中（lib/naip.ts）。
  */
 const cache = new Map<string, AirportProcedures>();
 
@@ -87,10 +90,11 @@ const approachName = ref("");
 async function load(icao: string): Promise<AirportProcedures | null> {
   const code = icao.trim().toUpperCase();
   if (code.length !== 4) return null;
-  const hit = cache.get(code);
+  const key = `${aipScope()}:${code}`;
+  const hit = cache.get(key);
   if (hit) return hit;
   const data = await fetchAirportProcedures(code);
-  cache.set(code, data);
+  cache.set(key, data);
   return data;
 }
 
