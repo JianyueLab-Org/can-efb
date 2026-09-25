@@ -41,9 +41,11 @@ const ICONS: Record<Exclude<StateKind, "loading">, string> = {
   <div
     class="state-card rounded-card border border-subtle bg-surface-sunken"
     :data-state="kind"
-    :role="kind === 'error' ? 'alert' : 'status'"
-    :aria-busy="kind === 'loading' ? 'true' : undefined"
+    :role="
+      kind === 'loading' ? undefined : kind === 'error' ? 'alert' : 'status'
+    "
   >
+    <!-- 读取中不给外层 role：Spinner 自己就是 role="status"，套两层读屏会念两遍。 -->
     <Spinner v-if="kind === 'loading'" :label="title" centered />
     <EmptyState
       v-else

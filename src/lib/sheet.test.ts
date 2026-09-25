@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  handleState,
   initialSnap,
   SHEET_PEEK_PX,
   sheetOffsets,
@@ -56,5 +57,32 @@ describe("initialSnap", () => {
   test("wide 页拉满，standard 页一半", () => {
     expect(initialSnap("wide")).toBe("full");
     expect(initialSnap("standard")).toBe("half");
+  });
+});
+
+/**
+ * 把手是一个按钮，读屏只念得出它的名字。所以此刻在哪一档要写进名字里，`aria-expanded`
+ * 说的是抽屉有没有打开（一半和拉满都算开）。
+ */
+describe("handleState", () => {
+  const text = {
+    handle: "{state}。拖动或按方向键调整面板高度",
+    states: { collapsed: "已收起", half: "半屏", full: "全屏" },
+  };
+
+  test("收起：没打开，名字里是收起", () => {
+    expect(handleState("collapsed", text)).toEqual({
+      expanded: false,
+      label: "已收起。拖动或按方向键调整面板高度",
+    });
+  });
+
+  test("一半和拉满都算打开，名字各报各的档", () => {
+    expect(handleState("half", text)).toEqual({
+      expanded: true,
+      label: "半屏。拖动或按方向键调整面板高度",
+    });
+    expect(handleState("full", text).expanded).toBe(true);
+    expect(handleState("full", text).label).toStartWith("全屏");
   });
 });

@@ -19,7 +19,7 @@
 import PageHeader from "@/components/PageHeader.astro";
 import BeianLine from "@jianyuelab-org/can-ui/components/BeianLine.vue";
 import Icon from "@jianyuelab-org/can-ui/components/Icon.vue";
-import { initialSnap } from "@/lib/sheet";
+import { handleState, initialSnap, type SheetSnap } from "@/lib/sheet";
 import type { PanelWidth } from "@/lib/panelLayout";
 
 interface Props {
@@ -27,10 +27,22 @@ interface Props {
   title: string;
   description?: string;
   /** 已翻译。 */
-  labels: { collapse: string; expand: string; handle: string };
+  labels: {
+    collapse: string;
+    expand: string;
+    /** 带 `{state}`，填的是 `sheet` 里此刻那一档的名字。 */
+    handle: string;
+    sheet: Record<SheetSnap, string>;
+  };
 }
 
 const { width, title, description, labels } = Astro.props;
+/* 把手的名字和 aria-expanded 按服务端摆好的那一档先写上；换档后由
+   panelController 按同一个 handleState 改写，模板和三档名字挂在 data-* 上给它读。 */
+const handle = handleState(initialSnap(width), {
+  handle: labels.handle,
+  states: labels.sheet,
+});
 ---
 
 <main
@@ -48,7 +60,13 @@ const { width, title, description, labels } = Astro.props;
     type="button"
     class="panel-handle"
     data-panel-handle
-    aria-label={labels.handle}
+    aria-controls="panel-body"
+    aria-expanded={handle.expanded ? "true" : "false"}
+    aria-label={handle.label}
+    data-label-handle={labels.handle}
+    data-label-collapsed={labels.sheet.collapsed}
+    data-label-half={labels.sheet.half}
+    data-label-full={labels.sheet.full}
   >
     <span aria-hidden="true"></span>
   </button>

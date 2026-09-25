@@ -20,6 +20,7 @@ import {
   type ShellMode,
 } from "@/lib/panelLayout";
 import {
+  handleState,
   initialSnap,
   SHEET_PEEK_PX,
   sheetOffsets,
@@ -66,6 +67,21 @@ export function mountPanel(): void {
 
   const geometry = () => ({ height: root.offsetHeight, peek: SHEET_PEEK_PX });
 
+  /** 把手报给读屏的那一档：文案是 FloatingPanel 挂在 data-* 上的，已翻译。 */
+  function labelHandle() {
+    if (!handle?.dataset.labelHandle) return;
+    const state = handleState(snap, {
+      handle: handle.dataset.labelHandle,
+      states: {
+        collapsed: handle.dataset.labelCollapsed ?? "",
+        half: handle.dataset.labelHalf ?? "",
+        full: handle.dataset.labelFull ?? "",
+      },
+    });
+    handle.setAttribute("aria-expanded", String(state.expanded));
+    handle.setAttribute("aria-label", state.label);
+  }
+
   function announce() {
     if (announceTimer) clearTimeout(announceTimer);
     announceTimer = null;
@@ -110,6 +126,7 @@ export function mountPanel(): void {
   function applySnap(next: SheetSnap, animate = true) {
     snap = next;
     root.dataset.sheet = next;
+    labelHandle();
     const moving = animate && !prefersReducedMotion();
     root.style.transition = moving ? "" : "none";
     root.style.setProperty(

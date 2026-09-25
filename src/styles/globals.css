@@ -243,6 +243,13 @@
   transition: transform 320ms var(--ease-out-quint);
   outline: none;
 }
+/* 跳过链接落到面板上（`#main-content`）时要看得见落在哪儿。只在键盘来的焦点上画：
+   鼠标点进面板空白处也会让它得到焦点，那时不该出一圈环。往里收 2px，手机上抽屉贴着
+   视口两边，往外偏会被裁掉。 */
+.floating-panel:focus-visible {
+  outline: 2px solid var(--color-can);
+  outline-offset: -2px;
+}
 /* 服务端先按页面声明的那一档摆好，脚本接手之前不跳。 */
 .floating-panel[data-sheet="full"] {
   --sheet-offset: 0px;

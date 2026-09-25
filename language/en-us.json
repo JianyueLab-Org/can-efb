@@ -18,7 +18,12 @@
     "panel": {
       "collapse": "Collapse panel",
       "expand": "Expand panel",
-      "handle": "Drag, or use the arrow keys, to resize the panel"
+      "handle": "{state}. Drag, or use the arrow keys, to resize the panel",
+      "sheet": {
+        "collapsed": "Panel collapsed",
+        "half": "Panel at half height",
+        "full": "Panel at full height"
+      }
     },
     "account": {
       "menu": "Account menu",

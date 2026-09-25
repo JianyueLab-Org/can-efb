@@ -18,7 +18,12 @@
     "panel": {
       "collapse": "收起面板",
       "expand": "展開面板",
-      "handle": "拖動或按方向鍵調整面板高度"
+      "handle": "{state}。拖動或按方向鍵調整面板高度",
+      "sheet": {
+        "collapsed": "面板已收起",
+        "half": "面板在半屏",
+        "full": "面板已拉滿"
+      }
     },
     "account": {
       "menu": "帳戶選單",

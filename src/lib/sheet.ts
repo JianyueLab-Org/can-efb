@@ -68,3 +68,24 @@ export function snapAfterDrag(
 export function initialSnap(width: PanelWidth): SheetSnap {
   return width === "wide" ? "full" : "half";
 }
+
+/** 把手的文案，已翻译：`handle` 里带 `{state}`，`states` 是三档各自的名字。 */
+export interface HandleText {
+  handle: string;
+  states: Record<SheetSnap, string>;
+}
+
+/**
+ * 把手该报给读屏的状态。它是一个按钮，按钮没有 `aria-valuetext`，所以此刻在哪一
+ * 档写进名字里；`aria-expanded` 说抽屉开没开 —— 一半和拉满都算开。服务端渲染
+ * （`FloatingPanel.astro`）和换档（`panelController.ts`）都用它，两边说法一致。
+ */
+export function handleState(
+  snap: SheetSnap,
+  text: HandleText,
+): { expanded: boolean; label: string } {
+  return {
+    expanded: snap !== "collapsed",
+    label: text.handle.replace("{state}", text.states[snap]),
+  };
+}
