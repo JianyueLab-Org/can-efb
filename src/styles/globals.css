@@ -31,14 +31,52 @@
   --rail-width: 17rem;
   --rail-width-collapsed: 4.75rem;
   --rail-current: var(--rail-width);
+  /* `data-rail="auto"` 时轨该是什么样。只在平板那一段翻成 collapsed。 */
+  --rail-auto: expanded;
 }
 :root[data-rail="collapsed"] {
   --rail-current: var(--rail-width-collapsed);
 }
 
+/* 轨。手机上不显示（换成底部标签栏），768 起贴在左边。材质来自 `.glass`，这里
+   只收掉三边的边框和阴影：它贴着视口边，不是一张浮起来的卡片。 */
 .app-rail {
-  width: var(--rail-current);
-  transition: width 200ms ease;
+  display: none;
+}
+@media (min-width: 768px) {
+  .app-rail {
+    position: fixed;
+    inset-block: 0;
+    left: 0;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    width: var(--rail-current);
+    transition: width 200ms ease;
+  }
+  .app-rail.glass {
+    border-width: 0 1px 0 0;
+    box-shadow: none;
+  }
+}
+
+/* 平板上成员没选过就收起。这一段是范围查询，因为「auto 在桌面上展开」不需要写：
+   那就是 `--rail-current` 的默认值。 */
+@media (min-width: 768px) and (max-width: 1151.98px) {
+  :root {
+    --rail-auto: collapsed;
+  }
+  :root[data-rail="auto"] {
+    --rail-current: var(--rail-width-collapsed);
+  }
+  :root[data-rail="auto"] .app-rail .rail-item {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  :root[data-rail="auto"] .app-rail .rail-label {
+    display: none;
+  }
 }
 
 /* `.app-main-offset` 删掉了：它是**第一版外壳**（轨 + 一列居中正文）的东西。现在
@@ -49,9 +87,8 @@
    Tailwind，是因为同一组规则要作用在四处（主导航、跨站链接、品牌、轨脚的账户
    与搜索），而它们的 DOM 形状并不相同。
 
-   选择器里的 `.app-rail` 是必须的，不是修饰。手机抽屉渲染的是同一批组件、带着
-   同一批 .rail-* 类，而 data-rail 挂在 <html> 上 —— 少了这一层限定，桌面把轨
-   收起来之后，手机抽屉里的导航也会跟着只剩图标，而抽屉是全宽的。 */
+   选择器里保留 `.app-rail` 限定：data-rail 挂在 <html> 上，这一层让规则只作用于
+   轨本身，别处出现的 `.rail-*` 不受折叠态影响。 */
 :root[data-rail="collapsed"] .app-rail .rail-item {
   justify-content: center;
   padding-left: 0;
@@ -526,4 +563,51 @@
   border-radius: var(--radius-control);
   font-size: 0.75rem;
   color: var(--color-ink);
+}
+
+/* 手机的底部标签栏。轨在手机上整条换成它：五个导航项正好一行，拇指够得着。主题、
+   语言、账户、跨站链接在设置页的 `.phone-only` 那几块里。
+
+   它和抽屉共用 `--tabbar-height`：抽屉的 `bottom` 就是这个高度加安全区，所以收
+   到只剩把手时也露在标签栏上面，不会被它压住。 */
+.tab-bar {
+  position: fixed;
+  z-index: 40;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(var(--tabbar-height) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+}
+.tab-bar.glass {
+  border-width: 1px 0 0 0;
+  box-shadow: none;
+}
+/* 44px 是触控目标的下限。高度平时由 `--tabbar-height` 给足；下限写在这里，是为了
+   有人把标签栏调矮时按钮不跟着缩到按不准。 */
+.tab-bar-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.125rem;
+  min-width: 44px;
+  min-height: 44px;
+  font-size: 0.6875rem;
+  color: var(--color-muted);
+}
+.tab-bar-item[aria-current="page"] {
+  color: var(--color-can);
+}
+/* can-ui 的焦点环往外偏 2px；标签栏贴着视口底边，往外偏就被裁掉一截。收进来。 */
+.tab-bar-item:focus-visible {
+  outline-offset: -2px;
+}
+@media (min-width: 768px) {
+  .tab-bar {
+    display: none;
+  }
 }

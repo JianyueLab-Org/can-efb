@@ -9,9 +9,8 @@
  *
  * 由此带来的三个后果，都是这里必须自己解决的：
  *
- * 1. 手机上没有顶栏可以挂汉堡按钮。所以左下角有一颗浮动按钮拉开抽屉 —— 放左
- *    下而不是右上，是因为没有顶栏的页面里那颗按钮离拇指最近，右下留给了将来
- *    的页面级动作。
+ * 1. 手机上轨整条换成底部标签栏：五个导航项正好一行，拇指够得着，全是 <a>，水
+ *    合之前也能跳页。主题、语言、账户和跨站链接在设置页里（`.phone-only`）。
  * 2. can-web 的顶栏里那颗 ⌘K 快速跳转不能跟着顶栏一起消失，它现在是轨里品牌
  *    下面的第一件东西。折叠态退化成一个放大镜方块。
  * 3. 主题、语言、账户在轨脚。轨脚是 `mt-auto` 撑下去的，不是绝对定位 —— 导航
@@ -26,7 +25,8 @@ import { api } from "@/lib/canApi";
 import { createTranslator } from "@/lib/i18n";
 import { Icon, ThemeLangControls, useOverlay } from "@jianyuelab-org/can-ui";
 import SidebarNav from "@/components/SidebarNav.vue";
-import type { NavSection } from "@/lib/nav";
+import { isCurrentPath, type NavSection } from "@/lib/nav";
+import { currentRail } from "@/lib/railState";
 import type { EfbUser } from "@/lib/session";
 
 const props = withDefaults(
@@ -65,21 +65,19 @@ function applyCollapsed(next: boolean) {
     localStorage.setItem("efb.rail", next ? "collapsed" : "expanded");
   } catch {
     // 隐私模式下 localStorage 会抛。折叠这件事不值得为它中断，本次会话内仍然
-    // 生效，只是下次打开回到默认展开。
+    // 生效，只是下次打开回到默认（按宽度定，见 RailScript）。
   }
 }
 
 let railObserver: MutationObserver | null = null;
 
+/**
+ * 轨此刻收着还是展开。`data-rail="auto"` 时答案在 CSS 里（`--rail-auto`，平板上
+ * 收起），所以窗口跨过断点时要再问一次 —— 见 onMounted 里的 resize。
+ */
 function syncCollapsed() {
-  collapsed.value = document.documentElement.dataset.rail === "collapsed";
+  collapsed.value = currentRail() === "collapsed";
 }
-
-/* --------------------------------------------------------------------------
-   手机抽屉
--------------------------------------------------------------------------- */
-const drawerOpen = ref(false);
-const drawerPanel = useOverlay(drawerOpen);
 
 /* --------------------------------------------------------------------------
    快速跳转（⌘K）。顶栏没了，它得有个新家；这是轨里最上面的那颗按钮。
@@ -205,11 +203,13 @@ onMounted(() => {
     attributes: true,
     attributeFilter: ["data-rail"],
   });
+  window.addEventListener("resize", syncCollapsed);
   document.addEventListener("keydown", onGlobalKeydown);
   document.addEventListener("click", onGlobalClick);
 });
 onBeforeUnmount(() => {
   railObserver?.disconnect();
+  window.removeEventListener("resize", syncCollapsed);
   document.removeEventListener("keydown", onGlobalKeydown);
   document.removeEventListener("click", onGlobalClick);
 });
@@ -225,12 +225,10 @@ onBeforeUnmount(() => {
       {{ t("skipToContent") }}
     </a>
 
-    <!-- ===================== 桌面轨（lg 起） ===================== -->
-    <div
-      class="app-rail hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:flex lg:flex-col"
-    >
+    <!-- ===================== 桌面 / 平板轨（768 起，见 globals.css） ===================== -->
+    <div class="app-rail glass">
       <div
-        class="flex grow flex-col gap-y-4 overflow-y-auto overscroll-contain border-r border-subtle bg-surface-sunken px-3 py-4"
+        class="flex grow flex-col gap-y-4 overflow-y-auto overscroll-contain px-3 py-4"
       >
         <!-- 品牌 -->
         <a
@@ -408,101 +406,23 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <!-- ===================== 手机：浮动按钮 + 抽屉 ===================== -->
-    <button
-      type="button"
-      class="fixed bottom-4 left-4 z-40 flex size-12 items-center justify-center rounded-full border border-subtle bg-chrome text-ink shadow-popover transition-colors hover:bg-surface-raised lg:hidden"
-      :aria-label="t('rail.open')"
-      :aria-expanded="drawerOpen"
-      @click="drawerOpen = true"
-    >
-      <Icon name="bars3" class="size-6" />
-    </button>
-
-    <div
-      v-if="drawerOpen"
-      class="relative z-50 lg:hidden"
-      role="dialog"
-      aria-modal="true"
-      :aria-label="t('rail.label')"
-    >
-      <div
-        class="animate-overlay-in fixed inset-0 bg-gray-900/50 backdrop-blur-sm"
-        @click="drawerOpen = false"
-      ></div>
-      <div class="fixed inset-0 flex">
-        <div
-          ref="drawerPanel"
-          class="animate-drawer-in relative mr-16 flex w-full max-w-xs flex-1"
-          tabindex="-1"
-        >
-          <div class="absolute left-full top-0 flex w-16 justify-center pt-5">
-            <button
-              type="button"
-              class="-m-2.5 p-2.5 text-white/80 transition-colors hover:text-white"
-              :aria-label="t('rail.close')"
-              @click="drawerOpen = false"
-            >
-              <Icon name="xMark" class="size-6" />
-            </button>
-          </div>
-
-          <!-- 抽屉里从不折叠：它已经是全宽的了，而 .rail-* 那组规则被
-               `.app-rail` 限定在桌面轨上，所以这里不会被 data-rail 波及。 -->
-          <div
-            class="flex grow flex-col gap-y-4 overflow-y-auto overscroll-contain border-r border-subtle bg-surface px-4 py-4"
-          >
-            <a href="/" class="flex items-center gap-2.5 px-1.5 py-1">
-              <span
-                class="flex size-9 shrink-0 items-center justify-center rounded-control bg-can text-xs font-bold tracking-tight text-white"
-              >
-                {{ t("shortName") }}
-              </span>
-              <span class="truncate text-sm font-semibold text-ink">
-                {{ t("siteName") }}
-              </span>
-            </a>
-
-            <button
-              type="button"
-              class="flex w-full items-center gap-2 rounded-control border border-subtle bg-surface-sunken px-2.5 py-2 text-sm text-faint transition-colors hover:border-strong hover:text-muted"
-              :aria-label="t('search.label')"
-              @click="
-                drawerOpen = false;
-                openSearch();
-              "
-            >
-              <Icon name="magnifyingGlass" class="size-4 shrink-0" />
-              <span class="truncate">{{ t("search.placeholder") }}</span>
-            </button>
-
-            <SidebarNav
-              :sections="sections"
-              :pathname="pathname"
-              :collapsed="false"
-              :label="t('rail.label')"
-            />
-
-            <div class="mt-auto flex flex-col gap-y-3 pt-4">
-              <SidebarNav
-                :sections="[crossLinks]"
-                :pathname="pathname"
-                :collapsed="false"
-                :label="crossLinks.label ?? ''"
-              />
-              <div
-                class="flex items-center justify-between border-t border-subtle pt-3"
-              >
-                <span class="truncate text-sm text-muted">
-                  {{ user ? user.name : t("account.signedOut") }}
-                </span>
-                <ThemeLangControls :locale="locale" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <!-- ===================== 手机：底部标签栏 ===================== -->
+    <!--
+      手机上轨整条换成它。全是 <a>：水合之前也能跳页。只收本站页面，理由和 ⌘K
+      一样 —— 跨站链接点过去是另一个域。
+    -->
+    <nav class="tab-bar glass" :aria-label="t('rail.label')">
+      <a
+        v-for="item in flatNav"
+        :key="item.href"
+        :href="item.href"
+        class="tab-bar-item"
+        :aria-current="isCurrentPath(item.href, pathname) ? 'page' : undefined"
+      >
+        <Icon :name="item.icon" class="size-6" />
+        <span class="max-w-full truncate px-1">{{ item.name }}</span>
+      </a>
+    </nav>
 
     <!-- ===================== 快速跳转面板 ===================== -->
     <div

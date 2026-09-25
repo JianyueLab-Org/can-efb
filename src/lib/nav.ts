@@ -122,3 +122,20 @@ export function buildCrossLinks(t: Translator): NavSection {
     })),
   };
 }
+
+/**
+ * 这一项是不是当前页。侧栏和手机标签栏共用。
+ *
+ * 根路由必须精确匹配，否则「概览」在每一个子路由上都亮着；其余按路径段匹配，
+ * `/route` 不该在 `/routes` 上亮。
+ */
+export function isCurrentPath(href: string, pathname: string): boolean {
+  if (!href || href === "#" || href.startsWith("http")) return false;
+  if (href === "/") return pathname === "/";
+  if (pathname === href) return true;
+  if (pathname.startsWith(href)) {
+    const nextChar = pathname[href.length];
+    return !nextChar || nextChar === "/";
+  }
+  return false;
+}

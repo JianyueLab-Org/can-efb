@@ -14,6 +14,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { api, describeFailure } from "@/lib/canApi";
 import { createTranslator } from "@/lib/i18n";
 import { hideNaip, setHideNaip } from "@/lib/naip";
+import { currentRail } from "@/lib/railState";
 import { Icon } from "@jianyuelab-org/can-ui";
 
 const props = defineProps<{
@@ -97,8 +98,9 @@ const railCollapsed = ref(false);
 // 这边的开关要跟着变，而不是停在进页面时读到的值上。
 let railObserver: MutationObserver | null = null;
 
+// 没选过时（`data-rail="auto"`）答案随宽度变，所以跨过断点也要再读一次。
 function syncRail() {
-  railCollapsed.value = document.documentElement.dataset.rail === "collapsed";
+  railCollapsed.value = currentRail() === "collapsed";
 }
 
 function toggleRail(next: boolean) {
@@ -133,9 +135,13 @@ onMounted(() => {
     attributes: true,
     attributeFilter: ["data-rail"],
   });
+  window.addEventListener("resize", syncRail);
   void loadSimbrief();
 });
-onBeforeUnmount(() => railObserver?.disconnect());
+onBeforeUnmount(() => {
+  railObserver?.disconnect();
+  window.removeEventListener("resize", syncRail);
+});
 </script>
 
 <template>

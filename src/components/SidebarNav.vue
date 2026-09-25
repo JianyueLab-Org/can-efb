@@ -12,7 +12,7 @@
  * 失明。
  */
 import { Icon } from "@jianyuelab-org/can-ui";
-import type { NavSection } from "@/lib/nav";
+import { isCurrentPath, type NavSection } from "@/lib/nav";
 
 const props = defineProps<{
   sections: NavSection[];
@@ -21,18 +21,6 @@ const props = defineProps<{
   collapsed: boolean;
   label: string;
 }>();
-
-function isCurrentPath(href: string): boolean {
-  if (!href || href === "#" || href.startsWith("http")) return false;
-  // 根路由必须精确匹配，否则「概览」在每一个子路由上都亮着。
-  if (href === "/") return props.pathname === "/";
-  if (props.pathname === href) return true;
-  if (props.pathname.startsWith(href)) {
-    const nextChar = props.pathname[href.length];
-    return !nextChar || nextChar === "/";
-  }
-  return false;
-}
 
 const baseItem =
   "rail-item group flex w-full items-center gap-x-3 rounded-control px-2.5 py-2 text-sm font-medium transition-colors duration-150";
@@ -62,19 +50,21 @@ const idleItem = "text-muted hover:bg-surface-raised hover:text-ink";
             :href="item.href"
             :target="item.external ? '_blank' : undefined"
             :rel="item.external ? 'noopener noreferrer' : undefined"
-            :aria-current="isCurrentPath(item.href) ? 'page' : undefined"
+            :aria-current="
+              isCurrentPath(item.href, props.pathname) ? 'page' : undefined
+            "
             :aria-label="collapsed ? item.name : undefined"
             :title="collapsed ? item.name : undefined"
             :class="[
               baseItem,
-              isCurrentPath(item.href) ? activeItem : idleItem,
+              isCurrentPath(item.href, props.pathname) ? activeItem : idleItem,
             ]"
           >
             <Icon
               :name="item.icon"
               :class="[
                 'size-5 shrink-0',
-                isCurrentPath(item.href)
+                isCurrentPath(item.href, props.pathname)
                   ? 'text-can'
                   : 'text-faint group-hover:text-muted',
               ]"
