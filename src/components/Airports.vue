@@ -14,7 +14,7 @@
  * 点某一行时**不重推整层**，只多带一个 `focus`：地图把镜头对过去，不重新框住全
  * 国 —— 否则用户刚才的缩放会被每一次点击丢掉一遍。
  */
-import { computed, ref } from "vue";
+import { computed, nextTick, ref } from "vue";
 import { createTranslator } from "@/lib/i18n";
 import { focusMap, publishToMap } from "@/lib/mapBus";
 import { unwrapList } from "@/lib/aip";
@@ -60,10 +60,46 @@ async function reload() {
     list,
     (l) => !l.length,
   );
+  // 重试成功时 StateCard 的「重试」按钮跟着 error 状态一起消失，焦点会掉回
+  // <body>——只有 `data` 换来搜索框；`empty` 没有可聚的输入框，留给下一段代码
+  // 处理不到也不报错（`searchInput.value` 那时是 null）。
+  if (state.value.kind === "data") {
+    await nextTick();
+    searchInput.value?.focus();
+  }
 }
 
 const query = ref("");
 const selected = ref<Airport | null>(null);
+
+/** 搜索框的元素引用，重试成功和从详情返回都要把焦点收回这里。 */
+const searchInput = ref<HTMLInputElement | null>(null);
+
+/**
+ * 列表里每一行的按钮引用，按 ICAO 存。**只会留下当前渲染着的那些** —— Vue 在元
+ * 素卸载时把函数式 ref 调成 `null`，所以从详情返回时不必自己清理旧条目。
+ */
+const resultRefs = new Map<string, HTMLButtonElement>();
+
+function setResultRef(icao: string, el: Element | null) {
+  if (el) resultRefs.set(icao, el as HTMLButtonElement);
+  else resultRefs.delete(icao);
+}
+
+/**
+ * 从详情返回列表：焦点必须跟着走，否则「返回列表」按钮随 AirportDetail 一起卸
+ * 载，焦点会静静地掉回 `<body>` —— 读屏用户和纯键盘用户都感觉不到自己回到了哪
+ * 里。优先落回刚才选中的那一行（多半还在原地：`query` 没变），它已经不在筛选结
+ * 果里就退回搜索框——那是这个视图里恒在的东西。
+ */
+function back() {
+  const icao = selected.value?.icao;
+  selected.value = null;
+  nextTick(() => {
+    const item = icao ? resultRefs.get(icao) : undefined;
+    (item ?? searchInput.value)?.focus();
+  });
+}
 
 /** 一次最多列这么多条。见 `filtered`。 */
 const MAX_RESULTS = 12;
@@ -164,7 +200,7 @@ function show(airport: Airport) {
     v-else-if="selected"
     :airport="selected"
     :messages="messages"
-    @back="selected = null"
+    @back="back"
   />
 
   <div v-else class="flex flex-col gap-4">
@@ -172,6 +208,7 @@ function show(airport: Airport) {
       <template #default="{ id, describedby }">
         <input
           :id="id"
+          ref="searchInput"
           v-model="query"
           type="search"
           autocomplete="off"
@@ -203,12 +240,15 @@ function show(airport: Airport) {
       选中一个机场就切到 AirportDetail（上面 v-else-if="selected"），这个列表和
       详情互斥 —— 走到这里 `selected` 必是 null，列表里不再需要一个「哪条被选
       中」的高亮态。返回列表时 `selected` 重置为 null，`query` 原样保留。
+
+      每个按钮挂一个 `:ref`，`back()` 靠它把焦点还给刚才选中的那一行。
     -->
     <ul v-if="filtered.length" class="flex flex-col gap-2">
       <li v-for="airport in filtered" :key="airport.icao">
         <button
           type="button"
           class="card w-full p-3 text-left"
+          :ref="(el) => setResultRef(airport.icao, el as Element | null)"
           @click="show(airport)"
         >
           <span class="flex items-baseline justify-between gap-3">
