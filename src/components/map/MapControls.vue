@@ -11,7 +11,7 @@
  *
  * 只收已经翻好的字符串、只往外发事件；取数和状态都在 MapStage 的几个 use* 里。
  */
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { Icon } from "@jianyuelab-org/can-ui";
 import type { LayerId } from "@/components/map/useLayerNotice";
 import type { LayerToggle } from "@/components/map/useChartLayers";
@@ -53,6 +53,17 @@ const ORDER: LayerToggle[] = [
 const menuOpen = ref(false);
 const root = ref<HTMLElement | null>(null);
 const trigger = ref<HTMLButtonElement | null>(null);
+const menu = ref<HTMLElement | null>(null);
+
+/** 打开时焦点落到第一个能按的开关上；Esc 关掉时回到按钮（见 onKeydown）。 */
+async function toggleMenu() {
+  menuOpen.value = !menuOpen.value;
+  if (!menuOpen.value) return;
+  await nextTick();
+  menu.value
+    ?.querySelector<HTMLButtonElement>("button:not(:disabled)")
+    ?.focus();
+}
 
 function isBusy(id: LayerToggle): boolean {
   if (id === "airways") return props.busy.airways;
@@ -128,9 +139,25 @@ onBeforeUnmount(() => {
         </button>
       </div>
 
+      <button
+        ref="trigger"
+        type="button"
+        class="map-layer-trigger glass"
+        :aria-expanded="menuOpen"
+        aria-controls="map-layer-menu"
+        @click="toggleMenu"
+      >
+        <Icon name="squaresPlus" class="size-4" />
+        <span>{{ text.menu }}</span>
+      </button>
+      <!--
+        菜单排在按钮**后面**：打开后 Tab 从按钮直接走进菜单。画面上它仍在按钮上方
+        （CSS 的 order）。v-show 而不是 v-if：aria-controls 要指得到一个真实的元素。
+      -->
       <div
-        v-if="menuOpen"
+        v-show="menuOpen"
         id="map-layer-menu"
+        ref="menu"
         class="map-layer-menu glass"
         role="group"
         :aria-label="text.menu"
@@ -153,18 +180,6 @@ onBeforeUnmount(() => {
           >
         </button>
       </div>
-
-      <button
-        ref="trigger"
-        type="button"
-        class="map-layer-trigger glass"
-        :aria-expanded="menuOpen"
-        aria-controls="map-layer-menu"
-        @click="menuOpen = !menuOpen"
-      >
-        <Icon name="squaresPlus" class="size-4" />
-        <span>{{ text.menu }}</span>
-      </button>
     </div>
   </div>
 </template>

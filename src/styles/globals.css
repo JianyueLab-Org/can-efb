@@ -521,7 +521,9 @@
   gap: 0.375rem;
   max-width: calc(100% - 1rem);
 }
+/* DOM 里菜单在按钮后面（键盘顺序），画面上要在按钮上方：两者都靠 order 排。 */
 .map-layer-trigger {
+  order: 2;
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;
@@ -531,6 +533,7 @@
   color: var(--color-ink);
 }
 .map-layer-menu {
+  order: 1;
   display: flex;
   flex-wrap: wrap;
   gap: 0.125rem;
