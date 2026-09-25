@@ -11,6 +11,7 @@ import {
 import {
   allImageIds,
   buildStyle,
+  COLORS,
   graticule,
   gridLabel,
   rampCase,
@@ -298,5 +299,35 @@ describe("经纬网", () => {
     expect(at("E120°")).toBe(10);
     expect(at("N35°")).toBe(5);
     expect(at("E121°")).toBe(1);
+  });
+});
+
+/**
+ * 计划航线用航电里的品红：PFD / ND 上现用航路就是这个颜色，飞行员不用学新图例。
+ * 以前是紫色（色相约 291°）。这里只钉色相落在品红那一段（305–325°），两套主题
+ * 各验一次；和别的图层分不分得开，靠浏览器里看，不靠这个测试。
+ */
+describe("计划航线是品红", () => {
+  function hue(hex: string): number {
+    const n = Number.parseInt(hex.slice(1), 16);
+    const r = (n >> 16) / 255;
+    const g = ((n >> 8) & 255) / 255;
+    const b = (n & 255) / 255;
+    const max = Math.max(r, g, b);
+    const d = max - Math.min(r, g, b);
+    if (!d) return 0;
+    const h =
+      max === r
+        ? ((g - b) / d) % 6
+        : max === g
+          ? (b - r) / d + 2
+          : (r - g) / d + 4;
+    return (h * 60 + 360) % 360;
+  }
+
+  test.each(["light", "dark"] as const)("%s 主题色相在 305–325°", (theme) => {
+    const h = hue(COLORS[theme].route);
+    expect(h).toBeGreaterThanOrEqual(305);
+    expect(h).toBeLessThanOrEqual(325);
   });
 });

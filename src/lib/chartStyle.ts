@@ -104,7 +104,8 @@ export const COLORS: Record<Theme, ColorRoles> = {
     shieldRnavText: "#ffffff",
     shieldConv: "#2b3035",
     shieldConvText: "#ffffff",
-    route: "#9c27b0",
+    // 计划航线：航电品红。深浅两套同色相，只调明度，和这张表别的语义色一个规矩。
+    route: "#c8189f",
     routeCasing: "#ffffff",
     marker: "#5b1f6b",
     waypoint: "#3d4850",
@@ -141,7 +142,7 @@ export const COLORS: Record<Theme, ColorRoles> = {
     shieldRnavText: "#f2f6fa",
     shieldConv: "#b9c1c8",
     shieldConvText: "#16191c",
-    route: "#e07cf2",
+    route: "#ff4fd8",
     routeCasing: "#16191c",
     marker: "#f0c9f7",
     waypoint: "#c3cbd1",
