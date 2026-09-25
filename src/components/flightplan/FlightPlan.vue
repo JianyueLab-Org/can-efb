@@ -49,6 +49,7 @@ import {
   type Plan,
   type StoredPlan,
 } from "@/lib/flightPlan";
+import { latestOnly } from "@/lib/latestOnly";
 import { previewKey, resolveRoute, shouldPreview } from "@/lib/routePreview";
 import type { RequestState } from "@/lib/requestState";
 import { Icon } from "@jianyuelab-org/can-ui";
@@ -90,12 +91,15 @@ const notice = ref<{ kind: "ok" | "error" | "locked"; text: string } | null>(
 );
 /** 被锁时占着标牌的管制员，锁定态下表单整个禁用。 */
 const lockedBy = ref<string | null>(null);
+/** SimBrief 导入进行中（SimbriefImport 的 `busy`）。途中表单锁着，见那边的注释。 */
+const importing = ref(false);
 
 const disabled = computed(
   () =>
     loading.value ||
     saving.value ||
     deleting.value ||
+    importing.value ||
     loadFailed.value ||
     !!lockedBy.value,
 );
@@ -273,6 +277,12 @@ function onImportFailed(text: string) {
   notice.value = { kind: "error", text };
 }
 
+function onImportBusy(busy: boolean) {
+  importing.value = busy;
+  // 开始导入时撤掉旧横幅，和提交、撤销一样：上一次的结果留着会被当成这一次的。
+  if (busy) notice.value = null;
+}
+
 const submitLabel = computed(() =>
   saving.value
     ? t("flightplan.actions.filing")
@@ -288,7 +298,8 @@ const preview = ref<RequestState<MapPoint[]> | null>(null);
 /** 已经推给地图的那一份。null＝还没推过，地图上仍是已提交的计划。 */
 let previewedKey: string | null = null;
 let previewTimer: ReturnType<typeof setTimeout> | undefined;
-let previewAbort: AbortController | undefined;
+/** 解析请求只认最后一个，见 `lib/latestOnly.ts`。 */
+const previewRequest = latestOnly();
 
 function storedKey(): string | null {
   const s = stored.value;
@@ -306,13 +317,16 @@ function storedKey(): string | null {
  */
 function returnMapToPlan() {
   clearTimeout(previewTimer);
-  previewAbort?.abort();
+  previewRequest.cancel();
   previewedKey = null;
   preview.value = null;
   showPlanOnMap();
 }
 
 async function runPreview() {
+  // 先撤掉路上那个，再决定这次画不画：下面三条提前返回都不再要它的回答，放着不管
+  // 它晚到时会把框里已经没有的那条线画上地图。
+  previewRequest.cancel();
   const { departure, arrival, route } = form;
   if (!shouldPreview(departure, arrival, route)) {
     // 填得还不够画。以前推过的那条已经不是框里的这条了，撤掉。撤掉之后记成空串
@@ -330,9 +344,7 @@ async function runPreview() {
   // 不必再问一遍。
   if (previewedKey === null && key === storedKey()) return;
 
-  previewAbort?.abort();
-  previewAbort = new AbortController();
-  const signal = previewAbort.signal;
+  const signal = previewRequest.next();
   const state = await resolveRoute(departure, arrival, route, signal);
   if (signal.aborted) return;
 
@@ -356,6 +368,8 @@ watch(
   () => [form.departure, form.arrival, form.route],
   () => {
     clearTimeout(previewTimer);
+    // 框里一变，路上那个的回答就已经不是框里这条了 —— 不等防抖结束再撤。
+    previewRequest.cancel();
     previewTimer = setTimeout(() => void runPreview(), 600);
   },
 );
@@ -381,7 +395,7 @@ onMounted(() => {
 });
 onBeforeUnmount(() => {
   clearTimeout(previewTimer);
-  previewAbort?.abort();
+  previewRequest.cancel();
 });
 </script>
 
@@ -439,6 +453,7 @@ onBeforeUnmount(() => {
         :disabled="disabled"
         @imported="onImported"
         @failed="onImportFailed"
+        @busy="onImportBusy"
       />
     </PanelSection>
 

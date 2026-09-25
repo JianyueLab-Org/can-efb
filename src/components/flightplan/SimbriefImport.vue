@@ -18,7 +18,13 @@ const props = defineProps<{
   messages: Record<string, unknown>;
   disabled: boolean;
 }>();
-const emit = defineEmits<{ imported: [plan: Plan]; failed: [text: string] }>();
+const emit = defineEmits<{
+  imported: [plan: Plan];
+  failed: [text: string];
+  /** 导入开始（true）和结束（false）。容器拿它锁表单：导入途中改的字段会被
+   *  OFP 静默盖掉，途中按提交交的是导入前那份。 */
+  busy: [importing: boolean];
+}>();
 const t = createTranslator(props.messages);
 
 const importing = ref(false);
@@ -26,8 +32,10 @@ const importing = ref(false);
 async function run() {
   if (importing.value) return;
   importing.value = true;
+  emit("busy", true);
   const result = await api<Plan>("/api/v1/pilot/simbrief/import");
   importing.value = false;
+  emit("busy", false);
 
   if (!result.ok) {
     emit(
