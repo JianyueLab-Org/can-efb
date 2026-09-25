@@ -6,7 +6,6 @@
     "skipToContent": "Skip to content",
     "rail": {
       "label": "Main navigation",
-      "open": "Open navigation",
       "close": "Close navigation",
       "collapse": "Collapse sidebar",
       "expand": "Expand sidebar"
@@ -15,6 +14,16 @@
       "label": "Quick nav",
       "placeholder": "Jump to…",
       "noResults": "No matching page"
+    },
+    "panel": {
+      "collapse": "Collapse panel",
+      "expand": "Expand panel",
+      "handle": "{state}. Drag, or use the arrow keys, to resize the panel",
+      "sheet": {
+        "collapsed": "Panel collapsed",
+        "half": "Panel at half height",
+        "full": "Panel at full height"
+      }
     },
     "account": {
       "menu": "Account menu",
@@ -61,11 +70,6 @@
         "title": "Settings",
         "description": "Units, theme, language and account."
       }
-    },
-    "placeholder": {
-      "title": "Nothing here yet",
-      "body": "The frame lands first: shell, navigation, theme and languages are in place. The content waits on can-api being wired up.",
-      "reasons": {}
     },
     "common": {
       "loading": "Loading…",
@@ -166,9 +170,27 @@
           "departure": "departure",
           "arrival": "arrival"
         }
+      },
+      "sections": {
+        "flight": "Flight",
+        "route": "Route and remarks"
+      },
+      "import": {
+        "hint": "Fetches the latest OFP from your linked SimBrief account into the form. Nothing is filed until you submit."
+      },
+      "preview": {
+        "label": "Draft: {from} → {to}",
+        "forbidden": "Previewing the route needs chart access, which you don't have yet. You can still file.",
+        "failed": "Couldn't load the route preview — that doesn't mean the route is wrong.",
+        "empty": "None of the points in this route could be found on the map."
       }
     },
     "route": {
+      "tabs": {
+        "label": "Route tools",
+        "generate": "Generate",
+        "expand": "Expand"
+      },
       "departure": "Departure",
       "arrival": "Arrival",
       "route": "Route string",
@@ -211,10 +233,16 @@
         "toFlightPlan": "Fill into flight plan",
         "restrictedLegs": "These legs are restricted",
         "restrictionTextWithheld": "The restriction's text needs a higher database tier",
-        "withoutRestricted": "restricted compilation not used"
+        "withoutRestricted": "restricted compilation not used",
+        "forbidden": {
+          "title": "No aeronautical data access",
+          "body": "Generating a route reads the aeronautical database. This is a permission, not a fault — ask your division to enable it."
+        }
       },
       "expand": {
-        "title": "Expand a route string"
+        "title": "Expand a route string",
+        "failed": "Couldn't expand this route",
+        "unavailableTitle": "Navigation data not deployed"
       },
       "procedures": {
         "title": "Runways and terminal procedures",
@@ -248,6 +276,9 @@
     },
     "dashboard": {
       "greeting": "Welcome back, {name}.",
+      "summary": {
+        "id": "CAN ID"
+      },
       "plan": {
         "title": "Current flight plan",
         "none": "No flight plan filed yet.",
@@ -260,7 +291,9 @@
         "level": "Level"
       },
       "weather": {
-        "none": "No report"
+        "title": "Departure and arrival weather",
+        "none": "No report",
+        "failed": "Couldn't load the METAR for {icao} — that doesn't mean there isn't one."
       },
       "atc": {
         "title": "Online ATC",
@@ -300,7 +333,8 @@
         "railHint": "Shrinks the rail to a column of icons and gives the width back to the page.",
         "hideNaip": "Hide the restricted compilation",
         "hideNaipHint": "Every AIP layer on this site uses tier 1–2 data only, leaving out NAIP: the chart layers, runways, airport ground, procedures and route generation alike. Anything you produce may be shared with members who do not hold that tier. On by default; turn it off to use NAIP.",
-        "themeHint": "Theme and language are at the foot of the sidebar."
+        "theme": "Theme and language",
+        "themeHint": "Applies to this device only."
       }
     },
     "map": {
@@ -326,7 +360,10 @@
         "webgl": "This browser has no working WebGL, so the map cannot be drawn. Enable hardware acceleration in your browser settings and try again."
       },
       "denied": "Your account does not have read access to the aeronautical database yet, so airways, navaids and airspace cannot be loaded. Ask an administrator for aipAccess.",
-      "planOnMap": "Filed flight plan {from} → {to}"
+      "planOnMap": "Filed flight plan {from} → {to}",
+      "layersMenu": "Layers",
+      "layerFailed": "Couldn't load {layer}; that layer is empty on the map.",
+      "locate": "Center on my aircraft"
     },
     "airports": {
       "search": "Search by ICAO, name or FIR",
@@ -341,9 +378,16 @@
         "title": "Aeronautical data is temporarily unavailable",
         "body": "The aeronautical database did not answer. This is a fault rather than a permissions problem — try again shortly."
       },
-      "mapLabel": "All airports",
       "prompt": "Search by code, name or FIR. {count} airports in the database.",
-      "truncated": "Showing {shown} of {total} matches — type more to narrow it down."
+      "truncated": "Showing {shown} of {total} matches — type more to narrow it down.",
+      "empty": "The database has no airports.",
+      "detail": {
+        "back": "Back to list",
+        "position": "Position",
+        "runways": "Runways",
+        "noRunways": "The database has no runways for this airport.",
+        "runwaysFailed": "Couldn't load the runways — that doesn't mean there are none."
+      }
     }
   }
 }

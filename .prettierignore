@@ -12,3 +12,6 @@ bun.lock
 # 在 public/ 下，因为 glyphs 的 URL 是个运行时模板，哈希不进去。
 public/basemap/
 src/basemap/
+
+# 规格和计划里嵌着代码片段，prettier 会把它们当代码解析然后报错。
+docs/superpowers/

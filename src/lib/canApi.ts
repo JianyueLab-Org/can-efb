@@ -94,3 +94,20 @@ export function describeFailure(t: Translator, failure: ApiFailure): string {
     ? t("common.apiError.network")
     : t("common.apiError.status", { status: failure.status });
 }
+
+/**
+ * 退出登录。轨（`AppRail.vue`）和手机上的设置页各有一颗按钮，走的是同一件事：
+ * 清 cookie 是 can-api 的活 —— 属性（域、SameSite、Secure）是它设的，这边补一
+ * 个对不上的 Set-Cookie 只会让浏览器同时留着两个。跳转是我们的，而且**无论成
+ * 败都跳**：按了退出的人不该因为请求失败就还停在一个登录态的页面上。
+ *
+ * 调用方自己管一个 `signingOut` ref 防重复点击 —— 两颗按钮各自的按下状态不共
+ * 享，这个函数只负责请求加跳转本身。
+ */
+export async function signOut(): Promise<void> {
+  try {
+    await api("/api/v1/auth/signout", { method: "POST" });
+  } finally {
+    window.location.assign("/");
+  }
+}

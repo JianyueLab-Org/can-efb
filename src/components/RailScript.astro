@@ -11,21 +11,26 @@
  * 自己的初始 state，而不是第二次去读 localStorage：两处各判断一次，就会有两个
  * 可能不一致的答案。
  *
+ * 三个值：`collapsed` / `expanded` 是成员点过折叠钮之后的选择；`auto` 是没选过，
+ * 由 CSS 按宽度决定（768–1151 收起，其余展开），JS 读 `--rail-auto` 得到答案
+ * （`lib/panelLayout.ts` 的 `effectiveRail`）。断点因此仍然只写在 globals.css 里。
+ *
  * `is:inline` 是必须的 —— 整件事的意义就在于它不被打包、不被 defer。
  */
 ---
 
 <script is:inline>
   (function () {
+    var root = document.documentElement;
     try {
-      document.documentElement.dataset.rail =
-        localStorage.getItem("efb.rail") === "collapsed"
-          ? "collapsed"
-          : "expanded";
+      var stored = localStorage.getItem("efb.rail");
+      // 成员选过就照他选的；没选过写 auto，交给 CSS 按宽度定（平板收起、桌面展开）。
+      root.dataset.rail =
+        stored === "collapsed" || stored === "expanded" ? stored : "auto";
     } catch (e) {
-      // 锁死的浏览器里 localStorage 会抛。默认展开是个完全合理的结果，而且这
-      // 么早也没有地方可以上报。
-      document.documentElement.dataset.rail = "expanded";
+      // 锁死的浏览器里 localStorage 会抛。auto 是个完全合理的结果，而且这么早
+      // 也没有地方可以上报。
+      root.dataset.rail = "auto";
     }
   })();
 </script>

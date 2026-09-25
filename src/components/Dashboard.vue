@@ -10,15 +10,23 @@
  * 机场，所以它挂在计划后面），管制那条走 can-fsd 的 datafeed。一条失败不影响另一
  * 条渲染 —— 实时数据源连不上不该让人看不到自己的计划。
  *
- * **这里曾经还有一块飞行统计，删掉了。** 它显示的是
- * `logbook.stats.flights` 这样的**键名本身** —— 删飞行日志那一页时词典里的
- * `logbook` 命名空间跟着没了，模板却还在调它，而翻译器查不到键就回退成显示键名。
- * 排版正常、旁边还有一个真的数字，所以它看起来完全像一个真的标签。
- * `scripts/check-i18n-keys.mjs` 现在盯着这一类。
+ * **地图画的是已提交的计划。** 打开这一页时向地图要一次（`showPlanOnMap`）：别的
+ * 页面推过东西之后地图就不再自己画计划，概览是那个要回来的地方（见
+ * `components/map/useRouteLayer.ts` 里 `subscribePlanRequest` 那一段）。
+ *
+ * 每一块都走 `RequestState`：读到了、确实没有、没读到，各说各的话。METAR 以前把
+ * 「没读到」和「没有报文」当成一回事，一律显示「暂无报文」——现在分开：没读到的
+ * 时候「暂无报文」是一句假话，读的人会以为这一带真的没有报文。
+ *
+ * **这里曾经还有一块飞行统计，删掉了。** 它显示的是 `logbook.stats.flights` 这样
+ * 的**键名本身** —— 删飞行日志那一页时词典里的 `logbook` 命名空间跟着没了，模板
+ * 却还在调它。`scripts/check-i18n-keys.mjs` 现在盯着这一类。
  */
 import { computed, onMounted, ref } from "vue";
-import { api } from "@/lib/canApi";
+import { api, describeFailure } from "@/lib/canApi";
 import { createTranslator } from "@/lib/i18n";
+import { showPlanOnMap } from "@/lib/mapBus";
+import { fromApiResult, LOADING, type RequestState } from "@/lib/requestState";
 import {
   facilityLabel,
   fetchDatafeed,
@@ -35,10 +43,14 @@ import {
   type StationGroup,
 } from "@/lib/atc";
 import { Icon } from "@jianyuelab-org/can-ui";
+import StateCard from "@/components/ui/StateCard.vue";
+import PanelSection from "@/components/ui/PanelSection.vue";
 
 const props = defineProps<{
   messages: Record<string, unknown>;
   userName: string;
+  /** CAN ID。 */
+  userId: string;
 }>();
 const t = createTranslator(props.messages);
 
@@ -53,46 +65,68 @@ interface Plan {
   route: string;
   updatedAt: string;
 }
-const plan = ref<Plan | null>(null);
-const planLoading = ref(true);
-const metars = ref<Record<string, string | null>>({});
 
-async function loadMetar(icao: string) {
-  if (!icao) return;
-  const result = await api<{ icao: string; metar: string | null }>(
-    `/api/v1/metar?icao=${encodeURIComponent(icao)}`,
-  );
-  // 失败和「没有报文」在这一页上是同一件事：都显示成没有。天气是辅助信息，
-  // 不值得为它在概览上摆一个错误框。
-  metars.value[icao] = result.ok ? result.data.metar : null;
-}
+const initials = computed(() => {
+  const parts = props.userName.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  return (parts[0][0] + (parts[1]?.[0] ?? "")).toUpperCase();
+});
 
 /**
  * 计划**没取到**，和**没有计划**，是两件事。
  *
- * 以前这里失败是静默 return —— `plan` 留在 null，于是这一段显示「还没有提交飞行
- * 计划」，而那是一句**假话**：成员可能明明交了，只是这一次没读上。按钮跟着变成
- * 「去提交」，于是它还在**劝人再交一份**。
- *
- * 和地图那些空图层是同一类坏法：**把失败画成了「没有」**。区别是这一处更贵 ——
- * 地图上少一层线是看得出来的，而「你没有计划」是一句读起来完全正常的话。
+ * 以前失败时 `plan` 留在 null，于是这一段显示「还没有提交飞行计划」，而那是一句
+ * **假话**：成员可能明明交了，只是这一次没读上。按钮跟着变成「去提交」，于是它还在
+ * **劝人再交一份**。现在失败是 `error`，空是 `empty`，按钮只在确知为空时说「去提交」。
  */
-const planFailed = ref(false);
+const plan = ref<RequestState<Plan>>(LOADING);
+const filed = computed(() =>
+  plan.value.kind === "data" ? plan.value.data : null,
+);
 
 async function loadPlan() {
+  plan.value = LOADING;
   const result = await api<Plan | null>("/api/v1/pilot/flightplan");
-  planLoading.value = false;
-  if (!result.ok) {
-    planFailed.value = true;
-    return;
-  }
-  planFailed.value = false;
-  plan.value = result.data ?? null;
-  if (plan.value) {
-    void loadMetar(plan.value.departure);
-    void loadMetar(plan.value.arrival);
+  plan.value = fromApiResult(result);
+  if (plan.value.kind === "data") {
+    void loadMetar(plan.value.data.departure);
+    void loadMetar(plan.value.data.arrival);
   }
 }
+
+const metars = ref<Record<string, RequestState<string>>>({});
+
+async function loadMetar(icao: string) {
+  if (!icao) return;
+  metars.value[icao] = LOADING;
+  const result = await api<{ icao: string; metar: string | null }>(
+    `/api/v1/metar?icao=${encodeURIComponent(icao)}`,
+  );
+  metars.value[icao] = fromApiResult<string>(
+    result.ok ? { ok: true, data: result.data.metar } : result,
+  );
+}
+
+/**
+ * 模板narrowing不跟着索引表达式走（`metars[card.icao]` 每次都是一次新的查表），
+ * `v-if` 判过 `kind === 'data'` 之后再在正文里取 `.data`，TS 已经不认得那是同一
+ * 个对象。查两遍表也不是办法：两次查表之间那个键可能被 `loadMetar` 改写。用一个
+ * 函数把「查一次、判一次、要就给」收在一起。
+ */
+function metarText(icao: string): string | null {
+  const state = metars.value[icao];
+  return state?.kind === "data" ? state.data : null;
+}
+
+/** 两张天气卡。key 带角色：本场起落时两张卡的 ICAO 相同，只用 ICAO 做 key 会重复。 */
+const weather = computed(() =>
+  filed.value
+    ? [
+        { role: "dep", icao: filed.value.departure },
+        { role: "arr", icao: filed.value.arrival },
+      ]
+    : [],
+);
 
 /**
  * 在线管制。
@@ -119,9 +153,9 @@ const groups = ref<StationGroup[]>([]);
 const atis = ref<DatafeedController[]>([]);
 const atcLoading = ref(true);
 /**
- * datafeed 没取到。和 `planFailed` 同一个判断：以前失败退回空列表，于是这一段写
- * 着「当前没有管制员在线」—— 同样是把失败画成了「没有」，而人会照着它决定不去
- * 叫放行。
+ * datafeed 没取到。和飞行计划那份 `RequestState` 同一个判断：以前失败退回空列
+ * 表，于是这一段写着「当前没有管制员在线」—— 同样是把失败画成了「没有」，而人
+ * 会照着它决定不去叫放行。
  */
 const atcFailed = ref(false);
 /**
@@ -139,6 +173,9 @@ const controllerCount = computed(() =>
 );
 
 async function loadControllers() {
+  // 重试时先回到载入中，而不是停在失败那句上——否则按下重试按钮之后屏幕上什么
+  // 都没变，人会怀疑是不是没按上。
+  atcLoading.value = true;
   try {
     const feed = await fetchDatafeed();
     groups.value = groupControllers(onlineControllers(feed));
@@ -159,61 +196,82 @@ async function loadControllers() {
 }
 
 onMounted(() => {
+  showPlanOnMap();
   void loadPlan();
   void loadControllers();
 });
 </script>
 
 <template>
-  <div class="space-y-5">
-    <p class="text-sm text-muted">
-      {{ t("dashboard.greeting", { name: userName }) }}
-    </p>
-
-    <!-- 当前计划 -->
-    <section class="card p-5">
-      <div class="flex items-center justify-between gap-3">
-        <h2 class="text-sm font-semibold text-ink">
-          {{ t("dashboard.plan.title") }}
-        </h2>
-        <!--
-          没读到计划时按钮说「查看 / 修改」而不是「去提交」。
-          我们不知道他有没有计划，而「去提交」是在替他假设没有 —— 那正是可能让他
-          交出第二份的那句话。「查看 / 修改」在两种情形下都说得通。
-        -->
-        <a href="/flightplan" class="link text-sm">{{
-          plan || planFailed
-            ? t("dashboard.plan.edit")
-            : t("dashboard.plan.file")
-        }}</a>
+  <div class="space-y-6">
+    <!-- 谁在用。和轨里的账户是同一份会话，这里只是开门第一眼。 -->
+    <section class="flex items-center gap-3">
+      <span
+        class="flex size-10 shrink-0 items-center justify-center rounded-full bg-can text-sm font-semibold text-white"
+        aria-hidden="true"
+        >{{ initials }}</span
+      >
+      <div class="min-w-0">
+        <p class="truncate text-sm font-semibold text-ink">
+          {{ t("dashboard.greeting", { name: userName }) }}
+        </p>
+        <p class="font-mono text-xs text-faint">
+          {{ t("dashboard.summary.id") }} {{ userId }}
+        </p>
       </div>
+    </section>
 
-      <p v-if="planLoading" class="skeleton mt-3 h-6 w-2/3"></p>
+    <PanelSection :title="t('dashboard.plan.title')">
+      <template #actions>
+        <!-- 只有确知没有计划时才说「去提交」；不知道的时候那句话是在替他假设。 -->
+        <a href="/flightplan" class="link text-sm">{{
+          plan.kind === "empty"
+            ? t("dashboard.plan.file")
+            : t("dashboard.plan.edit")
+        }}</a>
+      </template>
 
-      <!--
-        **失败要排在「没有」前面。** 两句话占同一个位置，而如果先判 `!plan`，读取
-        失败会落进「还没有提交飞行计划」—— 那正是要修的那句假话。
-      -->
-      <p v-else-if="planFailed" class="mt-3 text-sm text-danger">
-        {{ t("dashboard.plan.failed") }}
-      </p>
+      <StateCard
+        v-if="plan.kind === 'loading'"
+        kind="loading"
+        :title="t('common.loading')"
+        compact
+      />
+      <!-- 失败要排在「没有」前面：两句话占同一个位置。 -->
+      <StateCard
+        v-else-if="plan.kind === 'error'"
+        kind="error"
+        :title="t('dashboard.plan.failed')"
+        :body="plan.failure ? describeFailure(t, plan.failure) : undefined"
+        :retry-label="t('common.retry')"
+        compact
+        @retry="loadPlan"
+      />
+      <StateCard
+        v-else-if="plan.kind === 'empty'"
+        kind="empty"
+        :title="t('dashboard.plan.none')"
+        compact
+      >
+        <template #action>
+          <a href="/flightplan" class="btn btn-primary">{{
+            t("dashboard.plan.file")
+          }}</a>
+        </template>
+      </StateCard>
 
-      <p v-else-if="!plan" class="mt-3 text-sm text-muted">
-        {{ t("dashboard.plan.none") }}
-      </p>
-
-      <template v-else>
-        <div class="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      <div v-else-if="filed" class="card p-4">
+        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <span class="font-mono text-xl font-semibold text-ink">{{
-            plan.callsign
+            filed.callsign
           }}</span>
           <span class="font-mono text-xl text-ink">
-            {{ plan.departure }}
+            {{ filed.departure }}
             <Icon name="arrowRight" class="inline size-4 text-faint" />
-            {{ plan.arrival }}
+            {{ filed.arrival }}
           </span>
-          <span v-if="plan.alternate" class="font-mono text-sm text-muted">
-            {{ t("dashboard.plan.alternate") }} {{ plan.alternate }}
+          <span v-if="filed.alternate" class="font-mono text-sm text-muted">
+            {{ t("dashboard.plan.alternate") }} {{ filed.alternate }}
           </span>
         </div>
         <dl class="mt-3 grid gap-3 text-sm @sm:grid-cols-3">
@@ -221,73 +279,94 @@ onMounted(() => {
             <dt class="text-xs uppercase tracking-wide text-faint">
               {{ t("dashboard.plan.aircraft") }}
             </dt>
-            <dd class="truncate font-mono text-ink">{{ plan.aircraft }}</dd>
+            <dd class="truncate font-mono text-ink">{{ filed.aircraft }}</dd>
           </div>
           <div>
             <dt class="text-xs uppercase tracking-wide text-faint">
               {{ t("dashboard.plan.off") }}
             </dt>
-            <dd class="font-mono text-ink">{{ plan.departureTime }}Z</dd>
+            <dd class="font-mono text-ink">{{ filed.departureTime }}Z</dd>
           </div>
           <div>
             <dt class="text-xs uppercase tracking-wide text-faint">
               {{ t("dashboard.plan.level") }}
             </dt>
-            <dd class="font-mono text-ink">{{ plan.cruisingAltitude }}</dd>
+            <dd class="font-mono text-ink">{{ filed.cruisingAltitude }}</dd>
           </div>
         </dl>
         <p
-          v-if="plan.route"
+          v-if="filed.route"
           class="mt-3 break-words font-mono text-xs text-muted"
         >
-          {{ plan.route }}
-        </p>
-      </template>
-    </section>
-
-    <!-- 起降天气 -->
-    <section v-if="plan" class="grid gap-3 @md:grid-cols-2">
-      <!-- key 带上角色：本场起落（起降同一个机场）时两张卡的 ICAO 相同，只用
-           ICAO 做 key 会重复，Vue 会把两张卡当成同一个节点复用。 -->
-      <div
-        v-for="(icao, role) in { dep: plan.departure, arr: plan.arrival }"
-        :key="`${role}-${icao}`"
-        class="card p-4"
-      >
-        <h3 class="font-mono text-sm font-semibold text-ink">{{ icao }}</h3>
-        <p
-          v-if="metars[icao]"
-          class="mt-2 break-words font-mono text-xs leading-relaxed text-muted"
-        >
-          {{ metars[icao] }}
-        </p>
-        <p v-else class="mt-2 text-xs text-faint">
-          {{ t("dashboard.weather.none") }}
+          {{ filed.route }}
         </p>
       </div>
-    </section>
+    </PanelSection>
 
-    <!-- 在线管制。频率是这一段存在的理由，见 loadControllers 上面的注释。 -->
-    <section class="card p-5">
-      <div class="mb-3 flex items-baseline justify-between">
-        <h2 class="text-sm font-semibold text-ink">
-          {{ t("dashboard.atc.title") }}
-        </h2>
-        <span v-if="!atcLoading && !atcFailed" class="text-xs text-muted">{{
+    <PanelSection v-if="weather.length" :title="t('dashboard.weather.title')">
+      <div class="grid gap-3 @md:grid-cols-2">
+        <div
+          v-for="card in weather"
+          :key="`${card.role}-${card.icao}`"
+          class="card p-4"
+        >
+          <h3 class="font-mono text-sm font-semibold text-ink">
+            {{ card.icao }}
+          </h3>
+          <p
+            v-if="metarText(card.icao) !== null"
+            class="mt-2 break-words font-mono text-xs leading-relaxed text-muted"
+          >
+            {{ metarText(card.icao) }}
+          </p>
+          <StateCard
+            v-else-if="metars[card.icao]?.kind === 'error'"
+            class="mt-2"
+            kind="error"
+            :title="t('dashboard.weather.failed', { icao: card.icao })"
+            :retry-label="t('common.retry')"
+            compact
+            @retry="loadMetar(card.icao)"
+          />
+          <p
+            v-else-if="metars[card.icao]?.kind === 'empty'"
+            class="mt-2 text-xs text-faint"
+          >
+            {{ t("dashboard.weather.none") }}
+          </p>
+          <p v-else class="skeleton mt-2 h-4 w-3/4"></p>
+        </div>
+      </div>
+    </PanelSection>
+
+    <!-- 在线管制。频率是这一段存在的理由：「谁在线、我该呼叫哪个频率」。 -->
+    <PanelSection :title="t('dashboard.atc.title')">
+      <template v-if="!atcLoading && !atcFailed" #actions>
+        <span class="text-xs text-muted">{{
           t("dashboard.atc.count", { count: String(controllerCount) })
         }}</span>
-      </div>
+      </template>
 
-      <p v-if="atcLoading" class="text-sm text-muted">
-        {{ t("dashboard.atc.loading") }}
-      </p>
-      <!-- 失败排在「没有」前面，理由同上面的计划那段。 -->
-      <p v-else-if="atcFailed" class="text-sm text-danger">
-        {{ t("dashboard.atc.failed") }}
-      </p>
-      <p v-else-if="!groups.length" class="text-sm text-muted">
-        {{ t("dashboard.atc.none") }}
-      </p>
+      <StateCard
+        v-if="atcLoading"
+        kind="loading"
+        :title="t('dashboard.atc.loading')"
+        compact
+      />
+      <StateCard
+        v-else-if="atcFailed"
+        kind="error"
+        :title="t('dashboard.atc.failed')"
+        :retry-label="t('common.retry')"
+        compact
+        @retry="loadControllers"
+      />
+      <StateCard
+        v-else-if="!groups.length"
+        kind="empty"
+        :title="t('dashboard.atc.none')"
+        compact
+      />
       <!--
         一堆一个小节：场面席位归到机场四字码下面，进近和区域各自成堆。
         堆内的顺序是"该按这个次序联系"，不是字母序 —— 见 loadControllers 上面。
@@ -341,43 +420,42 @@ onMounted(() => {
           </ul>
         </div>
       </div>
-    </section>
+    </PanelSection>
 
     <!--
       ATIS 通播。**和上面那段分开**，因为它不是能呼叫的席位 —— 混进去会让人对着
       一个没人的频率喊。但正文本身是放行前和进场前要听的东西，对飞行包来说是最有
       用的实时文本之一，所以是分开摆而不是丢掉。见 datafeed.ts 的 onlineAtis。
     -->
-    <section v-if="atis.length" class="card p-5">
-      <h2 class="mb-3 text-sm font-semibold text-ink">
-        {{ t("dashboard.atis.title") }}
-      </h2>
-      <ul class="space-y-3">
-        <li v-for="a in atis" :key="a.callsign">
-          <div class="flex items-baseline justify-between gap-3">
-            <span class="flex min-w-0 items-baseline gap-2">
-              <span class="truncate font-mono text-sm text-ink">{{
-                a.callsign
+    <PanelSection v-if="atis.length" :title="t('dashboard.atis.title')">
+      <div class="card p-4">
+        <ul class="space-y-3">
+          <li v-for="a in atis" :key="a.callsign">
+            <div class="flex items-baseline justify-between gap-3">
+              <span class="flex min-w-0 items-baseline gap-2">
+                <span class="truncate font-mono text-sm text-ink">{{
+                  a.callsign
+                }}</span>
+                <!-- 通播代号认不出来就不显示，不猜：错一个字母就是让人按上一份天气做决定。 -->
+                <span
+                  v-if="atisLetter(a)"
+                  class="rounded bg-overlay px-1.5 font-mono text-xs font-semibold text-ink"
+                  >{{ atisLetter(a) }}</span
+                >
+              </span>
+              <span class="shrink-0 font-mono text-sm tabular-nums text-ink">{{
+                a.frequency
               }}</span>
-              <!-- 通播代号认不出来就不显示，不猜：错一个字母就是让人按上一份天气做决定。 -->
-              <span
-                v-if="atisLetter(a)"
-                class="rounded bg-overlay px-1.5 font-mono text-xs font-semibold text-ink"
-                >{{ atisLetter(a) }}</span
-              >
-            </span>
-            <span class="shrink-0 font-mono text-sm tabular-nums text-ink">{{
-              a.frequency
-            }}</span>
-          </div>
-          <p
-            v-if="atisText(a)"
-            class="mt-1 font-mono text-xs leading-relaxed text-muted"
-          >
-            {{ atisText(a) }}
-          </p>
-        </li>
-      </ul>
-    </section>
+            </div>
+            <p
+              v-if="atisText(a)"
+              class="mt-1 font-mono text-xs leading-relaxed text-muted"
+            >
+              {{ atisText(a) }}
+            </p>
+          </li>
+        </ul>
+      </div>
+    </PanelSection>
   </div>
 </template>

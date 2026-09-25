@@ -6,7 +6,6 @@
     "skipToContent": "跳到主要内容",
     "rail": {
       "label": "主导航",
-      "open": "打开导航",
       "close": "关闭导航",
       "collapse": "收起侧栏",
       "expand": "展开侧栏"
@@ -15,6 +14,16 @@
       "label": "快速跳转",
       "placeholder": "跳转到…",
       "noResults": "没有匹配的页面"
+    },
+    "panel": {
+      "collapse": "收起面板",
+      "expand": "展开面板",
+      "handle": "{state}。拖动或按方向键调整面板高度",
+      "sheet": {
+        "collapsed": "面板已收起",
+        "half": "面板在半屏",
+        "full": "面板已拉满"
+      }
     },
     "account": {
       "menu": "账户菜单",
@@ -61,11 +70,6 @@
         "title": "设置",
         "description": "单位、主题、语言与账户。"
       }
-    },
-    "placeholder": {
-      "title": "这一页还没有内容",
-      "body": "先落地的是框架：外壳、导航、主题与多语言已经就位。页面内容要等接上 can-api 之后再填。",
-      "reasons": {}
     },
     "common": {
       "loading": "载入中…",
@@ -166,9 +170,27 @@
           "departure": "起飞机场",
           "arrival": "落地机场"
         }
+      },
+      "sections": {
+        "flight": "航班",
+        "route": "航路与备注"
+      },
+      "import": {
+        "hint": "从你绑定的 SimBrief 账号取最新的 OFP，填进表单，不会自动提交。"
+      },
+      "preview": {
+        "label": "正在填写：{from} → {to}",
+        "forbidden": "航路预览要航图权限，你暂时没有；不影响提交。",
+        "failed": "没能读取航路预览 —— 这不代表航路有误。",
+        "empty": "这串航路里没有能在图上找到的点。"
       }
     },
     "route": {
+      "tabs": {
+        "label": "航路工具",
+        "generate": "生成",
+        "expand": "展开"
+      },
       "departure": "起飞机场",
       "arrival": "落地机场",
       "route": "航路串",
@@ -211,10 +233,16 @@
         "toFlightPlan": "填入飞行计划",
         "restrictedLegs": "以下航段受限",
         "restrictionTextWithheld": "限制原文需要更高的资料库权限",
-        "withoutRestricted": "未使用受限汇编"
+        "withoutRestricted": "未使用受限汇编",
+        "forbidden": {
+          "title": "没有航行资料权限",
+          "body": "生成航路要读资料库。这是权限，不是故障 —— 向所在管制分区申请开通。"
+        }
       },
       "expand": {
-        "title": "展开航路字符串"
+        "title": "展开航路字符串",
+        "failed": "没能展开这条航路",
+        "unavailableTitle": "导航数据未部署"
       },
       "procedures": {
         "title": "跑道与进离场程序",
@@ -248,6 +276,9 @@
     },
     "dashboard": {
       "greeting": "{name}，欢迎回来。",
+      "summary": {
+        "id": "CAN ID"
+      },
       "plan": {
         "title": "当前飞行计划",
         "none": "还没有提交飞行计划。",
@@ -260,7 +291,9 @@
         "level": "巡航高度"
       },
       "weather": {
-        "none": "暂无报文"
+        "title": "起降天气",
+        "none": "暂无报文",
+        "failed": "没能读取 {icao} 的报文 —— 这不代表没有。"
       },
       "atc": {
         "title": "在线管制",
@@ -300,7 +333,8 @@
         "railHint": "把左侧导航收成一列图标，给正文让出宽度。",
         "hideNaip": "不使用受限汇编",
         "hideNaipHint": "所有航行资料都按 1–2 级取，也就是全站不用 NAIP：航图各图层、跑道、机场地面、进离场程序和航路生成都一样。结果可以给看不到那一份的人。默认开启，关掉才会用到 NAIP。",
-        "themeHint": "主题和语言在侧栏底部切换。"
+        "theme": "主题与语言",
+        "themeHint": "只影响这台设备。"
       }
     },
     "map": {
@@ -326,7 +360,10 @@
         "webgl": "这台设备的浏览器没有可用的 WebGL，地图画不出来。在浏览器设置里打开硬件加速后重试。"
       },
       "denied": "你的账号还没有航行资料库的读取权限，所以航路、导航台、空域这几层都取不到。找管理员开通 aipAccess。",
-      "planOnMap": "已提交的飞行计划 {from} → {to}"
+      "planOnMap": "已提交的飞行计划 {from} → {to}",
+      "layersMenu": "图层",
+      "layerFailed": "「{layer}」没取到，图上这一层是空的。",
+      "locate": "定位到我的飞机"
     },
     "airports": {
       "search": "搜索 ICAO、机场名或飞行情报区",
@@ -341,9 +378,16 @@
         "title": "暂时取不到航行资料",
         "body": "航行资料库没有应答。这是一次故障，不是权限问题，稍后再试。"
       },
-      "mapLabel": "全部机场",
       "prompt": "输入代号、名称或情报区来查找。库里共 {count} 个机场。",
-      "truncated": "只列出 {shown} 条，共命中 {total} 条 —— 多打几个字母缩小范围。"
+      "truncated": "只列出 {shown} 条，共命中 {total} 条 —— 多打几个字母缩小范围。",
+      "empty": "资料库里没有机场数据。",
+      "detail": {
+        "back": "返回列表",
+        "position": "位置",
+        "runways": "跑道",
+        "noRunways": "资料库里这个机场没有跑道数据。",
+        "runwaysFailed": "没能读取跑道 —— 这不代表没有。"
+      }
     }
   }
 }

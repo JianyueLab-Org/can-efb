@@ -1,13 +1,12 @@
 <script setup lang="ts">
 /**
- * 地图画布。**MapLibre GL**，不是 Leaflet —— 这一版是换库重写。
+ * 地图画布，MapLibre GL。
  *
  * ## 为什么换
  *
  * 这块地图要长成一张航路图：航路线、五字码航路点、导航台符号加频率、空域多边形
- * 和它们的上下限标注，全都叠在一起。Leaflet 把每个标注渲染成 DOM 节点，一屏几千
- * 个就卡；更要命的是它**没有标签避让**，密集处标注互相压成一团。MapLibre 在 GPU
- * 上画矢量，标签碰撞是它的内建能力 —— 这是换库的全部理由。
+ * 和它们的上下限标注，全都叠在一起，标注需要碰撞检测。MapLibre 在 GPU
+ * 上画矢量，标签碰撞是它的内建能力。
  *
  * ## 没有瓦片，也没有外部依赖
  *
@@ -22,8 +21,8 @@
  *
  * ## 绝不服务端渲染
  *
- * 和 Leaflet 那一版同一条规矩，理由一样硬：`maplibre-gl` 在模块顶层就摸
- * `window`。`MapSurface` 用 `defineAsyncComponent` + `mounted` 守着它 —— 改成静态
+ * 规矩：`maplibre-gl` 在模块顶层就摸
+ * `window`。`MapStage` 用 `defineAsyncComponent` + `mounted` 守着它 —— 改成静态
  * import，**每一个**页面都会 500（这块地图挂在外壳上，不再只是 `/route`）。
  *
  * ## 样式在 `lib/chartStyle.ts`
@@ -31,35 +30,37 @@
  * 颜色、线宽、字号、缩放门槛、图层顺序全在那一个文件里，这里只把它交给 MapLibre、
  * 灌数据、切主题。符号是 `lib/chartIcons.ts` 画的。
  *
- * ## 契约没变
+ * ## 拆成了几块
  *
- * props 仍然是 `points`（连成线的航路）/ `markers`（只画点）/ `focus`（对镜头），
- * 和 `lib/mapBus.ts` 一一对应。换库是实现的事，通道不该跟着换。
+ * 纯几何在 `lib/routeGeometry.ts`，底图取数在 `map/basemap.ts`，署名在
+ * `map/attribution.ts`，镜头（对焦、框选、内边距）在 `map/camera.ts`。这个文件
+ * 只剩构造地图、灌 source、切主题。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
   Map as MapLibreMap,
-  AttributionControl,
   NavigationControl,
   ScaleControl,
-  LngLatBounds,
   setWorkerUrl,
   type GeoJSONSource,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 // eslint-disable-next-line import/no-unresolved -- Vite 的 worker 后缀，不是真实路径
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
-import type { Feature, FeatureCollection } from "geojson";
-import { arc, type LatLon } from "@/lib/geo";
-import { legKey } from "@/lib/airways";
-import { escapeHtml, formatLatLon } from "@/lib/mapText";
-import {
-  buildStyle,
-  themedProperties,
-  ZOOM,
-  type Theme,
-} from "@/lib/chartStyle";
+import type { FeatureCollection } from "geojson";
+import { formatLatLon } from "@/lib/mapText";
+import { buildStyle, themedProperties, type Theme } from "@/lib/chartStyle";
 import { registerChartIcons } from "@/lib/chartIcons";
+import type { MapFocus } from "@/lib/mapBus";
+import type { MapPadding } from "@/lib/panelLayout";
+import {
+  pointFeatures,
+  routeLines,
+  type RoutePoint,
+} from "@/lib/routeGeometry";
+import { createBasemapLoader } from "@/components/map/basemap";
+import { createAttribution } from "@/components/map/attribution";
+import { createCamera } from "@/components/map/camera";
 
 /**
  * **告诉 MapLibre 它的 worker 在哪，否则整块地图是死的。**
@@ -85,55 +86,6 @@ import { registerChartIcons } from "@/lib/chartIcons";
  */
 setWorkerUrl(workerUrl);
 
-/**
- * 外壳现在是三栏还是上下堆叠。
- *
- * **答案来自 CSS**（`globals.css` 里 `--shell-layout`，在那条媒体查询里翻面），不
- * 是这里再写一份 `matchMedia`。断点是布局的事，布局定义在 CSS；在 JS 里抄一份的下
- * 场是改断点时漏掉一处，而那种不一致不会报错，只会在某个宽度区间里表现得很怪。
- */
-function shellIsColumns(): boolean {
-  return (
-    getComputedStyle(document.documentElement)
-      .getPropertyValue("--shell-layout")
-      .trim() === "columns"
-  );
-}
-
-/**
- * 窗口缩放时重新问一次布局，把滚轮缩放对上。
- *
- * 构造时只判一次是不够的：地图 `transition:persist` 跨页面常驻，平板横竖屏一转、
- * 窗口一拉就可能跨过断点，而停在旧的设定上就是「堆叠时滚轮把页面卡住」或「三栏
- * 时滚轮不缩放」—— 都不报错。**仍然问 CSS**，不在这里写断点。
- *
- * 挂在 `resize` 上而不是 `matchMedia`：后者要把断点抄进 JS，正是上面那条规矩不许
- * 的；读一次计算样式很便宜，只有答案变了才动 MapLibre。
- */
-function syncScrollZoom() {
-  if (!map) return;
-  const want = shellIsColumns();
-  if (want === map.scrollZoom.isEnabled()) return;
-  if (want) map.scrollZoom.enable();
-  else map.scrollZoom.disable();
-}
-
-interface Point {
-  ident: string;
-  lat: number;
-  lon: number;
-  kind: number | string;
-  via?: string;
-  /**
-   * 这个点属于**当前这条航路**，而不是背景里那批彼此无关的点。
-   *
-   * 不来自事件载荷 —— `render()` 在把 points 和 markers 并进同一个 source 时打
-   * 上去的。分开是因为标注只该跟着航路走：markers 里可能是全国几百个机场，给它
-   * 们都标上名字就是一团糊。
-   */
-  onRoute?: boolean;
-}
-
 /** 视野框，给外面按框取数据用。见 emitViewport。 */
 export interface Viewport {
   south: number;
@@ -146,9 +98,15 @@ export interface Viewport {
 const emit = defineEmits<{ viewport: [Viewport] }>();
 
 const props = defineProps<{
-  points: Point[];
-  markers?: Point[];
-  focus?: Point | null;
+  points: RoutePoint[];
+  markers?: RoutePoint[];
+  /**
+   * 镜头焦点（`lib/mapBus.ts` 的 `MapFocus`）。按**引用**判断变没变：同一个对象
+   * 留着不会再动镜头，新对象才会 —— 所以「定位到我」每次都造一个新的。
+   */
+  focus?: MapFocus | null;
+  /** 面板盖住的那一块，MapStage 由 `panel:layout` 换算。 */
+  padding?: MapPadding | null;
   /**
    * 航路网图层，已经转成线要素（`lib/airways.ts`）。
    *
@@ -254,35 +212,6 @@ const props = defineProps<{
   firsLabel: string;
 }>();
 
-/**
- * 陆地多边形。**从 `src/` 里 `?url` 引进来，不放 `public/`**，这是一处实打实的
- * 加载优化而不是搬家：
- *
- * `public/` 下的文件拿到的是 `cache-control: public, max-age=0`，也就是**每次开
- * 页面都要重新问一遍**。走 `?url` 之后 Vite 给它内容哈希的名字并落进 `_astro/`，
- * 而 node 适配器对 `/_astro/` 下的一切发
- * `public, max-age=31536000, immutable`（`@astrojs/node` 的 `serve-static.js`
- * 里那一行）—— 浏览器因此一年之内根本不再请求这两个文件。名字带哈希，所以"缓存
- * 一年"和"换了数据立刻生效"不矛盾：换了内容就是另一个名字。
- *
- * 这个文件 1.1 MB，边界那个 634 KB。
- *
- * **量这件事要用 GET，不能用 `curl -I`。** 那个头是适配器在 `stream` 事件里设
- * 的，HEAD 请求不走那条路径 —— 用 HEAD 量会看到 `max-age=0`，从而得出"改动没生
- * 效"的错误结论。
- *
- * **边缘缓存还没解决**：线上量到的仍是 `cf-cache-status: DYNAMIC`。Cloudflare 按
- * 扩展名决定缓不缓存，`.js`/`.css` 在它的默认清单里而 `.json` 不在，所以这两个文
- * 件每次都还是回源 —— 只是回源之后浏览器会存一年。要让边缘也存，得在 Cloudflare
- * 上给 `/_astro/*` 加一条 Cache Rule，那是控制台里的事，不在这个仓库里。
- */
-import LAND_URL from "@/basemap/land-50m.json?url";
-/* 细一档的陆地和国界，**放大之后才拉**（见 loadDetail）。由
- * `scripts/build-basemap.mjs` 从 Natural Earth 1:10m 生成，裁到本网络覆盖的那一
- * 块并取整到四位小数 —— 全球那份是 15 MB，而缩到最小时那些细节一个像素都看不出。 */
-import LAND_DETAIL_URL from "@/basemap/land-10m.json?url";
-import BORDERS_URL from "@/basemap/borders-10m.json?url";
-
 const container = ref<HTMLDivElement | null>(null);
 const corners = ref({ nw: "", se: "" });
 
@@ -313,7 +242,15 @@ const failureMessage = computed(() =>
 let map: MapLibreMap | null = null;
 let themeObserver: MutationObserver | null = null;
 let resizeObserver: ResizeObserver | null = null;
-let landCache: unknown = null;
+const basemap = createBasemapLoader(() => map);
+const attribution = createAttribution(
+  () => map,
+  () => ({
+    firsLabel: props.firsLabel,
+    extra: props.extraAttribution ?? [],
+  }),
+);
+const camera = createCamera(() => map);
 
 /* **样式就绪的闸是这个标志，不是 `map.isStyleLoaded()`。**
  *
@@ -334,94 +271,6 @@ let styleReady = false;
 
 function theme(): Theme {
   return document.documentElement.classList.contains("dark") ? "dark" : "light";
-}
-
-/**
- * 航路线：相邻两点之间走大圆弧。
- *
- * **已经在航路网上点亮了的那些腿不画。** 那正是「不要另加元素」的做法：沿航路飞的
- * 部分由航段本身高亮表达，这一层只补上**没有航路可点亮**的那些 —— DCT、SID/STAR，
- * 以及航段虽然在计划里、却不在当前这份航路集合里的（图层关着、被高低空过滤掉、端
- * 点解析不出坐标）。
- *
- * `suppressed` 是**真正标到的那些键**，不是「有 via 的那些」。这个区别是要紧的：假
- * 设有 via 就一定被点亮了的话，没点上的腿会从图上消失，而**航路断在中间看不出来**
- * —— 剩下的线本身都对。
- */
-/**
- * 计划的每条腿画成一条线。
- *
- * **`onAirway` 的那几条腿仍然在这份集合里**，只是在航路网接手的缩放级上被压成透明
- * （见 `route` / `route-casing` 的 `line-opacity`）。
- *
- * 从前是直接 `continue` 把它们**整条丢掉**，理由是「航路网会点亮它，别画两条」。
- * 那句话只在航路网出现之后（`ZOOM.airwaysHigh`）成立。缩到全国视野（一条
- * ZBAA→ZGGG 的计划正好要 z4）之后航路网整层不画，而这几条腿已经被丢掉了，于是**谁
- * 都不画**：计划线上出现几个洞，剩下的直飞段和程序段照旧画着，看起来完全正常。
- *
- * `markRouteOnAirways` 的文档里数过三种「点不亮」（图层关着、被高低空过滤掉、端点
- * 没坐标），并说「航路断在中间是看不出来的」。缩放是第四种，当时没数进去 —— 而它
- * 和前三种不同：前三种一旦成立就没有高亮可言，这一种是**同一条计划在不同缩放下
- * 时有时无**。
- *
- * 所以判断从「画不画」改成「谁来画」：交接由缩放决定，两边都在，永远只有一条可见。
- */
-function routeLines(
-  points: Point[],
-  onAirway?: Set<string> | null,
-): FeatureCollection {
-  const features: Feature[] = [];
-  // 进近和 SID/STAR 一样画虚线：它们都是「按图走」的部分，和航路段不是一回事。
-  // 加进来而不是另开一类，是因为图上要表达的区别只有「按图走 vs 沿航路飞」这一
-  // 条 —— 三种程序各给一种线型，读的人得先学会一套图例。
-  const isProcedure = (p: Point) =>
-    p.kind === "sid" || p.kind === "star" || p.kind === "approach";
-
-  for (let i = 1; i < points.length; i++) {
-    const via = points[i].via;
-    const handedOff = Boolean(
-      via && onAirway?.has(legKey(via, points[i - 1].ident, points[i].ident)),
-    );
-    const from: LatLon = [points[i - 1].lat, points[i - 1].lon];
-    const to: LatLon = [points[i].lat, points[i].lon];
-    features.push({
-      type: "Feature",
-      // 一条腿的样式取自**它到达的那个点**：SID 的第一条腿属于 SID。这条规则和
-      // can-radar 一致，改之前先看那边。
-      //
-      // `via` 是走这条腿用的航路代号（不在航路上时是 `DCT`），拿来沿线标注 ——
-      // 航图上就是这么读一条计划的：点、航路、点。
-      properties: {
-        procedure: isProcedure(points[i]) ? 1 : 0,
-        via: points[i].via ?? "",
-        // 这条腿在航路网上被点亮了 —— 高缩放交给那一层画，见上面那段。
-        onAirway: handedOff ? 1 : 0,
-      },
-      geometry: {
-        type: "LineString",
-        coordinates: arc(from, to).map(([lat, lon]) => [lon, lat]),
-      },
-    });
-  }
-  return { type: "FeatureCollection", features };
-}
-
-function pointFeatures(points: Point[]): FeatureCollection {
-  return {
-    type: "FeatureCollection",
-    features: points.map((p) => ({
-      type: "Feature",
-      properties: {
-        ident: p.ident,
-        airport: p.kind === "airport" ? 1 : 0,
-        // 是不是**这条航路上**的点。markers 这个 source 里同时装着航路的点和
-        // 一批彼此无关的点（比如全国机场），只有前者该被标名字 —— 给几百个机场
-        // 都标上名字就是一团糊。
-        onRoute: p.onRoute ? 1 : 0,
-      },
-      geometry: { type: "Point", coordinates: [p.lon, p.lat] },
-    })),
-  };
 }
 
 /**
@@ -449,7 +298,7 @@ function updateCorners() {
 function emitViewport() {
   if (!map) return;
   // 视野一变就看看够不够格拉细节。它自己会挡住重复调用。
-  void loadDetail();
+  void basemap.loadDetail();
   /* 这里**不折**经度：发出去的是 MapLibre 原样的展开值，west ≤ east 恒成立，按框
      取数的那几处（MORA 分块、视野内机场）拿到的是一个连续的区间。折回 ±180 由它们
      自己在库里处理 —— 在这里折，过日界线时 west 会大于 east，区间反而断成两截。 */
@@ -461,53 +310,6 @@ function emitViewport() {
     east: b.getEast(),
     zoom: map.getZoom(),
   });
-}
-
-/**
- * 常驻的那几行署名。
- *
- * VATSpy 是 CC BY-SA 4.0，**署名是许可条款不是装饰**；陆地那份（Natural Earth）
- * 属公有领域，一并列出是礼貌不是义务。
- *
- * 「情报区」那个词按语言来（`firsLabel`），所以这是函数不是常量。它会进 HTML，
- * 同样先转义。
- */
-function baseAttribution(): string {
-  return (
-    `${escapeHtml(props.firsLabel)} ` +
-    '<a href="https://github.com/vatsimnetwork/vatspy-data-project" ' +
-    'target="_blank" rel="noreferrer">VATSpy</a> (CC BY-SA 4.0) · ' +
-    "Natural Earth"
-  );
-}
-
-/** 当前挂着的署名控件。换内容时要先摘下来 —— MapLibre 没有改文案的接口。 */
-let attributionControl: AttributionControl | null = null;
-
-/**
- * 把常驻署名和随数据来的那几行拼起来挂上去。
- *
- * **放右上角，不是默认的右下角**：右下角是 `.map-corner-se` 那个坐标读数和比例
- * 尺，三个都绝对定位贴着同一个角，叠在一起谁也读不清。这不是审美取舍 —— 署名被
- * 盖住就等于没署。
- *
- * 内容变了就摘掉重挂。看着粗暴，但 MapLibre 的 AttributionControl 没有别的改法，
- * 而这件事一屏最多发生一两次（放大到有地面的机场时）。
- */
-function applyAttribution() {
-  if (!map) return;
-  if (attributionControl) {
-    map.removeControl(attributionControl);
-    attributionControl = null;
-  }
-  /* 随数据来的那几行**当纯文本**：`customAttribution` 按 HTML 渲染，而这些串来自
-     can-db 的地面数据，不是我们写的 —— 原样拼进去等于让数据往页面里插标签。 */
-  const extra = (props.extraAttribution ?? []).filter(Boolean).map(escapeHtml);
-  attributionControl = new AttributionControl({
-    compact: true,
-    customAttribution: [baseAttribution(), ...extra].join(" · "),
-  });
-  map.addControl(attributionControl, "top-right");
 }
 
 /**
@@ -533,11 +335,6 @@ function applyTheme() {
     }
   }
 }
-
-/** 上一次真正对过焦的那个点，见 render() 里的说明。 */
-let lastFocus: unknown = null;
-/** 上一次真的框选过的那批点的签名。见 render() 结尾。 */
-let lastFitted = "";
 
 /**
  * 空集合。**一个共享常量，不是每次现造一个。**
@@ -635,109 +432,8 @@ function render() {
   setSource("ownTrack", props.ownTrack);
   setSource("own", props.own);
 
-  /* 视野：focus 优先 —— 「在一堆点里挑一个看」不该把用户刚才的缩放丢掉。
-   *
-   * **只在 focus 真的换了的时候动视野。** render() 现在会被实时数据每 30 秒触发
-   * 一次，而 focus 是会一直留着的：不比一下的话，每半分钟就把镜头拽回上一次对焦
-   * 的那个点 —— 正在平移的人会以为地图坏了。 */
-  if (props.focus) {
-    if (props.focus !== lastFocus) {
-      lastFocus = props.focus;
-      map.easeTo({
-        center: [props.focus.lon, props.focus.lat],
-        zoom: Math.max(map.getZoom(), 7),
-      });
-    }
-    return;
-  }
-  lastFocus = null;
-
-  // **航路网不参与框选**：它是全国的图，把它算进去等于每次都缩到最小。视野
-  // 该跟着你正在看的东西走，而不是跟着背景参考走。
-  const all = [...points, ...markers];
-  if (!all.length) {
-    lastFitted = "";
-    return;
-  }
-
-  /* **只在这批点真的换了的时候框选一次。**
-   *
-   * 和上面 `focus` 那道防护是同一件事，只是当时没有人踩到：`render()` 会被实时
-   * 图层每 30 秒触发一次，而 `points` 从前只在用户主动做了什么之后才有值 —— 于是
-   * 「每次 render 都 fitBounds」看起来没问题。
-   *
-   * 地图开始默认画已提交的飞行计划之后它就不成立了：概览页上那条航路一直在，于是
-   * **每半分钟把镜头拽回航路**，正在平移或放大看机场的人会以为地图坏了。放大看地
-   * 面的时候尤其明显 —— 刚凑近跑道就被拉回去。
-   *
-   * 签名用代号加坐标：同一条航路重新解析一次（对象换了、内容没变）不该重新框选。 */
-  const signature = all.map((p) => `${p.ident}:${p.lat},${p.lon}`).join("|");
-  if (signature === lastFitted) return;
-  lastFitted = signature;
-
-  const bounds = new LngLatBounds();
-  for (const p of all) bounds.extend([p.lon, p.lat]);
-  map.fitBounds(bounds, { padding: 48, maxZoom: 8, duration: 0 });
-}
-
-/**
- * 细节底图（10m 陆地 + 国界）**只在放大到用得上时才拉**，而且只拉一次。
- *
- * 两个文件加起来约 2 MB。开图那个视野（z3，全国）上它们一个像素都体现不出来 ——
- * 在那儿拉等于让每一次首屏都为看不见的东西付两兆。
- *
- * 门槛是 `ZOOM.borders`：国界比陆地细节早一级。**按最早需要的那一层定**，否则会出现「层
- * 该显示了、数据还没到」的一两秒空窗。
- *
- * `detailPending` 挡的是并发：`moveend` 会连着触发，没有它第一次放大就会同时飞出
- * 去好几个一样的请求。失败不写 `detailLoaded`，所以下次移动会再试。
- */
-let detailLoaded = false;
-let detailPending = false;
-
-async function loadDetail() {
-  if (detailLoaded || detailPending || !map) return;
-  if (map.getZoom() < ZOOM.borders) return;
-  detailPending = true;
-  try {
-    const [land, borders] = await Promise.all([
-      fetch(LAND_DETAIL_URL).then((r) => (r.ok ? r.json() : null)),
-      fetch(BORDERS_URL).then((r) => (r.ok ? r.json() : null)),
-    ]);
-    if (!map) return;
-    if (land) {
-      (map.getSource("landDetail") as GeoJSONSource | undefined)?.setData(land);
-    }
-    if (borders) {
-      (map.getSource("borders") as GeoJSONSource | undefined)?.setData(borders);
-    }
-    if (land && borders) detailLoaded = true;
-  } catch (error) {
-    // 和底图同一条：静默降级成没有细节，但日志里留一行。
-    console.error("[efb] 细节底图加载失败:", error);
-  } finally {
-    detailPending = false;
-  }
-}
-
-async function loadLand() {
-  try {
-    if (!landCache) {
-      const response = await fetch(LAND_URL);
-      if (!response.ok) return;
-      landCache = await response.json();
-    }
-    if (!map) return;
-    const source = map.getSource("land") as GeoJSONSource | undefined;
-    source?.setData(landCache as FeatureCollection);
-  } catch (error) {
-    // 界面上仍然静默降级成一片海 —— 为一张装饰性底图弹提示，是把噪音摆在比信息
-    // 更显眼的位置，这条判断没变。
-    //
-    // 但**日志里必须留下一行**。上一版这里是一个空的 catch，于是「底图没画出来」
-    // 成了一个完全没有线索的故障。不弹提示和不留记录是两件事。
-    console.error("[efb] 底图数据加载失败:", error);
-  }
+  if (camera.applyFocus(props.focus ?? null)) return;
+  camera.fitPoints([...points, ...markers]);
 }
 
 onMounted(() => {
@@ -784,18 +480,10 @@ onMounted(() => {
       // 地名背这个体积不值得。
       localIdeographFontFamily:
         'system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif',
-      // 滚轮缩放：三栏排布下开，堆叠排布下关 —— 堆叠时页面是会滚的，滚轮停在地
-      // 图上会把它卡住。
-      //
-      // **问 CSS，不再自己写一份断点。** 以前这里是
-      // `matchMedia("(min-width: 1024px)")`，和 globals.css 里的媒体查询各写一
-      // 份 —— 而断点一改（正是这次，1024 → 1152），两份就分叉了，表现是某个宽度
-      // 区间里滚轮把页面卡住，而那是没人查得到的那种毛病。现在断点只有媒体查询
-      // 里一个定义处，它翻 `--shell-layout`，这里读它。
-      //
-      // 这里只是**初值**：地图跨页面常驻、也跨窗口缩放存活，窗口拉过断点之后要再
-      // 问一次 CSS，见下面的 `syncScrollZoom`。
-      scrollZoom: shellIsColumns(),
+      // 滚轮缩放恒开：地图铺满视口，页面本身不滚，不存在「滚轮停在地图上把页
+      // 面卡住」那回事了。以前这里问 CSS 里三栏外壳的排布变量，那个变量随三栏外壳
+      // 一起删了。
+      scrollZoom: true,
     });
 
     map.addControl(new NavigationControl({ showCompass: false }), "top-left");
@@ -820,7 +508,7 @@ onMounted(() => {
   // **放右上角，不是默认的右下角**：右下角是 `.map-corner-se` 那个坐标读数，两
   // 个都是绝对定位、都贴着同一个角，叠在一起谁也读不清。这不是审美取舍 —— 署名
   // 被盖住就等于没署。
-  applyAttribution();
+  attribution.apply();
 
   /* 比例尺。航图上判断距离靠它，而这张图没有任何别的尺度参照 —— 网格线是整度
    * 的，纬度上一度约 60 海里，经度上随纬度收窄，用它读距离会错。
@@ -843,17 +531,17 @@ onMounted(() => {
     // 构造时的配色是那一刻取的；`load` 之前切过主题的话，那次 applyTheme 被闸挡
     // 掉了，这里补上。
     applyTheme();
+    if (props.padding) camera.setPadding(props.padding);
     render();
     updateCorners();
     emitViewport();
-    void loadLand();
+    void basemap.loadLand();
   });
   map.on("move", updateCorners);
   map.on("moveend", emitViewport);
 
   resizeObserver = new ResizeObserver(() => map?.resize());
   resizeObserver.observe(container.value);
-  window.addEventListener("resize", syncScrollZoom);
 
   themeObserver = new MutationObserver(applyTheme);
   themeObserver.observe(document.documentElement, {
@@ -904,14 +592,23 @@ watch(
 
 /* 署名单独一个 watch，不跟着 render 走：它换的是控件不是图层数据，而 render 每
    次视野变化都会跑好几趟 —— 挂在那上面等于每拖一次地图就摘挂一次控件。 */
-watch(() => [props.extraAttribution, props.firsLabel], applyAttribution, {
+watch(() => [props.extraAttribution, props.firsLabel], attribution.apply, {
   deep: true,
 });
+
+/* 面板开合、抽屉拖动、换页换宽度都会改内边距。深比：MapStage 每次给的是新对象，
+   而数值没变时不该再 easeTo 一次（camera 里还有一道闸）。 */
+watch(
+  () => props.padding,
+  (padding) => {
+    if (padding) camera.setPadding(padding);
+  },
+  { deep: true },
+);
 
 onBeforeUnmount(() => {
   themeObserver?.disconnect();
   resizeObserver?.disconnect();
-  window.removeEventListener("resize", syncScrollZoom);
   styleReady = false;
   map?.remove();
   map = null;

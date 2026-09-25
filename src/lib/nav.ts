@@ -57,8 +57,8 @@ const SECTIONS: NavSectionSpec[] = [
   {
     /* 「简报」这一节现在只剩机场。
      *
-     * 航图（`/charts`）从来只是一个 `Placeholder` —— 一个点下去只有占位的入口会
-     * 被当成坏掉的页面，而不是还没做的页面，所以撤掉而不是留着占位。
+     * 航图（`/charts`）从来只是一个只有占位说明的页面 —— 一个点下去只有占位的入口
+     * 会被当成坏掉的页面，而不是还没做的页面，所以撤掉而不是留着占位。
      *
      * 气象（`/weather`）那一页是按站查 METAR 的浏览器。起降两地的 METAR 仍然
      * 在，长在 Dashboard 的飞行计划简报里（`v-if="plan"`）—— 那一块回答的是
@@ -121,4 +121,21 @@ export function buildCrossLinks(t: Translator): NavSection {
       external: item.external,
     })),
   };
+}
+
+/**
+ * 这一项是不是当前页。侧栏和手机标签栏共用。
+ *
+ * 根路由必须精确匹配，否则「概览」在每一个子路由上都亮着；其余按路径段匹配，
+ * `/route` 不该在 `/routes` 上亮。
+ */
+export function isCurrentPath(href: string, pathname: string): boolean {
+  if (!href || href === "#" || href.startsWith("http")) return false;
+  if (href === "/") return pathname === "/";
+  if (pathname === href) return true;
+  if (pathname.startsWith(href)) {
+    const nextChar = pathname[href.length];
+    return !nextChar || nextChar === "/";
+  }
+  return false;
 }

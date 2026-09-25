@@ -6,7 +6,6 @@
     "skipToContent": "跳到主要內容",
     "rail": {
       "label": "主導覽",
-      "open": "開啟導覽",
       "close": "關閉導覽",
       "collapse": "收合側欄",
       "expand": "展開側欄"
@@ -15,6 +14,16 @@
       "label": "快速跳轉",
       "placeholder": "跳轉到…",
       "noResults": "沒有符合的頁面"
+    },
+    "panel": {
+      "collapse": "收起面板",
+      "expand": "展開面板",
+      "handle": "{state}。拖動或按方向鍵調整面板高度",
+      "sheet": {
+        "collapsed": "面板已收起",
+        "half": "面板在半屏",
+        "full": "面板已拉滿"
+      }
     },
     "account": {
       "menu": "帳戶選單",
@@ -61,11 +70,6 @@
         "title": "設定",
         "description": "單位、主題、語言與帳戶。"
       }
-    },
-    "placeholder": {
-      "title": "這一頁還沒有內容",
-      "body": "先落地的是框架：外殼、導覽、主題與多語系已經就位。頁面內容要等接上 can-api 之後再填。",
-      "reasons": {}
     },
     "common": {
       "loading": "載入中…",
@@ -166,9 +170,27 @@
           "departure": "起飛機場",
           "arrival": "落地機場"
         }
+      },
+      "sections": {
+        "flight": "航班",
+        "route": "航路與備註"
+      },
+      "import": {
+        "hint": "從你綁定的 SimBrief 帳號取最新的 OFP，填進表單，不會自動提交。"
+      },
+      "preview": {
+        "label": "正在填寫：{from} → {to}",
+        "forbidden": "航路預覽需要航圖權限，你暫時沒有；不影響提交。",
+        "failed": "沒能讀取航路預覽 —— 這不代表航路有誤。",
+        "empty": "這串航路裡沒有能在圖上找到的點。"
       }
     },
     "route": {
+      "tabs": {
+        "label": "航路工具",
+        "generate": "生成",
+        "expand": "展開"
+      },
       "departure": "起飛機場",
       "arrival": "落地機場",
       "route": "航路字串",
@@ -211,10 +233,16 @@
         "toFlightPlan": "填入飛行計劃",
         "restrictedLegs": "以下航段受限",
         "restrictionTextWithheld": "限制原文需要更高的資料庫權限",
-        "withoutRestricted": "未使用受限彙編"
+        "withoutRestricted": "未使用受限彙編",
+        "forbidden": {
+          "title": "沒有航行資料權限",
+          "body": "生成航路要讀資料庫。這是權限，不是故障 —— 向所在管制分區申請開通。"
+        }
       },
       "expand": {
-        "title": "展開航路字串"
+        "title": "展開航路字串",
+        "failed": "沒能展開這條航路",
+        "unavailableTitle": "導航資料未部署"
       },
       "procedures": {
         "title": "跑道與進離場程序",
@@ -248,6 +276,9 @@
     },
     "dashboard": {
       "greeting": "{name}，歡迎回來。",
+      "summary": {
+        "id": "CAN ID"
+      },
       "plan": {
         "title": "目前飛行計畫",
         "none": "還沒有送出飛行計畫。",
@@ -260,7 +291,9 @@
         "level": "巡航高度"
       },
       "weather": {
-        "none": "暫無報文"
+        "title": "起降天氣",
+        "none": "暫無報文",
+        "failed": "沒能讀取 {icao} 的報文 —— 這不代表沒有。"
       },
       "atc": {
         "title": "線上管制",
@@ -300,7 +333,8 @@
         "railHint": "把左側導覽收成一列圖示，給正文讓出寬度。",
         "hideNaip": "不使用受限彙編",
         "hideNaipHint": "所有航行資料都按 1–2 級取，也就是全站不用 NAIP：航圖各圖層、跑道、機場地面、進離場程序和航路生成都一樣。結果可以給看不到那一份的人。預設開啟，關掉才會用到 NAIP。",
-        "themeHint": "主題和語言在側欄底部切換。"
+        "theme": "主題與語言",
+        "themeHint": "只影響這台裝置。"
       }
     },
     "map": {
@@ -326,7 +360,10 @@
         "webgl": "這台裝置的瀏覽器沒有可用的 WebGL，地圖畫不出來。在瀏覽器設定裡開啟硬體加速後重試。"
       },
       "denied": "你的帳號還沒有航行資料庫的讀取權限，所以航路、導航台、空域這幾層都取不到。找管理員開通 aipAccess。",
-      "planOnMap": "已提交的飛行計畫 {from} → {to}"
+      "planOnMap": "已提交的飛行計畫 {from} → {to}",
+      "layersMenu": "圖層",
+      "layerFailed": "「{layer}」沒取到，圖上這一層是空的。",
+      "locate": "定位到我的飛機"
     },
     "airports": {
       "search": "搜尋 ICAO、機場名或飛航情報區",
@@ -341,9 +378,16 @@
         "title": "暫時取不到航行資料",
         "body": "航行資料庫沒有回應。這是一次故障，不是權限問題，稍後再試。"
       },
-      "mapLabel": "全部機場",
       "prompt": "輸入代號、名稱或情報區來尋找。庫裡共 {count} 個機場。",
-      "truncated": "只列出 {shown} 條，共命中 {total} 條 —— 多打幾個字母縮小範圍。"
+      "truncated": "只列出 {shown} 條，共命中 {total} 條 —— 多打幾個字母縮小範圍。",
+      "empty": "資料庫裡沒有機場資料。",
+      "detail": {
+        "back": "返回列表",
+        "position": "位置",
+        "runways": "跑道",
+        "noRunways": "資料庫裡這個機場沒有跑道資料。",
+        "runwaysFailed": "沒能讀取跑道 —— 這不代表沒有。"
+      }
     }
   }
 }

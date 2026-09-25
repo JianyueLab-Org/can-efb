@@ -7,7 +7,7 @@
  * - 颜色：`COLORS`，浅色和夜间**各写一份**，不做反色。语义色（航线的品红、禁区的
  *   红、RNAV 代号牌的蓝、情报区的绿）两套同一个色相，只调明度。浅色照 Jeppesen
  *   高低空航路图：白陆地、浅蓝海、低饱和。
- * - 出现时机：`ZOOM`。一个门槛只在这里写一次，取数门槛（`MapSurface.vue`）也读它。
+ * - 出现时机：`ZOOM`。一个门槛只在这里写一次，取数门槛（`useChartLayers.ts`）也读它。
  * - 粗细和字号：`WIDTH` / `TEXT` / `ICON`。形如 `[[6, 0.7], [9, 1.4]]` 的是「缩放 →
  *   值」的锚点，中间线性插值，两头取端点值。
  * - 空域：`AIRSPACE`。
@@ -106,7 +106,8 @@ export const COLORS: Record<Theme, ColorRoles> = {
     shieldRnavText: "#ffffff",
     shieldConv: "#2b3035",
     shieldConvText: "#ffffff",
-    route: "#9c27b0",
+    // 计划航线：航电品红。深浅两套同色相，只调明度，和这张表别的语义色一个规矩。
+    route: "#c8189f",
     routeCasing: "#ffffff",
     marker: "#5b1f6b",
     waypoint: "#3d4850",
@@ -144,7 +145,7 @@ export const COLORS: Record<Theme, ColorRoles> = {
     shieldRnavText: "#f2f6fa",
     shieldConv: "#b9c1c8",
     shieldConvText: "#16191c",
-    route: "#e07cf2",
+    route: "#ff4fd8",
     routeCasing: "#16191c",
     marker: "#f0c9f7",
     waypoint: "#c3cbd1",
@@ -172,7 +173,7 @@ export const COLORS: Record<Theme, ColorRoles> = {
 // ---------------------------------------------------------------- 缩放门槛
 
 /**
- * 各类要素从哪一级缩放开始画。**取数门槛也读这里**（`MapSurface.vue` 的
+ * 各类要素从哪一级缩放开始画。**取数门槛也读这里**（`useChartLayers.ts` 的
  * `loadForZoom`），两边不会分叉。
  *
  * 照 Jeppesen 高低空航路图：比例尺 50 NM 左右（z5–6）就是整张航路网、每个点都有

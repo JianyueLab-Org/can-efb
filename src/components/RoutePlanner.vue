@@ -4,7 +4,7 @@
  *
  * can-api 的 `/api/v1/route` 返回的是坐标点（`ident`/`lat`/`lon`/`kind`/`via`），
  * 它本来是给雷达画线用的。这里要的是**航段表**。
- * 表回答「每段多远、一共多远」；「这条航路长什么样、绕不绕」由外壳右边那块常
+ * 表回答「每段多远、一共多远」；「这条航路长什么样、绕不绕」由面板底下那块常
  * 驻地图回答 —— 两件事仍然都要，只是图不再画在这个组件里了。
  *
  * 距离在前端算而不是找后端要：那边根本没有这个字段，而大圆距离是一个封闭的公
@@ -12,8 +12,7 @@
  * 长度，所以标签写的是「大圆」，不要在别处把它当计划燃油的依据。
  *
  * 解出来的航段会**发布**给外壳里那块常驻地图（`lib/mapBus.ts`），而不是在这里
- * 渲染一个 `<RouteMap>`。Leaflet 那一百多 KB 的加载时机没有变松：仍然要等真的
- * 有点可画，只是守门的地方从这个组件搬到了 `MapSurface.vue`。
+ * 渲染一个 `<RouteMap>`。地图那一百多 KB 的 chunk 由外壳加载，这个组件不碰它。
  *
  * `503 navDataUnavailable` 是常态而不是故障：导航数据是 AIRAC 商业数据，按仓库
  * 的规矩不进公开镜像，某个环境上没挂它完全正常。所以这一支单独给一句人话，而
@@ -25,6 +24,7 @@ import { createTranslator } from "@/lib/i18n";
 import { Icon } from "@jianyuelab-org/can-ui";
 import { distanceNm } from "@/lib/geo";
 import { publishToMap } from "@/lib/mapBus";
+import StateCard from "@/components/ui/StateCard.vue";
 
 const props = defineProps<{ messages: Record<string, unknown> }>();
 const t = createTranslator(props.messages);
@@ -50,9 +50,9 @@ const route = ref("");
 const legs = ref<Leg[]>([]);
 
 /**
- * 航段一变就交给外壳右边那块常驻地图。
+ * 航段一变就交给面板底下那块常驻地图。
  *
- * 离开这一页时**不清空**：地图是常驻的显示面，切到气象或日志时上一条航路仍然
+ * 离开这一页时**不清空**：地图是常驻的显示面，切到机场或设置时上一条航路仍然
  * 摆在那儿 —— 那正是这一版外壳想要的效果，而不是遗留状态。真要清空，应该有一
  * 个明确的入口（比如「新建航路」），而不是靠组件卸载顺手做掉。
  */
@@ -61,7 +61,15 @@ watch(legs, (value) => {
 });
 const total = ref(0);
 const loading = ref(false);
-const error = ref("");
+/**
+ * 上一次操作没出结果的原因。读计划失败和展开失败都能重试，但重试的是不同的事，所
+ * 以记下重试哪一个。「没有计划」是读到了、确实没有 —— 空，不给重试。
+ */
+const problem = ref<
+  | { kind: "error"; title: string; body?: string; retry: "plan" | "resolve" }
+  | { kind: "empty"; title: string }
+  | null
+>(null);
 const unavailable = ref(false);
 const resolved = ref(false);
 
@@ -79,23 +87,27 @@ async function fromPlan() {
   } | null>("/api/v1/pilot/flightplan");
   // 没读到和没有计划分开说：读取失败时说「没有计划」，他会以为自己那份丢了。
   if (!result.ok) {
-    error.value = t("route.planFailed");
+    problem.value = {
+      kind: "error",
+      title: t("route.planFailed"),
+      retry: "plan",
+    };
     return;
   }
   if (!result.data) {
-    error.value = t("route.noPlan");
+    problem.value = { kind: "empty", title: t("route.noPlan") };
     return;
   }
   departure.value = result.data.departure;
   arrival.value = result.data.arrival;
   route.value = result.data.route;
-  error.value = "";
+  problem.value = null;
 }
 
 async function resolve() {
   if (loading.value) return;
   loading.value = true;
-  error.value = "";
+  problem.value = null;
   unavailable.value = false;
   // legs 不在这里清空：上面那个 watch 会把空数组发给地图，一次失败（比如
   // navDataUnavailable）就把图上原本画着的那条航路抹掉，换成什么都没有。
@@ -115,7 +127,12 @@ async function resolve() {
       unavailable.value = true;
       return;
     }
-    error.value = describeFailure(t, result);
+    problem.value = {
+      kind: "error",
+      title: t("route.expand.failed"),
+      body: describeFailure(t, result),
+      retry: "resolve",
+    };
     return;
   }
 
@@ -134,7 +151,7 @@ async function resolve() {
 
 <template>
   <div class="space-y-5">
-    <div class="card space-y-4 p-5">
+    <div class="space-y-4">
       <div class="grid gap-4 @xs:grid-cols-2 @2xl:grid-cols-4">
         <label class="block">
           <span class="mb-1 block text-sm font-medium text-ink">{{
@@ -187,27 +204,35 @@ async function resolve() {
       </div>
     </div>
 
-    <div
+    <StateCard
       v-if="unavailable"
-      class="rounded-card border border-subtle bg-warning-bg px-4 py-3 text-sm text-warning-fg"
-    >
-      {{ t("route.navdataUnavailable") }}
-    </div>
-
-    <div
-      v-else-if="error"
-      class="rounded-card border border-subtle bg-danger-bg px-4 py-3 text-sm text-danger-fg"
-    >
-      {{ error }}
-    </div>
+      kind="empty"
+      :title="t('route.expand.unavailableTitle')"
+      :body="t('route.navdataUnavailable')"
+    />
+    <StateCard
+      v-else-if="problem?.kind === 'error'"
+      kind="error"
+      :title="problem.title"
+      :body="problem.body"
+      :retry-label="t('common.retry')"
+      compact
+      @retry="problem.retry === 'plan' ? fromPlan() : resolve()"
+    />
+    <StateCard
+      v-else-if="problem?.kind === 'empty'"
+      kind="empty"
+      :title="problem.title"
+      compact
+    />
 
     <template v-else-if="resolved">
-      <p
+      <StateCard
         v-if="!legs.length"
-        class="surface-grid rounded-card border border-dashed border-subtle px-6 py-12 text-center text-sm text-muted"
-      >
-        {{ t("route.noPoints") }}
-      </p>
+        kind="empty"
+        :title="t('route.noPoints')"
+        compact
+      />
 
       <template v-else>
         <div class="card flex items-baseline justify-between gap-3 p-4">

@@ -1,0 +1,151 @@
+/**
+ * 浮动面板和地图之间的几何换算。
+ *
+ * 地图铺满整个视口，面板浮在它上面。于是「地图的可见区」不再是地图容器本身，而是
+ * 容器减去面板盖住的那一块 —— MapLibre 的 `setPadding` 正是为这件事存在的：给了
+ * 内边距之后，`fitBounds`、`easeTo` 的中心落在露出来的那一块中间，而不是落在被面
+ * 板压住的视口中心。
+ *
+ * 这里只做换算、不碰 DOM，所以能测。量面板的是 `lib/panelController.ts`，用结果
+ * 的是 `components/map/MapStage.vue`。
+ */
+
+/** 外壳的三种排布。断点只在 `globals.css` 里定义，JS 读 `--shell-mode`。 */
+export type ShellMode = "desktop" | "tablet" | "phone";
+
+/** 页面声明的面板宽度。平板上 `wide` 由 CSS 退回 `standard`，这里不管。 */
+export type PanelWidth = "standard" | "wide";
+
+export type RailState = "collapsed" | "expanded";
+
+/** 面板在视口里的位置，就是 `getBoundingClientRect()` 的那四个数。 */
+export interface PanelRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+export interface PanelLayout {
+  mode: ShellMode;
+  /** 桌面 / 平板上收成一条，或手机上抽屉收到只剩把手。 */
+  collapsed: boolean;
+  rect: PanelRect;
+}
+
+export interface MapPadding {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+/** 面板离视口边缘的留白，和 `globals.css` 的 `--shell-inset` 同值。 */
+export const PANEL_GAP_PX = 12;
+
+/**
+ * 地图可见区至少留这么宽（手机上是这么高）。
+ *
+ * 窗口窄到面板几乎占满时照算，内边距会大过视口，MapLibre 对负的可见区的反应是镜
+ * 头乱跳 —— 看起来像地图坏了，而不是像窗口太窄。
+ */
+export const MIN_VISIBLE_PX = 160;
+
+export function parseShellMode(raw: string): ShellMode {
+  const value = raw.trim();
+  return value === "desktop" || value === "tablet" ? value : "phone";
+}
+
+/**
+ * 轨此刻到底是收着还是展开。
+ *
+ * `data-rail="auto"` 是「成员没选过」：RailScript 找不到存下来的值时写它，由 CSS
+ * 按宽度给出 `--rail-auto`。成员一旦点过折叠钮，写进去的就是确定值，auto 不再参与。
+ */
+export function effectiveRail(
+  dataRail: string | undefined,
+  autoValue: string,
+): RailState {
+  if (dataRail === "collapsed" || dataRail === "expanded") return dataRail;
+  return autoValue.trim() === "collapsed" ? "collapsed" : "expanded";
+}
+
+function cssTimeMs(raw: string | undefined): number {
+  const match = /^(-?[\d.]+)(ms|s)$/.exec((raw ?? "").trim());
+  if (!match) return 0;
+  const value = Number(match[1]);
+  return match[2] === "ms" ? value : value * 1000;
+}
+
+/**
+ * `transition-property` / `transition-duration` 是按声明顺序对应的两串逗号分隔
+ * 值（`getComputedStyle` 原样返回 CSS 简写 `transition` 展开后的结果）。取其中
+ * `property` 那一路的时长；`transition: none` 会把 property 折成单独一个 `all`，
+ * 这时按 `all` 的时长算，因为它确实盖住了每一个属性。查不到就当 0。
+ *
+ * **duration 列比 property 列短时按 CSS 规则循环取**（`durations[index %
+ * durations.length]`），不是塌到最后一个：`transition: a 200ms, b, left` 这种
+ * 写法里 `transition-duration` 只有一个值，CSS 把它接到每一路属性上，第三路
+ * （`left`）用的又是第一个值，不是「最后一个」这个不相干的概念。
+ */
+function transitionDurationFor(
+  property: string,
+  transitionProperty: string,
+  transitionDuration: string,
+): number {
+  const props = transitionProperty.split(",").map((s) => s.trim());
+  const durations = transitionDuration.split(",").map((s) => s.trim());
+  const idx = props.indexOf(property);
+  const index = idx !== -1 ? idx : props.indexOf("all");
+  if (index === -1 || durations.length === 0) return 0;
+  return cssTimeMs(durations[index % durations.length]);
+}
+
+/**
+ * 轨折叠 / 展开会不会让面板的 `left` 跑一次过渡。
+ *
+ * 会的话，报告交给 transitionend / transitioncancel（面板过渡到一半时的矩形是
+ * 中间态，这时候报给地图，`camera.setPadding` 会对着这个中间值 easeTo 一次，
+ * 过渡结束时真正的终值又报一次，镜头跳两下）。不会的话（减少动态效果，或者当
+ * 前排布本身没有 `left` 过渡，比如手机的底部抽屉）不会有任何过渡事件到来，调用
+ * 方必须自己直接报一次。
+ */
+export function railChangeAnnouncesImmediately(
+  reducedMotion: boolean,
+  transitionProperty: string,
+  transitionDuration: string,
+): boolean {
+  if (reducedMotion) return true;
+  return (
+    transitionDurationFor("left", transitionProperty, transitionDuration) <= 0
+  );
+}
+
+/**
+ * 面板盖住了哪一块，换成地图的内边距。
+ *
+ * 桌面和平板上面板在左边，让出 `rect.right`；手机上它是底部的抽屉，让出视口底边
+ * 到 `rect.top` 那一截。其余三边只留一道留白，让控件不贴边。
+ *
+ * 用的是**面板此刻的矩形**而不是它声明的宽度：折叠、抽屉拖到一半、平板上 wide 退
+ * 回 standard，都已经反映在矩形里了，这里不必再知道一遍规则。
+ */
+export function mapPaddingFor(
+  layout: PanelLayout,
+  viewport: { width: number; height: number },
+): MapPadding {
+  const gap = PANEL_GAP_PX;
+  if (layout.mode === "phone") {
+    const covered = Math.max(0, viewport.height - layout.rect.top);
+    const bottom = Math.min(
+      covered + gap,
+      Math.max(0, viewport.height - MIN_VISIBLE_PX),
+    );
+    return { top: gap, right: gap, bottom, left: gap };
+  }
+  const left = Math.min(
+    Math.max(0, layout.rect.right) + gap,
+    Math.max(0, viewport.width - gap - MIN_VISIBLE_PX),
+  );
+  return { top: gap, right: gap, bottom: gap, left };
+}

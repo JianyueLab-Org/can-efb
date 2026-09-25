@@ -1,0 +1,112 @@
+---
+/**
+ * 浮在地图上的那张面板：当前页面的标题和内容。
+ *
+ * 宽度由页面声明（`width`）：`standard` 约 26rem，放列表和短表单；`wide` 约
+ * 44rem，放两列表单（飞行计划、设置）。平板上 wide 退回 standard，手机上它是底部
+ * 抽屉 —— 这些都写在 globals.css 里，这里只把声明挂到 `data-width` 上。
+ *
+ * **是 Astro 组件，不是 Vue 岛屿。** 里面装的是各页自己的岛屿，把整页塞进一个岛
+ * 屿就是每一页都为外壳付一次水合代价（轨当初避开的正是这个）。折叠、拖动、把位置
+ * 告诉地图，都在 `lib/panelController.ts` 那段普通脚本里。
+ *
+ * `transition:name`：换页时新旧两张面板被当成同一个东西，视图过渡把宽度从旧的动到
+ * 新的，而不是一张淡出、一张淡入。
+ *
+ * `data-sheet` 在服务端就按页面摆好那一档（表单页拉满，地图页一半），脚本接手之前
+ * 不跳。
+ */
+import PageHeader from "@/components/PageHeader.astro";
+import BeianLine from "@jianyuelab-org/can-ui/components/BeianLine.vue";
+import Icon from "@jianyuelab-org/can-ui/components/Icon.vue";
+import { handleState, initialSnap, type SheetSnap } from "@/lib/sheet";
+import type { PanelWidth } from "@/lib/panelLayout";
+
+interface Props {
+  width: PanelWidth;
+  title: string;
+  description?: string;
+  /** 已翻译。 */
+  labels: {
+    collapse: string;
+    expand: string;
+    /** 带 `{state}`，填的是 `sheet` 里此刻那一档的名字。 */
+    handle: string;
+    sheet: Record<SheetSnap, string>;
+  };
+}
+
+const { width, title, description, labels } = Astro.props;
+/* 把手的名字和 aria-expanded 按服务端摆好的那一档先写上；换档后由
+   panelController 按同一个 handleState 改写，模板和三档名字挂在 data-* 上给它读。 */
+const handle = handleState(initialSnap(width), {
+  handle: labels.handle,
+  states: labels.sheet,
+});
+---
+
+<main
+  id="main-content"
+  tabindex="-1"
+  class="floating-panel glass"
+  data-floating-panel
+  data-width={width}
+  data-collapsed="false"
+  data-sheet={initialSnap(width)}
+  aria-label={title}
+  transition:name="efb-panel"
+>
+  <button
+    type="button"
+    class="panel-handle"
+    data-panel-handle
+    aria-controls="panel-body"
+    aria-expanded={handle.expanded ? "true" : "false"}
+    aria-label={handle.label}
+    data-label-handle={labels.handle}
+    data-label-collapsed={labels.sheet.collapsed}
+    data-label-half={labels.sheet.half}
+    data-label-full={labels.sheet.full}
+  >
+    <span aria-hidden="true"></span>
+  </button>
+
+  <div class="panel-bar">
+    <button
+      type="button"
+      class="panel-toggle"
+      data-panel-toggle
+      aria-expanded="true"
+      aria-controls="panel-body"
+      aria-label={labels.collapse}
+      title={labels.collapse}
+      data-label-collapse={labels.collapse}
+      data-label-expand={labels.expand}
+    >
+      <Icon name="chevronDoubleLeft" class="panel-toggle-icon size-4" />
+    </button>
+  </div>
+
+  <div id="panel-body" class="panel-body" data-panel-body>
+    <PageHeader title={title} description={description} />
+    <slot />
+    {
+      /*
+        备案号在面板底部：面板是每一页内容所在、会滚到底的那一块，而地图跨页面存
+        活 —— 挂在地图上等于挂在一个不属于任何一页的东西上。不加 client: 指令，
+        它是一个静态链接。
+      */
+    }
+    <div class="pt-6">
+      <BeianLine />
+    </div>
+  </div>
+</main>
+
+<script>
+  import { mountPanel, unmountPanel } from "@/lib/panelController";
+
+  // ClientRouter 下这段模块只执行一次；首屏和每次换页都会发 astro:page-load。
+  document.addEventListener("astro:page-load", mountPanel);
+  document.addEventListener("astro:before-swap", unmountPanel);
+</script>

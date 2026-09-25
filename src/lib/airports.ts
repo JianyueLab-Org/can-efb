@@ -181,3 +181,21 @@ export function airportsInView(
     })
     .sort((a, b) => dist(a) - dist(b));
 }
+
+/**
+ * 机场页列表的一行。和 `server/canDb.ts` 的 `AirportSummary` 逐字对齐 —— 两边读
+ * 的是同一个接口。不直接 import 那个类型：那个文件服务端专用，岛屿一侧只留这一份。
+ * 形状分叉了就会有一边悄悄读到 undefined，改一处就要改另一处。
+ */
+export interface AirportRow {
+  icao: string;
+  fir: string | null;
+  name: string | null;
+  lat: number;
+  lon: number;
+  elev: number | null;
+  variation: number | null;
+  airac: string;
+  /** 机位数，不是机位本身 —— 详情接口才给数组。 */
+  stands: number;
+}

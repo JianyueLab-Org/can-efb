@@ -31,27 +31,64 @@
   --rail-width: 17rem;
   --rail-width-collapsed: 4.75rem;
   --rail-current: var(--rail-width);
+  /* `data-rail="auto"` 时轨该是什么样。只在平板那一段翻成 collapsed。 */
+  --rail-auto: expanded;
 }
 :root[data-rail="collapsed"] {
   --rail-current: var(--rail-width-collapsed);
 }
 
+/* 轨。手机上不显示（换成底部标签栏），768 起贴在左边。材质来自 `.glass`，这里
+   只收掉三边的边框和阴影：它贴着视口边，不是一张浮起来的卡片。 */
 .app-rail {
-  width: var(--rail-current);
-  transition: width 200ms ease;
+  display: none;
+}
+@media (min-width: 768px) {
+  .app-rail {
+    position: fixed;
+    inset-block: 0;
+    left: 0;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    width: var(--rail-current);
+    transition: width 200ms ease;
+  }
+  .app-rail.glass {
+    border-width: 0 1px 0 0;
+    box-shadow: none;
+  }
 }
 
-/* `.app-main-offset` 删掉了：它是**第一版外壳**（轨 + 一列居中正文）的东西，而那
-   一版已经被三栏外壳换掉，`.app-shell` 自己处理轨的让位。全仓没有任何 .vue /
-   .astro 还在用这个类 —— 留着只会让人以为正文列还有第二条排版通道。 */
+/* 平板上成员没选过就收起。这一段是范围查询，因为「auto 在桌面上展开」不需要写：
+   那就是 `--rail-current` 的默认值。 */
+@media (min-width: 768px) and (max-width: 1151.98px) {
+  :root {
+    --rail-auto: collapsed;
+  }
+  :root[data-rail="auto"] {
+    --rail-current: var(--rail-width-collapsed);
+  }
+  :root[data-rail="auto"] .app-rail .rail-item {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  :root[data-rail="auto"] .app-rail .rail-label {
+    display: none;
+  }
+}
+
+/* `.app-main-offset` 删掉了：它是**第一版外壳**（轨 + 一列居中正文）的东西。现在
+   地图铺满视口，面板（`.floating-panel`）自己按 `--rail-current` 让开轨。全仓没有
+   任何 .vue / .astro 还在用这个类 —— 留着只会让人以为正文列还有第二条排版通道。 */
 
 /* 折叠态下导航项只剩图标：居中成一格方块、文字让位。写成类而不是一串条件式
    Tailwind，是因为同一组规则要作用在四处（主导航、跨站链接、品牌、轨脚的账户
    与搜索），而它们的 DOM 形状并不相同。
 
-   选择器里的 `.app-rail` 是必须的，不是修饰。手机抽屉渲染的是同一批组件、带着
-   同一批 .rail-* 类，而 data-rail 挂在 <html> 上 —— 少了这一层限定，桌面把轨
-   收起来之后，手机抽屉里的导航也会跟着只剩图标，而抽屉是全宽的。 */
+   选择器里保留 `.app-rail` 限定：data-rail 挂在 <html> 上，这一层让规则只作用于
+   轨本身，别处出现的 `.rail-*` 不受折叠态影响。 */
 :root[data-rail="collapsed"] .app-rail .rail-item {
   justify-content: center;
   padding-left: 0;
@@ -63,19 +100,10 @@
 
 /* 航路地图（RouteMap.vue）。
 
-   can-radar 的 globals.css 里有约 250 行 Leaflet 样式，这里**没有照抄** —— 那
-   一整块伺候的是雷达的弹窗、扇区边界和席位配色，这个站一个都没有。留下的只有
-   两件事：让容器在深浅两套主题下都不露出地图库自带的灰底，以及把控件调到和站
-   内其余控件一个观感。归属声明没有了 —— 底图不再用任何瓦片源，见 RouteMap.vue。
+   只管两件事：让容器在深浅两套主题下都不露出地图库自带的灰底，以及把控件调到和
+   站内其余控件一个观感。归属声明在署名控件里，见 map/attribution.ts。
 
-   **高度是撑满父容器，不是写死的。** 这里以前写着 22rem / 28rem，理由是「地图
-   在航段表上面，太高会把表顶到折叠线以下」—— 那是旧布局的理由，在那一版里地图
-   是航路页中的一张插图。现在它是外壳右边那一整列显示面（`.app-map`，窄屏
-   40dvh、宽屏 100dvh），继续写死高度的结果是一块又宽又矮的地图吊在一列空白
-   里，而且低缩放级别下铺开的范围大得像一张世界地图。
-
-   撑满要求父容器有确定高度 —— `.app-map` 两个断点下都给了，所以这里 100% 是有
-   效的而不是塌成 0。 */
+   **高度撑满父容器**：父容器是铺满视口的 `.map-stage`。 */
 .route-map {
   height: 100%;
   width: 100%;
@@ -107,11 +135,38 @@
   width: 100%;
 }
 
+/* MapLibre 的四个控件角跟着可见区走。
+
+   地图铺满视口之后，左上的缩放钮会落在面板底下、右下的比例尺会落在手机抽屉底
+   下 —— 控件还在、按不到，看起来像没有。`--map-pad-*` 由 MapStage 按面板位置写。 */
+.map-stage .maplibregl-ctrl-top-left {
+  top: var(--map-pad-top, 0px);
+  left: var(--map-pad-left, 0px);
+}
+.map-stage .maplibregl-ctrl-top-right {
+  top: var(--map-pad-top, 0px);
+  right: var(--map-pad-right, 0px);
+}
+.map-stage .maplibregl-ctrl-bottom-left {
+  bottom: var(--map-pad-bottom, 0px);
+  left: var(--map-pad-left, 0px);
+}
+.map-stage .maplibregl-ctrl-bottom-right {
+  bottom: var(--map-pad-bottom, 0px);
+  right: var(--map-pad-right, 0px);
+}
+.map-stage .maplibregl-ctrl-top-left,
+.map-stage .maplibregl-ctrl-bottom-left,
+.map-stage .maplibregl-ctrl-bottom-right {
+  transition:
+    left 240ms ease,
+    bottom 240ms ease;
+}
+
 /* 角落坐标标注。
 
-   等宽字体不是装饰：这两个数是拿来读的，比例字体下小数点不对齐，扫一眼读不出
-   来。`pointer-events: none` 同样是必须的 —— 它压在地图上，能挡住拖动就成了一
-   个看不出原因的死角。 */
+   等宽字体不是装饰：这两个数是拿来读的，比例字体下小数点不对齐。`pointer-events:
+   none` 同样是必须的 —— 它压在地图上，能挡住拖动就成了一个看不出原因的死角。 */
 .map-corner {
   position: absolute;
   z-index: 2;
@@ -124,149 +179,234 @@
   border-radius: 0.25rem;
 }
 .map-corner-nw {
-  top: 0.5rem;
+  top: calc(var(--map-pad-top, 0px) + 0.5rem);
   /* 左上角让给缩放控件。 */
-  left: 3rem;
+  left: calc(var(--map-pad-left, 0px) + 3rem);
 }
 .map-corner-se {
-  right: 0.5rem;
-  /* 让开右下角的比例尺（MapLibre 自己的控件容器，约 1.5rem 高加 10px 内边距）。
-     贴到 0.5rem 就会压在刻度上。 */
-  bottom: 2.5rem;
+  right: calc(var(--map-pad-right, 0px) + 0.5rem);
+  /* 让开右下角的比例尺（约 1.5rem 高加 10px 内边距）。 */
+  bottom: calc(var(--map-pad-bottom, 0px) + 2.5rem);
 }
 
 /* ---------------------------------------------------------------------------
-   三栏外壳：轨 | 面板 | 地图。
+   外壳：地图铺满视口，轨和面板浮在上面。
 
-   为什么写在 CSS 而不是 Tailwind 类里：面板和地图要一起响应轨的折叠，而轨是个
-   Vue 岛屿、正文是 Astro 渲染的静态 HTML —— 和 `--rail-current` 那一段是同一个
-   理由，通道在 CSS 里，岛屿只改 <html> 上的 data-rail。
+   上一版是「轨 | 面板 | 地图」三栏：地图只拿到剩下那一截，1024–1152 之间还得改走
+   上下堆叠。现在地图永远是整个视口，面板是压在它上面的一张玻璃卡片，地图用
+   `setPadding` 把内容对到露出来的那一块中间（lib/panelLayout.ts）。
+
+   **断点只在这个文件里定义**：768 和 1152 两个数不出现在任何 .vue / .ts 里。JS
+   要知道当前排布就读 `--shell-mode`，这里在媒体查询里翻面。
+
+       视口        轨                           面板
+       ≥1152       显示，可折叠                 standard 或 wide
+       768–1151    默认收起（data-rail=auto）   wide 退回 standard
+       <768        换成底部标签栏               底部抽屉，三档
    --------------------------------------------------------------------------- */
 
 :root {
-  /* 面板宽度。原来是**固定 30rem**，而那让「以地图为主」这条主张在窄一点的屏上
-     根本不成立 —— 轨 17rem 加面板 30rem 一共 47rem 是定值，屏越窄地图被挤得越
-     狠。算出来是这样：
-
-         屏宽    地图     占比
-         1024    272px    27%   ← 比轨本身还窄
-         1280    528px    41%
-         1440    688px    48%
-         1680    928px    55%   ← 到这里地图才终于过半
-
-     也就是说在这个站自己文档里举的那块 1280×800 的屏上，地图拿到的不足四成。
-
-     改成随屏宽伸缩，并且两头都夹住：
-
-       - 下限 20rem —— 面板装的是表单，再窄两列的输入就排不下了；
-       - 23vw    —— 中间段跟着屏走，屏越大面板越宽一点，但增速慢于地图；
-       - 上限 26rem —— 再宽只会让每行文字更难读，那是原来那条注释里对的一半。
-
-     现在 1280 起地图就过半（54%），1920 上是 64%；轨折叠之后 1280 上是 69%。
-
-     **原注释里"固定宽度让地图尺寸在页面之间不跳"那条仍然成立**：clamp 只跟视口
-     宽度走，换页面不会变。真正会触发尺寸变化的只有改窗口大小，而那本来就要走
-     RouteMap 里那个 ResizeObserver。 */
-  --panel-width: clamp(20rem, 23vw, 26rem);
-
-  /* 外壳当前是哪种排布，**给 JS 读的**。
-
-     三栏的断点只有一个定义处 —— 下面那条 media query。RouteMap 需要知道同一件事
-     （窄屏页面会滚，滚轮停在地图上会把它卡住，所以那时要关掉 scrollZoom），而它
-     以前是自己写了一份 `matchMedia("(min-width: 1024px)")`。两份定义迟早分叉，而
-     分叉的表现是"某个宽度区间里滚轮把页面卡住"，没人查得到。
-
-     所以改成 JS 去问 CSS：这里一个值，媒体查询里翻一次面。 */
-  --shell-layout: stacked;
+  --shell-mode: phone;
+  --shell-inset: 12px;
+  --panel-standard: 26rem;
+  --panel-wide: 44rem;
+  --panel-collapsed: 3.25rem;
+  --tabbar-height: 4rem;
+  /* 和 lib/sheet.ts 的 SHEET_PEEK_PX 同值：服务端先按它摆「收起」那一档。 */
+  --sheet-peek: 72px;
 }
 
-.app-shell {
-  display: flex;
-  flex-direction: column;
-  min-height: 100dvh;
-}
-
-/* 面板：自己滚动，不带着地图一起滚。 */
-.app-panel {
-  flex: 1 1 auto;
-  min-width: 0;
-
-  /* **面板里的多列排布按容器判，不按视口判。**
-
-     这一条是把面板收窄之后必须一起改的。里面那些网格原来写的是 `sm:grid-cols-2
-     lg:grid-cols-4` —— 而 `lg:` 是**视口** ≥1024px，和面板自己有多宽毫无关系。
-     面板固定 30rem 时四列还勉强（每列 96px），收到 20rem 之后每列只剩 58px，输入
-     框根本排不下。
-
-     前缀用错了工具，不是宽度选错了：这是一条固定窄列，该问的是「这一列有多宽」。
-     声明成查询容器之后，里面用 `@sm:` / `@2xl:` 这种容器前缀，于是同一批组件在三
-     栏排布下（面板 20–26rem）自动收成一列，在堆叠排布下（面板整宽）照样铺开。 */
-  container-type: inline-size;
-}
-
-/* 地图：窄屏在上、给它一块固定高度；宽屏才变成右边整条。
-   窄屏把地图放在前面是因为这一版外壳的主张就是「地图负责显示」——
-   在手机上先看到一块 40dvh 的地图，比先看到表单更符合那个主张。 */
-.app-map {
-  order: -1;
-  height: 40dvh;
-  min-height: 16rem;
-  position: relative;
+.map-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
   overflow: hidden;
 }
 
-/* **断点从 1024 提到 1152。**
+/* 面板。手机上是底部抽屉（这里是起点），平板和桌面上是左边一张卡片（下面两个媒
+   体查询）。 */
+.floating-panel {
+  position: fixed;
+  z-index: 30;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--tabbar-height) + env(safe-area-inset-bottom));
+  height: calc(
+    100dvh - var(--tabbar-height) - env(safe-area-inset-bottom) -
+      var(--shell-inset)
+  );
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+  border-bottom-width: 0;
+  transform: translateY(var(--sheet-offset, 50%));
+  transition: transform 320ms var(--ease-out-quint);
+  outline: none;
+}
+/* 跳过链接落到面板上（`#main-content`）时要看得见落在哪儿。只在键盘来的焦点上画：
+   鼠标点进面板空白处也会让它得到焦点，那时不该出一圈环。往里收 2px，手机上抽屉贴着
+   视口两边，往外偏会被裁掉。 */
+.floating-panel:focus-visible {
+  outline: 2px solid var(--color-can);
+  outline-offset: -2px;
+}
+/* 服务端先按页面声明的那一档摆好，脚本接手之前不跳。 */
+.floating-panel[data-sheet="full"] {
+  --sheet-offset: 0px;
+}
+.floating-panel[data-sheet="half"] {
+  --sheet-offset: 50%;
+}
+.floating-panel[data-sheet="collapsed"] {
+  --sheet-offset: calc(100% - var(--sheet-peek));
+}
 
-   1024 那一档三栏根本排不下：轨 272 + 面板 320 之后，地图只剩 432px 的一条 —— 而
-   一条 432px 宽、整屏高的航图，还不如让它整宽地摆在上面。堆叠那一档地图是
-   `40dvh × 整宽`，在 1024×768 上是 1024×307，无论面积还是长宽比都比那一条强。
+.panel-handle {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: center;
+  padding: 0.625rem 0 0.375rem;
+  touch-action: none;
+  cursor: grab;
+}
+.panel-handle > span {
+  width: 2.5rem;
+  height: 0.3125rem;
+  border-radius: 9999px;
+  background: var(--border-strong);
+}
+.panel-bar {
+  display: none;
+}
+.panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* 左右内边距是一个变量：贴底的提交栏（`.panel-sticky-bar`）要用负外边距伸到面板边上，
+     两处读同一个值，改一处另一处跟着走。 */
+  --panel-pad-x: 1rem;
+  padding: 0.25rem var(--panel-pad-x) 1.5rem;
+  /* 面板里的多列排布按**面板**宽度判，不按视口判（`.field-grid` 和各组件里的
+     `@md:` 之类都问它）。 */
+  container: efb-panel / inline-size;
+}
 
-   所以 1024–1152 这一段现在走堆叠：地图在上、整宽，面板在下。这**更符合**「以地图
-   为主」，不是退让。 */
-@media (min-width: 1152px) {
-  :root {
-    /* 见上面 --shell-layout 那段：断点只在这里定义一次，JS 来问。 */
-    --shell-layout: columns;
+/* 手机上抽屉没拉满时正文不滚：那时的手势是在拖抽屉。拉满之后才滚。 */
+@media (max-width: 767.98px) {
+  .floating-panel:not([data-sheet="full"]) .panel-body {
+    overflow-y: hidden;
   }
-
-  .app-shell {
-    flex-direction: row;
-    height: 100dvh;
-    padding-left: var(--rail-current);
-    transition: padding-left 200ms ease;
-  }
-
-  .app-panel {
-    flex: 0 0 var(--panel-width);
-    height: 100dvh;
-    overflow-y: auto;
-    /* 面板和地图之间要有一条界线，否则两块深色面在暗色主题下糊成一片。 */
-    border-right: 1px solid var(--color-border-subtle, rgb(0 0 0 / 0.08));
-  }
-
-  .app-map {
-    order: 0;
-    flex: 1 1 auto;
-    height: 100dvh;
-    min-height: 0;
+  /* 没拉满时整张抽屉都能拖。不把竖向平移从浏览器手里拿过来，它会在过门槛附近认领
+     手势、发 pointercancel，抽屉拖不动。拉满之后正文要滚，只有把手是 none。 */
+  .floating-panel:not([data-sheet="full"]) {
+    touch-action: none;
   }
 }
 
-/* `.map-hint` 删掉了 —— 那是「地图上还没有东西」那块提示的样式，而那块提示本身已
-   经删了（它的文案说这个网络只有航路一个地理数据源，早就不成立）。右上角现在是空
-   的，下一个要往那儿放东西的人不必先搬开一个没人用的类。 */
+/* 只在手机上出现的东西（设置页里的退出登录、跨站链接）：轨在手机上换成了标签栏，
+   这几样没有别的家。 */
+@media (min-width: 768px) {
+  .phone-only {
+    display: none !important;
+  }
+}
 
-/* 地图起不来时的那句话。压在容器上沿居中。
+/* 反过来：手机上没有意义的东西（比如「默认收起侧栏」—— 手机上没有侧栏）。 */
+@media (max-width: 767.98px) {
+  .phone-hidden {
+    display: none !important;
+  }
+}
 
-   **不再是等宽的诊断标识。** 这里以前显示 `failure` 那个记号本身（`map-init-failed`
-   之类），理由是它要能被原样搜到 —— 那个理由成立，但它把一串英文标识摆在了给成员
-   看的位置。现在记号在 `data-failure` 属性和 console 里，这里显示的是按语言给的一
-   句话，所以字体、宽度都按正文来。 */
+@media (min-width: 768px) {
+  :root {
+    --shell-mode: tablet;
+  }
+
+  .floating-panel {
+    top: var(--shell-inset);
+    bottom: var(--shell-inset);
+    right: auto;
+    left: calc(var(--rail-current) + var(--shell-inset));
+    height: auto;
+    /* 平板上 wide 也是这个宽度：再宽地图就只剩一条。 */
+    width: var(--panel-standard);
+    max-width: calc(100vw - var(--rail-current) - 2 * var(--shell-inset));
+    border-radius: var(--radius-sheet);
+    border-bottom-width: 1px;
+    transform: none;
+    transition:
+      width 240ms var(--ease-out-quint),
+      left 200ms ease;
+  }
+  .panel-handle {
+    display: none;
+  }
+  .panel-bar {
+    display: flex;
+    flex-shrink: 0;
+    justify-content: flex-end;
+    padding: 0.5rem 0.5rem 0;
+  }
+  .panel-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: var(--radius-control);
+    color: var(--color-muted);
+  }
+  .panel-toggle:hover {
+    background: var(--surface-overlay);
+    color: var(--color-ink);
+  }
+  .panel-body {
+    --panel-pad-x: 1.25rem;
+    padding: 0 var(--panel-pad-x) 1.5rem;
+  }
+  .floating-panel[data-collapsed="true"] {
+    width: var(--panel-collapsed);
+  }
+  .floating-panel[data-collapsed="true"] .panel-body {
+    visibility: hidden;
+  }
+  .floating-panel[data-collapsed="true"] .panel-toggle-icon {
+    rotate: 180deg;
+  }
+}
+
+@media (min-width: 1152px) {
+  :root {
+    --shell-mode: desktop;
+  }
+  .floating-panel[data-width="wide"] {
+    width: var(--panel-wide);
+  }
+  /* 三个条件的选择器是必须的：上一条和折叠那条同分，后写的赢，折叠就失效了。 */
+  .floating-panel[data-width="wide"][data-collapsed="true"] {
+    width: var(--panel-collapsed);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floating-panel {
+    transition: none;
+  }
+}
+
+/* 地图起不来时那句话。压在**可见区**上沿居中。
+
+   显示的是按语言给的一句话；诊断记号在 `data-failure` 属性和 console 里。 */
 .map-failure {
   position: absolute;
   z-index: 3;
-  top: 0.5rem;
-  left: 50%;
+  top: calc(var(--map-pad-top, 0px) + 0.5rem);
+  left: calc(
+    var(--map-pad-left, 0px) +
+      (100% - var(--map-pad-left, 0px) - var(--map-pad-right, 0px)) / 2
+  );
   transform: translateX(-50%);
   max-width: min(26rem, calc(100% - 8rem));
   font-size: 0.75rem;
@@ -279,28 +419,138 @@
   padding: 0.375rem 0.75rem;
 }
 
-/* 航路图层开关。左下角 —— 左上是缩放控件、右上是那条提示、右下是角落坐标，四个
-   角里只剩这一个。 */
-.map-layers {
+/* ---------------------------------------------------------------------------
+   玻璃材质。轨、面板、地图上的控件共用这一个类。
+
+   取的是 can-ui 的材质令牌（`--material-regular` 那一组），深浅两套由令牌自己换，
+   这里不另写颜色。退路有两条，都退回 can-ui 的实心浮层色：浏览器不支持
+   backdrop-filter 时，一层 78% 不透明的底色压在地图上会让字直接落在航路线上；
+   成员要求减少透明度时，照 can-ui 自己的规矩整个去掉模糊，而不是留一层弱模糊。
+   --------------------------------------------------------------------------- */
+.glass {
+  background-color: var(--material-regular);
+  -webkit-backdrop-filter: saturate(var(--material-saturate))
+    blur(var(--material-blur-regular));
+  backdrop-filter: saturate(var(--material-saturate))
+    blur(var(--material-blur-regular));
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-popover);
+}
+@supports not (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
+  .glass {
+    background-color: var(--surface-overlay);
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass {
+    background-color: var(--surface-overlay);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* 地图上的覆盖层。铺在地图**露出来的那一块**上：`--map-pad-*` 由 MapStage 按面板
+   位置写（Task 7 之前都是 0）。自己不接指针 —— 压在地图上能挡住拖动的东西就是一
+   个看不出原因的死角 —— 里面的控件各自接。 */
+.map-overlay {
   position: absolute;
   z-index: 2;
+  top: var(--map-pad-top, 0px);
+  right: var(--map-pad-right, 0px);
+  bottom: var(--map-pad-bottom, 0px);
+  left: var(--map-pad-left, 0px);
+  pointer-events: none;
+  transition:
+    left 240ms ease,
+    bottom 240ms ease;
+}
+.map-overlay > * {
+  pointer-events: auto;
+}
+
+/* 「有 n 块边界不完整没画」。贴在可见区上沿居中：它说的是整张图缺了东西。 */
+.map-partial {
+  position: absolute;
+  top: 0.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(28rem, calc(100% - 8rem));
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-control);
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  color: var(--color-muted);
+  text-align: center;
+}
+
+/* 「这一层没有数据」/「没有航行资料库权限」。排在上一条下面，比它显眼一点。 */
+.map-notice {
+  position: absolute;
+  top: 2.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(30rem, calc(100% - 8rem));
+  padding: 0.375rem 0.75rem;
+  border-radius: var(--radius-control);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--color-ink);
+  text-align: center;
+}
+
+/* 「定位到我」。放在缩放控件下面：它是改变视野的动作，和 +/- 同一类。 */
+.map-locate {
+  position: absolute;
+  top: 5.25rem;
+  left: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: var(--radius-control);
+  font-size: 0.6875rem;
+  color: var(--color-ink);
+}
+.map-locate:hover {
+  background: var(--surface-overlay);
+}
+
+/* 图层菜单和失败提示，从可见区左下角往上长。 */
+.map-layers {
+  position: absolute;
   left: 0.5rem;
   bottom: 0.5rem;
   display: flex;
-  padding: 0.125rem;
-  gap: 0.125rem;
-
-  /* **必须能换行。** 图层这一排现在有六颗按钮，而这块地图是右侧那一列 —— 窗口
-     窄一点、或者平板竖着拿的时候，一排排不下就会溢出卡片被裁掉，后面几个图层从
-     此点不到。
-
-     靠 `bottom` 定位，所以换行是往**上**长的，不会盖住下面那一排。 */
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.375rem;
   max-width: calc(100% - 1rem);
 }
+/* DOM 里菜单在按钮后面（键盘顺序），画面上要在按钮上方：两者都靠 order 排。 */
+.map-layer-trigger {
+  order: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--radius-control);
+  font-size: 0.75rem;
+  color: var(--color-ink);
+}
+.map-layer-menu {
+  order: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.125rem;
+  max-width: 22rem;
+  padding: 0.25rem;
+  border-radius: var(--radius-card);
+}
 .map-layer-btn {
-  font-size: 0.6875rem;
-  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.6rem;
   border-radius: 0.25rem;
   color: var(--color-muted);
 }
@@ -311,64 +561,10 @@
   background: var(--surface-overlay);
   color: var(--color-ink);
 }
-/* 「有 n 块边界不完整没画」那条提示。
-   贴在地图上沿、居中：它说的是**整张图缺了东西**，不属于左下角那排图层开关，
-   也不该挤在角落里被当成装饰。窄，因为它只有一句话。 */
-.map-partial {
-  position: absolute;
-  z-index: 2;
-  top: 0.5rem;
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: min(28rem, calc(100% - 8rem));
-  padding: 0.25rem 0.6rem;
-  font-size: 0.6875rem;
-  line-height: 1.4;
-  color: var(--color-muted);
-  text-align: center;
+.map-layer-btn:disabled {
+  opacity: 0.5;
 }
-
-/* 「这一层没有数据」/「你没有航行资料库权限」。
-   跟着 .map-partial 排在它下面（4.25rem 是那条一行时的高度加间距）。比它显眼一
-   点：那条说的是一张图缺了几块，这条说的是**你刚点开的东西整个是空的**，而后者
-   如果不说，看到的就是一张画不出线的地图 —— 那正是要修的那个故障。 */
-.map-notice {
-  position: absolute;
-  z-index: 2;
-  top: 2.5rem;
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: min(30rem, calc(100% - 8rem));
-  padding: 0.375rem 0.75rem;
-  font-size: 0.75rem;
-  line-height: 1.5;
-  color: var(--color-ink);
-  text-align: center;
-}
-
-/* 「定位到我」。
-   放左上角缩放控件的**下面**：它是一个改变视野的动作，和 +/- 是同一类，凑在
-   一起比混进右下角那排图层开关讲得通。缩放控件两颗按钮加内边距约 4.6rem 高，
-   所以从 5.25rem 起，留一点余量。 */
-.map-locate {
-  position: absolute;
-  z-index: 2;
-  top: 5.25rem;
-  left: 0.5rem;
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.2rem 0.45rem;
-  font-size: 0.6875rem;
-  color: var(--color-ink);
-}
-.map-locate:hover {
-  background: var(--surface-overlay);
-}
-
-/* 在线管制席位数，贴在「实时」那颗按钮上。
-   数字本身就是信息 —— 「现在有没有人管」是飞行员开图第一眼要的答案之一，
-   让它出现在按钮上比藏进图里省一次寻找。 */
+/* 在线管制席位数。「现在有没有人管」是开图第一眼要的答案之一。 */
 .map-layer-count {
   margin-left: 0.35rem;
   padding: 0 0.3rem;
@@ -378,7 +574,88 @@
   font-size: 0.65rem;
   font-variant-numeric: tabular-nums;
 }
+/* 没取到的那一层。小，但带一个能按的重试。 */
+.map-layer-failure {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 22rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--radius-control);
+  font-size: 0.75rem;
+  color: var(--color-ink);
+}
 
-.map-layer-btn:disabled {
-  opacity: 0.5;
+/* 手机的底部标签栏。轨在手机上整条换成它：五个导航项正好一行，拇指够得着。主题、
+   语言、账户、跨站链接在设置页的 `.phone-only` 那几块里。
+
+   它和抽屉共用 `--tabbar-height`：抽屉的 `bottom` 就是这个高度加安全区，所以收
+   到只剩把手时也露在标签栏上面，不会被它压住。 */
+.tab-bar {
+  position: fixed;
+  z-index: 40;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(var(--tabbar-height) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+}
+.tab-bar.glass {
+  border-width: 1px 0 0 0;
+  box-shadow: none;
+}
+/* 44px 是触控目标的下限。高度平时由 `--tabbar-height` 给足；下限写在这里，是为了
+   有人把标签栏调矮时按钮不跟着缩到按不准。 */
+.tab-bar-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.125rem;
+  min-width: 44px;
+  min-height: 44px;
+  font-size: 0.6875rem;
+  color: var(--color-muted);
+}
+.tab-bar-item[aria-current="page"] {
+  color: var(--color-can);
+}
+/* can-ui 的焦点环往外偏 2px；标签栏贴着视口底边，往外偏就被裁掉一截。收进来。 */
+.tab-bar-item:focus-visible {
+  outline-offset: -2px;
+}
+@media (min-width: 768px) {
+  .tab-bar {
+    display: none;
+  }
+}
+
+/* 表单两列排布（FieldGrid.vue）。按面板宽度判：standard 面板 26rem 恒为一列，wide
+   面板 44rem 才分两列。36rem 这道线落在两者之间，离哪一边都够远，不会在某个宽度上
+   来回跳。 */
+.field-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+@container efb-panel (min-width: 36rem) {
+  .field-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .field-grid > .field-wide {
+    grid-column: 1 / -1;
+  }
+}
+
+/* 贴在面板底部的提交栏（PlanForm.vue）。左右伸到面板边上：写死 `-mx-4` 的话，≥768px
+   时 `.panel-body` 的内边距是 1.25rem，栏的两头就比面板窄一截，下面滚过去的字从两边
+   露出来。 */
+.panel-sticky-bar {
+  position: sticky;
+  bottom: 0;
+  margin-inline: calc(-1 * var(--panel-pad-x, 1rem));
+  padding-inline: var(--panel-pad-x, 1rem);
 }

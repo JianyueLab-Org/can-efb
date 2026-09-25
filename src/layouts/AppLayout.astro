@@ -1,48 +1,45 @@
 ---
 /**
- * 三栏外壳：**轨 | 面板 | 地图**。**没有站头，也不要加回来** —— 为什么见
+ * 外壳：**地图铺满视口，轨和面板浮在上面。** 没有站头，也不要加回来 —— 为什么见
  * AppRail.vue 顶上的注释。
  *
- * 这是这个站的第二版外壳。第一版是「轨 + 一列正文」，正文居中、最大宽度
- * 6xl，地图只是 `/route` 页面里的一个组件。现在地图是**常驻的显示面**：
+ * 这是第三版外壳。第二版是「轨 | 面板 | 地图」三栏，地图只拿到剩下那一截，而且
+ * 1024–1152 之间得改走上下堆叠。现在地图永远是整个视口，面板是压在它上面的一张
+ * 玻璃卡片，宽度由页面声明（`panel`）。地图从 `lib/mapBus.ts` 的 `panel:layout`
+ * 知道面板盖住了哪一块，用 `setPadding` 把内容对到露出来的那一块中间。
  *
- * - 最左是轨（菜单），可折叠成一列图标；
- * - 中间是面板，装当前菜单项的内容和输入，宽度固定、自己滚动；
- * - 右边整块是地图，跨页面存活，只负责显示。
+ * 层次自下而上：MapStage → 面板 → 轨。DOM 里地图排在最后，是为了键盘顺序：跳过
+ * 链接、轨、面板正文，最后才是地图上的控件。
  *
- * 为什么面板宽度是固定的而不是自适应：地图那一侧越大越有用，而面板装的是表单
- * 和列表，超过一定宽度只会让每行文字更难读。固定宽度也让地图的尺寸在页面之间
- * 不跳 —— Leaflet 每次尺寸变化都要 `invalidateSize()`，能不变就不变。
+ * `client:load` 只给三样：轨（唯一的导航，手机上那条标签栏在水合之前按不动也要
+ * 能跳页，所以里面全是 `<a>`）、地图（这块面积上没有任何服务端渲染的内容能先顶
+ * 着）、以及每一页自己那一个主岛屿。
  *
- * `client:load` 而不是 `client:idle`：轨是这个站唯一的导航，在它水合之前手机
- * 上那颗抽屉按钮按下去没有反应 —— 一个看得见、按得动、却不动作的按钮比晚一点
- * 出现更糟。桌面上导航链接本身是 <a>，不依赖水合，所以这个代价只在手机上真正
- * 兑现。
- *
- * `messages` 只传 `efb` 这一本，而不是整本词典：岛屿的 props 会原样序列化进每
- * 个页面的 HTML，多传的每一个 KB 都要在每次访问里付一遍。
+ * `messages` 只传 `efb` 这一本：岛屿的 props 会原样序列化进每个页面的 HTML。
  */
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import AppRail from "@/components/AppRail.vue";
-import MapSurface from "@/components/MapSurface.vue";
-import BeianLine from "@jianyuelab-org/can-ui/components/BeianLine.vue";
+import MapStage from "@/components/map/MapStage.vue";
+import FloatingPanel from "@/components/FloatingPanel.astro";
 import { getLocale, getMessages, useTranslations } from "@/lib/i18n";
 import { buildCrossLinks, buildNav } from "@/lib/nav";
 import { toEfbUser } from "@/lib/session";
 import { signInUrl } from "@/lib/config";
+import type { PanelWidth } from "@/lib/panelLayout";
 
 interface Props {
-  title?: string;
+  title: string;
   description?: string;
+  /** 面板宽度。表单页（飞行计划、设置）用 `wide`，其余 `standard`。 */
+  panel?: PanelWidth;
 }
 
-const { title, description } = Astro.props;
+const { title, description, panel = "standard" } = Astro.props;
 
 const locale = getLocale(Astro.cookies);
 const t = useTranslations(locale, "efb");
 
-// 中间件已经问过 can-api 了，这里只是取出来 —— 不要在页面里再解一次会话，那会
-// 变成每渲染一个页面就多打一次 /auth/session。
+// 中间件已经问过 can-api 了，这里只是取出来 —— 不要在页面里再解一次会话。
 const user = toEfbUser(Astro.locals.user);
 
 const sections = buildNav(t);
@@ -61,74 +58,62 @@ const crossLinks = buildCrossLinks(t);
     client:load
   />
 
-  <div class="app-shell">
-    <!--
-      内边距比原来收了一档（sm:px-6 → sm:px-5）：面板现在最窄 20rem，两边各 24px
-      会把可用宽度压到 272px，而这里装的是表单。
+  <FloatingPanel
+    width={panel}
+    title={title}
+    description={description}
+    labels={{
+      collapse: t("panel.collapse"),
+      expand: t("panel.expand"),
+      handle: t("panel.handle"),
+      sheet: {
+        collapsed: t("panel.sheet.collapsed"),
+        half: t("panel.sheet.half"),
+        full: t("panel.sheet.full"),
+      },
+    }}
+  >
+    <slot />
+  </FloatingPanel>
 
-      `mx-auto max-w-3xl` 去掉了 —— 面板最宽 26rem，48rem 的上限**永远不会生效**，
-      留着只会让人以为正文列还能更宽。
-    -->
-    <main id="main-content" tabindex="-1" class="app-panel">
-      <div class="w-full px-4 py-8 sm:px-5 lg:py-10">
-        <slot />
-      </div>
-      <!--
-        备案号。这个站不用 can-ui 的 `AppShell`（它自己那套 AppRail + 地图的
-        外壳还没有第二个用户，见 can-ui 的「Still not here」），所以那边挂在
-        AppShell 页脚上的那一行到不了这里，要单独放一次。
-
-        位置是面板列的最底下而不是地图上：`app-panel` 是每一页内容所在的、会
-        滚到底的那一列，而地图 `transition:persist` 跨页面存活 —— 挂在地图上
-        等于挂在一个不属于任何一页的东西上。
-
-        不加 `client:` 指令：这是一个静态链接，没有状态也没有事件，Astro 直接
-        渲染成 HTML。给它水合等于为了一个 <a> 往每一页塞一份运行时。
-      -->
-      <div class="w-full px-4 pb-6 sm:px-5">
-        <BeianLine />
-      </div>
-    </main>
-
-    {
-      /*
-      地图跨页面存活：`transition:persist` 让 Astro 在导航时保留这个岛屿的实
-      例，而不是卸载再建一个。没有它，每换一页 Leaflet 都要重新初始化、底图重
-      新下载一遍 —— 在平板上那是一次肉眼可见的白闪，而地图恰恰是这一版外壳里
-      唯一从不改变的东西。
-
-      `client:load` 是必要的：这块面积上没有任何服务端渲染的内容能先顶着（空
-      状态也在组件里），晚一步水合就是晚一步出现。
+  {
+    /*
+      地图跨页面存活：`transition:persist` 让 Astro 在导航时保留这个岛屿的实例。
+      没有它，每换一页地图都要重新初始化、底图重新下载一遍 —— 在平板上那是一次
+      肉眼可见的白闪，而地图是这一版外壳里唯一从不改变的东西。
     */
-    }
-    <MapSurface
-      label={t("route.map.label")}
-      cid={user?.id ?? null}
-      t={{
-        partial: t("map.partial"),
-        denied: t("map.denied"),
-        emptyAirways: t("map.emptyLayer.airways"),
-        emptyNavaids: t("map.emptyLayer.navaids"),
-        emptyGeneric: t("map.emptyLayer.generic"),
-        planOnMap: t("map.planOnMap"),
-      }}
-      failureText={{
-        init: t("map.failure.init"),
-        webgl: t("map.failure.webgl"),
-      }}
-      layerLabels={{
-        airways: t("map.layers.airways"),
-        firs: t("map.layers.firs"),
-        navaids: t("map.layers.navaids"),
-        mora: t("map.layers.mora"),
-        traffic: t("map.layers.traffic"),
-        atcLive: t("map.layers.atcLive"),
-        ctr: t("map.layers.ctr"),
-        app: t("map.layers.app"),
-        restricted: t("map.layers.restricted"),
-      }}
-      client:load
-      transition:persist
-    />
-  </div>
+  }
+  <MapStage
+    label={t("route.map.label")}
+    cid={user?.id ?? null}
+    t={{
+      partial: t("map.partial"),
+      denied: t("map.denied"),
+      emptyAirways: t("map.emptyLayer.airways"),
+      emptyNavaids: t("map.emptyLayer.navaids"),
+      emptyGeneric: t("map.emptyLayer.generic"),
+      planOnMap: t("map.planOnMap"),
+      layersMenu: t("map.layersMenu"),
+      layerFailed: t("map.layerFailed"),
+      retry: t("common.retry"),
+      locate: t("map.locate"),
+    }}
+    failureText={{
+      init: t("map.failure.init"),
+      webgl: t("map.failure.webgl"),
+    }}
+    layerLabels={{
+      airways: t("map.layers.airways"),
+      firs: t("map.layers.firs"),
+      navaids: t("map.layers.navaids"),
+      mora: t("map.layers.mora"),
+      traffic: t("map.layers.traffic"),
+      atcLive: t("map.layers.atcLive"),
+      ctr: t("map.layers.ctr"),
+      app: t("map.layers.app"),
+      restricted: t("map.layers.restricted"),
+    }}
+    client:load
+    transition:persist
+  />
 </BaseLayout>

@@ -6,9 +6,9 @@ Cerulean Aviation Network 的**电子飞行包**（Electronic Flight Bag）—�
 
 Astro SSR + Vue 岛屿 + Tailwind v4，和 can-web / can-dev / can-radar 同一套形状。
 
-已经接上 can-api：**概览、飞行计划（含 SimBrief 导入）、气象、飞行日志、航路展
-开、设置**都是真数据。**航图、机场、性能、检查单**还是占位 —— 它们没有数据源，
-页面上会写清楚缺的是什么。
+已经接上 can-api 和 can-db：**概览、飞行计划（含 SimBrief 导入）、气象、航路
+展开、设置、机场**都是真数据。**没有占位页面**：航图没有页面也没有入口 ——
+有版权的数据，网络里没有一处提供；性能、检查单两页删掉了，不是占着。
 
 > **本地跑起来会看到 302。** 整站要登录，而登录态是 can-api 签在
 > `.ceruleanavi.net` 上的 cookie，`localhost` 上拿不到，所以每个页面都会跳到主站
@@ -45,37 +45,43 @@ PUBLIC_ORIGIN=http://localhost:4324 bun run preview
 ## 布局：一条侧栏，没有站头
 
 这是这个站最需要先知道的一件事 —— **它没有顶栏**。品牌、⌘K 快速跳转、主题、语
-言、账户全部在左侧那条轨里；轨可以折叠成一列图标，手机上收成抽屉，由左下角的浮
-动按钮拉开。
+言、账户全部在左侧那条轨里；轨可以折叠成一列图标。**手机（<768px）上没有轨**，
+换成底部标签栏：五个导航项一行。页面内容是浮在地图上的三档底部抽屉。
 
 为什么这么设计、以及折叠状态为什么存在 `<html data-rail>` 上而不是组件里，写在
-[`AGENTS.md`](./AGENTS.md) 和 `src/components/ui/AppRail.vue` 的注释里。**不要加
-回顶栏。**
+[`AGENTS.md`](./AGENTS.md) 和 `src/components/AppRail.vue` 的注释里。**不要加回
+顶栏。**
 
 ## 目录
 
+外壳是一张铺满窗口的地图，轨和面板浮在上面。
+
 ```
-deploy/k8s.yaml      jyl-tyo 上的部署（无 Secret）
-language/            四本词典 zh-cn / zh-tw / en-us / ja-jp
+deploy/k8s.yaml        jyl-tyo 上的部署（无 Secret）
+language/              四本词典 zh-cn / zh-tw / en-us / ja-jp
+scripts/               类型检查、词典检查、地图样式检查、底图生成
 src/
+├── basemap/           随站发的底图和情报区边界
 ├── components/
-│   ├── ui/          AppRail（外壳）、SidebarNav、Icon、ThemeLangControls
-│   ├── Dashboard    概览 · FlightPlan 飞行计划 · Weather 气象
-│   ├── Logbook      飞行日志 · RoutePlanner 航路 · Settings 设置
-│   ├── RouteMap     航路地图（Leaflet，异步加载，从不 SSR）
-│   ├── PageHeader   页面标题区（不是站头）
-│   ├── Placeholder  没有数据源的四个页面，并说明缺什么
-│   └── *Script      无闪烁的主题 / 侧栏初始化
+│   ├── AppRail        轨；手机上换成底部标签栏
+│   ├── FloatingPanel  浮在地图上的面板；手机上是三档底部抽屉
+│   ├── map/           常驻地图：MapStage、RouteMap（MapLibre，从不 SSR）、MapControls、各 use*Layer
+│   ├── ui/            StateCard、PanelSection、Field、FieldGrid
+│   ├── flightplan/    飞行计划页
+│   ├── Dashboard      概览 · RouteTabs 航路 · Airports 机场 · Settings 设置
+│   ├── PageHeader     面板里的页面标题区（不是站头）
+│   └── *Script        无闪烁的轨初始化
 ├── layouts/
-│   ├── BaseLayout   <head> + 两个首屏脚本，不带外壳
-│   └── AppLayout    轨 + 正文，页面都用这个
-├── lib/             canApi（浏览器）、config、geo、i18n、nav、session
-├── server/canApi    SSR 调 can-api，转发 Cookie
-├── middleware.ts    整站登录门
+│   ├── BaseLayout     <head> 和首屏脚本，不带外壳
+│   └── AppLayout      地图 + 轨 + 面板，页面都用这个
+├── lib/               纯逻辑和它们的测试；mapBus 是面板到地图的通道
+├── server/            SSR 调 can-api / can-db，转发 Cookie
+├── middleware.ts      整站登录门
 ├── pages/
-│   ├── api/v1/      走白名单的 can-api 同源反代
-│   └── *.astro      十个页面 + 404 + healthz
-└── styles/          globals.css（前 957 行同步自 can-radar）
+│   ├── api/v1/        走白名单的 can-api 同源反代
+│   ├── api/db/        走白名单的 can-db 同源反代
+│   └── *.astro        五个页面 + 404 + healthz
+└── styles/globals.css 设计系统来自 can-ui；本站规则在 import 之后
 ```
 
 加一个页面：`src/lib/nav.ts` 加一行，四本词典各加标题和说明，`src/pages/` 加一
