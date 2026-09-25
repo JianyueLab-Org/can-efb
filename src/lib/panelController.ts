@@ -263,10 +263,18 @@ export function mountPanel(): void {
     onGeometryChange();
   }
 
+  /* 过渡被打断（换档途中又拖、宽度过渡途中又折叠）时不会有 transitionend，
+     cancel 也要报一次，否则地图停在打断之前的内边距上。 */
   const onTransitionEnd = (event: TransitionEvent) => {
     if (event.target === root) announce();
   };
   const resizeObserver = new ResizeObserver(onGeometryChange);
+
+  /* 轨折叠或展开：面板的 `left` 跟着 `--rail-current` 变，宽度不变，所以
+     ResizeObserver 不响。有动画时靠 transitionend 报；减少动态效果时
+     `transition: none`，transitionend 不会来 —— 不看 `data-rail` 的话地图的内边
+     距一直按旧的轨宽算，差出一整条轨。 */
+  const railObserver = new MutationObserver(scheduleAnnounce);
 
   toggle?.addEventListener("click", onToggle);
   handle?.addEventListener("click", onHandleClick);
@@ -278,8 +286,13 @@ export function mountPanel(): void {
   root.addEventListener("click", onClickCapture, true);
   root.addEventListener("focusin", onFocusIn);
   root.addEventListener("transitionend", onTransitionEnd);
+  root.addEventListener("transitioncancel", onTransitionEnd);
   window.addEventListener("resize", onResize);
   resizeObserver.observe(root);
+  railObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-rail"],
+  });
 
   if (mode === "phone") applySnap(snap, false);
   else announce();
@@ -296,7 +309,9 @@ export function mountPanel(): void {
     root.removeEventListener("click", onClickCapture, true);
     root.removeEventListener("focusin", onFocusIn);
     root.removeEventListener("transitionend", onTransitionEnd);
+    root.removeEventListener("transitioncancel", onTransitionEnd);
     window.removeEventListener("resize", onResize);
     resizeObserver.disconnect();
+    railObserver.disconnect();
   };
 }
