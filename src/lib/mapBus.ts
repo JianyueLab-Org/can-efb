@@ -15,6 +15,7 @@
  * 在面板里有一个明确的入口，而不是让两个岛屿互相写对方的状态 —— 那种双向绑定
  * 在没有共同父组件的情况下，最后一定演变成谁先加载谁赢。
  */
+import type { PanelLayout } from "@/lib/panelLayout";
 
 /** 地图能画的一个点。形状取自 `/api/v1/route` 展开后的航段，和 RouteMap 的 props 一致。 */
 export interface MapPoint {
@@ -98,4 +99,129 @@ export const PLAN_CHANGED_EVENT = "efb:plan-changed";
 export function announcePlanChanged(): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new Event(PLAN_CHANGED_EVENT));
+}
+
+/* --------------------------------------------------------------------------
+   panel:layout —— 面板此刻盖住了哪一块。
+-------------------------------------------------------------------------- */
+
+/**
+ * 地图铺满视口之后，它得知道面板压住了哪一块，才能把内容对到露出来的那一块中间
+ * （`map.setPadding`，换算在 `lib/panelLayout.ts`）。
+ *
+ * **记住最后一次，订阅时补发。** 地图是 `client:load` 的岛屿，面板脚本跑在
+ * `astro:page-load` 上，两者谁先谁后不一定；地图晚到的话，没有这一下它就一直以
+ * 为面板不存在，航路被压在面板底下 —— 不报错，只是看起来没框进来。
+ */
+export const PANEL_LAYOUT_EVENT = "efb:panel-layout";
+
+let lastPanelLayout: PanelLayout | null = null;
+
+export function announcePanelLayout(layout: PanelLayout): void {
+  lastPanelLayout = layout;
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent<PanelLayout>(PANEL_LAYOUT_EVENT, { detail: layout }),
+  );
+}
+
+export function subscribePanelLayout(
+  handler: (layout: PanelLayout) => void,
+): () => void {
+  if (typeof window === "undefined") return () => {};
+  if (lastPanelLayout) handler(lastPanelLayout);
+  const listener = (event: Event) => {
+    handler((event as CustomEvent<PanelLayout>).detail);
+  };
+  window.addEventListener(PANEL_LAYOUT_EVENT, listener);
+  return () => window.removeEventListener(PANEL_LAYOUT_EVENT, listener);
+}
+
+/* --------------------------------------------------------------------------
+   map:focus —— 把镜头对到一个点或一个框。
+-------------------------------------------------------------------------- */
+
+/**
+ * 「在一堆东西里挑一个看」：机场列表点一行、「定位到我」。
+ *
+ * 和 `MapPayload.points` 分开是因为它不改图上画什么，只改镜头；混在一起就只能靠
+ * 重推整层来挪镜头。点的 `zoom` 是下限：已经放得更大时不缩回去。
+ */
+export type MapFocus =
+  | { kind: "point"; lat: number; lon: number; zoom?: number }
+  | {
+      kind: "bounds";
+      south: number;
+      west: number;
+      north: number;
+      east: number;
+    };
+
+export const MAP_FOCUS_EVENT = "efb:map-focus";
+
+const finite = (v: unknown): v is number =>
+  typeof v === "number" && Number.isFinite(v);
+
+/**
+ * 是不是一个飞得过去的目标。**NaN 必须挡在这里**：MapLibre 收到 NaN 不报错，整
+ * 张图原地不动，按钮看起来坏了。
+ */
+export function isMapFocus(value: unknown): value is MapFocus {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  if (v.kind === "point") {
+    return (
+      finite(v.lat) && finite(v.lon) && (v.zoom === undefined || finite(v.zoom))
+    );
+  }
+  if (v.kind === "bounds") {
+    return (
+      finite(v.south) &&
+      finite(v.west) &&
+      finite(v.north) &&
+      finite(v.east) &&
+      v.south <= v.north
+    );
+  }
+  return false;
+}
+
+export function focusMap(target: MapFocus): void {
+  if (typeof window === "undefined" || !isMapFocus(target)) return;
+  window.dispatchEvent(
+    new CustomEvent<MapFocus>(MAP_FOCUS_EVENT, { detail: target }),
+  );
+}
+
+export function subscribeMapFocus(
+  handler: (target: MapFocus) => void,
+): () => void {
+  if (typeof window === "undefined") return () => {};
+  const listener = (event: Event) => {
+    handler((event as CustomEvent<MapFocus>).detail);
+  };
+  window.addEventListener(MAP_FOCUS_EVENT, listener);
+  return () => window.removeEventListener(MAP_FOCUS_EVENT, listener);
+}
+
+/* --------------------------------------------------------------------------
+   map:plan —— 「地图，回到我已提交的那份计划」。
+-------------------------------------------------------------------------- */
+
+/**
+ * 面板推过一次东西之后，地图这次会话里就不再画计划（不然面板刚画好的航路会被异
+ * 步回来的计划顶掉，见 `MapSurface.vue` 的 `panelPublished`）。概览页要的正好是计
+ * 划，所以它得明说一声。不带内容：计划以 can-api 为准，地图收到后自己读。
+ */
+export const MAP_PLAN_EVENT = "efb:map-plan";
+
+export function showPlanOnMap(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(MAP_PLAN_EVENT));
+}
+
+export function subscribePlanRequest(handler: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener(MAP_PLAN_EVENT, handler);
+  return () => window.removeEventListener(MAP_PLAN_EVENT, handler);
 }
