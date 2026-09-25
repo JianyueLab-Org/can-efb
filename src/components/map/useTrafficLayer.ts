@@ -6,7 +6,7 @@
  */
 import { computed, ref } from "vue";
 import type { FeatureCollection } from "geojson";
-import type { MapPoint } from "@/lib/mapBus";
+import type { MapFocus } from "@/lib/mapBus";
 import { appendTrack, toTrackLine, type OwnTrack } from "@/lib/ownTrack";
 import {
   fetchDatafeed,
@@ -276,10 +276,10 @@ export function useTrafficLayer(options: {
    * **每次都造一个新对象**，因为 RouteMap 按引用判断 focus 变没变（否则实时数据每
    * 30 秒会把镜头拽回来一次）。连点两次要都生效，就不能复用同一个对象。
    */
-  function locateTarget(): MapPoint | null {
+  function locateTarget(): MapFocus | null {
     const at = ownAt.value;
     if (!at) return null;
-    return { ident: at.callsign, lat: at.lat, lon: at.lon, kind: "own" };
+    return { kind: "point", lat: at.lat, lon: at.lon };
   }
 
   /**

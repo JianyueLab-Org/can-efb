@@ -16,7 +16,7 @@
  */
 import { computed, ref } from "vue";
 import { createTranslator } from "@/lib/i18n";
-import { publishToMap } from "@/lib/mapBus";
+import { focusMap, publishToMap } from "@/lib/mapBus";
 
 interface Airport {
   icao: string;
@@ -89,20 +89,23 @@ function toMarker(airport: Airport) {
 }
 
 /**
- * 挑中一个机场：**只推那一个**，不铺全量。
+ * 挑中一个机场：**只推那一个**，不铺全量，再把镜头对过去。
  *
  * 从前这里推的是 433 个机场的全量点集，而且一进页面就推。两个后果：地图变成一片
  * 麻点，看不出任何东西；更要紧的是它**盖掉了成员自己那条飞行计划** —— 地图是常
  * 驻的，打开机场页等于把手上正在飞的那件事从图上抹掉。
  *
  * 现在这一页不主动往图上放任何东西。选中一个机场才推它一个，并把视野对过去。
+ *
+ * 先推点、再对焦，顺序是要紧的：地图收到新的点会把旧焦点作废（否则它不框选新内
+ * 容），对焦要落在那之后。
  */
 function showOnMap(airport: Airport) {
   publishToMap({
     markers: [toMarker(airport)],
-    focus: toMarker(airport),
     label: airport.name ? `${airport.icao} · ${airport.name}` : airport.icao,
   });
+  focusMap({ kind: "point", lat: airport.lat, lon: airport.lon, zoom: 10 });
 }
 
 function show(airport: Airport) {

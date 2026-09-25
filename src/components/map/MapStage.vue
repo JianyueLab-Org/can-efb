@@ -80,7 +80,7 @@ const props = defineProps<{
 const mounted = ref(false);
 
 const RouteMap = defineAsyncComponent({
-  loader: () => import("@/components/RouteMap.vue"),
+  loader: () => import("@/components/map/RouteMap.vue"),
   // chunk 拉不下来时说话。默认行为是安静地什么都不渲染 —— 那和「地图是空的」在
   // 屏幕上长得一模一样。
   onError(error) {

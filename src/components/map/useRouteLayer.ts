@@ -9,6 +9,8 @@ import type { FeatureCollection } from "geojson";
 import {
   PLAN_CHANGED_EVENT,
   subscribeToMap,
+  subscribeMapFocus,
+  type MapFocus,
   type MapPoint,
 } from "@/lib/mapBus";
 import { markRouteOnAirways, routeLegKeys } from "@/lib/airways";
@@ -25,7 +27,7 @@ export function useRouteLayer(options: {
 
   const points = ref<MapPoint[]>([]);
   const markers = ref<MapPoint[]>([]);
-  const focus = ref<MapPoint | null>(null);
+  const focus = ref<MapFocus | null>(null);
   const label = ref(text.label);
 
   /**
@@ -187,6 +189,7 @@ export function useRouteLayer(options: {
   }
 
   let unsubscribe: (() => void) | null = null;
+  let unsubscribeFocus: (() => void) | null = null;
 
   /**
    * 每次页面导航之后重读一次计划。
@@ -226,15 +229,21 @@ export function useRouteLayer(options: {
       // 面板换了一条航路：旧的高亮必须撤掉，否则图上会同时亮着两条。
       refreshHighlight();
       markers.value = payload.markers ?? [];
-      focus.value = payload.focus ?? null;
+      // 面板换了内容：旧焦点作废，否则 RouteMap 一直当它是「在挑一个看」而不框选新内容。
+      focus.value = null;
       // 面板可以覆盖角标；没给就沿用外壳传进来的那一份。
       label.value = payload.label ?? text.label;
+    });
+    unsubscribeFocus = subscribeMapFocus((target) => {
+      focus.value = target;
     });
   }
 
   function stop() {
     unsubscribe?.();
     unsubscribe = null;
+    unsubscribeFocus?.();
+    unsubscribeFocus = null;
     document.removeEventListener("astro:after-swap", onPageSwap);
     window.removeEventListener(PLAN_CHANGED_EVENT, onPageSwap);
   }
