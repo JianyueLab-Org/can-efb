@@ -74,6 +74,20 @@ export function paddingSettled(
   );
 }
 
+/**
+ * 焦点从有到无：该不该把「上一次框过哪批点」作废。
+ *
+ * 要作废。对焦期间 `fitPoints` 不跑，`lastFitted` 还是对焦之前那批点的签名；焦点
+ * 撤掉之后要框的往往正是那一批（`map:plan` 把地图拉回同一份计划），签名一样就被
+ * 挡掉，镜头停在刚才对焦的地方。
+ */
+export function focusReleased(
+  previous: MapFocus | null,
+  next: MapFocus | null,
+): boolean {
+  return previous !== null && next === null;
+}
+
 export function createCamera(getMap: () => MapLibreMap | null): Camera {
   let lastFocus: MapFocus | null = null;
   let lastFitted = "";
@@ -109,6 +123,7 @@ export function createCamera(getMap: () => MapLibreMap | null): Camera {
     const map = getMap();
     if (!map) return false;
     if (!focus) {
+      if (focusReleased(lastFocus, focus)) lastFitted = "";
       lastFocus = null;
       return false;
     }

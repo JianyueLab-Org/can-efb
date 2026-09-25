@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
   decidePaddingTransition,
+  focusReleased,
   paddingSettled,
 } from "@/components/map/camera";
+import type { MapFocus } from "@/lib/mapBus";
 import type { MapPadding } from "@/lib/panelLayout";
 
 const P: MapPadding = { top: 12, right: 12, bottom: 12, left: 340 };
@@ -75,5 +77,23 @@ describe("paddingSettled", () => {
   test("只要有一个边没到，就不算落地——包括被打断冻结在中途的那种情况", () => {
     expect(paddingSettled(Q, P)).toBe(false);
     expect(paddingSettled({ ...P, left: 170 }, P)).toBe(false);
+  });
+});
+
+/**
+ * 焦点从有到无：上一次框选的签名要作废。否则 `map:plan` 把地图拉回计划时，那条
+ * 计划的点和上次框过的一样，`fitPoints` 被签名挡掉，镜头停在刚才对焦的机场上。
+ */
+describe("focusReleased", () => {
+  const focus: MapFocus = { kind: "point", lat: 30, lon: 120 };
+
+  test("有焦点 → 没焦点：作废", () => {
+    expect(focusReleased(focus, null)).toBe(true);
+  });
+
+  test("一直没焦点、换焦点、从无到有：不作废", () => {
+    expect(focusReleased(null, null)).toBe(false);
+    expect(focusReleased(focus, { ...focus, lat: 31 })).toBe(false);
+    expect(focusReleased(null, focus)).toBe(false);
   });
 });

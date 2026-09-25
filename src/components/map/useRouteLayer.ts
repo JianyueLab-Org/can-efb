@@ -18,6 +18,7 @@ import { markRouteOnAirways, routeLegKeys } from "@/lib/airways";
 import { unwrapList } from "@/lib/aip";
 import { api } from "@/lib/canApi";
 import { dbFetch } from "@/lib/naip";
+import { viewForPlanRequest } from "@/components/map/planRequest";
 
 export function useRouteLayer(options: {
   airways: Ref<FeatureCollection | null>;
@@ -247,6 +248,25 @@ export function useRouteLayer(options: {
     unsubscribePlanRequest = subscribePlanRequest(() => {
       panelPublished = false;
       planKey = "";
+      // 别的页面留下的焦点、标注，以及（画的不是计划时）面板的点和角标，见
+      // planRequest.ts。都在重读之前清：重读可能失败，失败时图上不能留着冒充计划的东西。
+      const next = viewForPlanRequest(
+        {
+          points: points.value,
+          markers: markers.value,
+          focus: focus.value,
+          label: label.value,
+          planShown,
+        },
+        text.label,
+      );
+      focus.value = next.focus;
+      markers.value = next.markers;
+      label.value = next.label;
+      if (next.pointsChanged) {
+        points.value = next.points;
+        refreshHighlight();
+      }
       void loadPlanRoute();
     });
   }
