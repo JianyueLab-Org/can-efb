@@ -3,8 +3,6 @@ import {
   fromApiResult,
   fromDbResponse,
   isForbiddenStatus,
-  LOADING,
-  stateCardKind,
 } from "@/lib/requestState";
 
 /**
@@ -110,15 +108,5 @@ describe("isForbiddenStatus", () => {
       false,
       false,
     ]);
-  });
-});
-
-describe("stateCardKind", () => {
-  test("有数据时不画状态卡，其余四种各对各的", () => {
-    expect(stateCardKind({ kind: "data", data: 1 })).toBeNull();
-    expect(stateCardKind(LOADING)).toBe("loading");
-    expect(stateCardKind({ kind: "empty" })).toBe("empty");
-    expect(stateCardKind({ kind: "error", status: 500 })).toBe("error");
-    expect(stateCardKind({ kind: "forbidden", status: 403 })).toBe("forbidden");
   });
 });

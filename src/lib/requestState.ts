@@ -61,8 +61,3 @@ export function fromDbResponse<T>(
   }
   return present(data, isEmpty);
 }
-
-/** 这一状态该画哪一种状态卡；有数据时不画，返回 null。 */
-export function stateCardKind<T>(state: RequestState<T>): StateKind | null {
-  return state.kind === "data" ? null : state.kind;
-}
