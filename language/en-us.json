@@ -6,7 +6,6 @@
     "skipToContent": "Skip to content",
     "rail": {
       "label": "Main navigation",
-      "open": "Open navigation",
       "close": "Close navigation",
       "collapse": "Collapse sidebar",
       "expand": "Expand sidebar"
@@ -66,11 +65,6 @@
         "title": "Settings",
         "description": "Units, theme, language and account."
       }
-    },
-    "placeholder": {
-      "title": "Nothing here yet",
-      "body": "The frame lands first: shell, navigation, theme and languages are in place. The content waits on can-api being wired up.",
-      "reasons": {}
     },
     "common": {
       "loading": "Loading…",

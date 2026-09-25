@@ -1,13 +1,12 @@
 <script setup lang="ts">
 /**
- * 地图画布。**MapLibre GL**，不是 Leaflet —— 这一版是换库重写。
+ * 地图画布，MapLibre GL。
  *
  * ## 为什么换
  *
  * 这块地图要长成一张航路图：航路线、五字码航路点、导航台符号加频率、空域多边形
- * 和它们的上下限标注，全都叠在一起。Leaflet 把每个标注渲染成 DOM 节点，一屏几千
- * 个就卡；更要命的是它**没有标签避让**，密集处标注互相压成一团。MapLibre 在 GPU
- * 上画矢量，标签碰撞是它的内建能力 —— 这是换库的全部理由。
+ * 和它们的上下限标注，全都叠在一起，标注需要碰撞检测。MapLibre 在 GPU
+ * 上画矢量，标签碰撞是它的内建能力。
  *
  * ## 没有瓦片，也没有外部依赖
  *
@@ -22,8 +21,8 @@
  *
  * ## 绝不服务端渲染
  *
- * 和 Leaflet 那一版同一条规矩，理由一样硬：`maplibre-gl` 在模块顶层就摸
- * `window`。`MapSurface` 用 `defineAsyncComponent` + `mounted` 守着它 —— 改成静态
+ * 规矩：`maplibre-gl` 在模块顶层就摸
+ * `window`。`MapStage` 用 `defineAsyncComponent` + `mounted` 守着它 —— 改成静态
  * import，**每一个**页面都会 500（这块地图挂在外壳上，不再只是 `/route`）。
  *
  * ## 样式在 `lib/chartStyle.ts`

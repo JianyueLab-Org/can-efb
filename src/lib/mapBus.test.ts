@@ -55,7 +55,8 @@ describe("panel:layout", () => {
 
 /**
  * 飞过去的目标必须是个真坐标。datafeed 里刚连上的飞机没有经纬度，从前那种点被传
- * 下去，地图飞去 NaN，整张图不动，看起来像按钮坏了（MapSurface.vue 576–587）。
+ * 下去，地图飞去 NaN，整张图不动，看起来像按钮坏了（formerly MapSurface.vue 踩过
+ * 的坑）。
  */
 describe("map:focus", () => {
   test("合法的点和框都认", () => {

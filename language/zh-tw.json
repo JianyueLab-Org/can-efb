@@ -6,7 +6,6 @@
     "skipToContent": "跳到主要內容",
     "rail": {
       "label": "主導覽",
-      "open": "開啟導覽",
       "close": "關閉導覽",
       "collapse": "收合側欄",
       "expand": "展開側欄"
@@ -66,11 +65,6 @@
         "title": "設定",
         "description": "單位、主題、語言與帳戶。"
       }
-    },
-    "placeholder": {
-      "title": "這一頁還沒有內容",
-      "body": "先落地的是框架：外殼、導覽、主題與多語系已經就位。頁面內容要等接上 can-api 之後再填。",
-      "reasons": {}
     },
     "common": {
       "loading": "載入中…",

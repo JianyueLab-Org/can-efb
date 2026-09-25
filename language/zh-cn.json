@@ -6,7 +6,6 @@
     "skipToContent": "跳到主要内容",
     "rail": {
       "label": "主导航",
-      "open": "打开导航",
       "close": "关闭导航",
       "collapse": "收起侧栏",
       "expand": "展开侧栏"
@@ -66,11 +65,6 @@
         "title": "设置",
         "description": "单位、主题、语言与账户。"
       }
-    },
-    "placeholder": {
-      "title": "这一页还没有内容",
-      "body": "先落地的是框架：外壳、导航、主题与多语言已经就位。页面内容要等接上 can-api 之后再填。",
-      "reasons": {}
     },
     "common": {
       "loading": "载入中…",

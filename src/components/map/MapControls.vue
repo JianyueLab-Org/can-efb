@@ -21,7 +21,7 @@ const props = defineProps<{
   text: { menu: string; retry: string; locate: string; layerFailed: string };
   on: Record<LayerToggle, boolean>;
   busy: { airways: boolean; other: boolean };
-  /** 在线管制席位数，只给管制那一项挂角标 —— 见 MapSurface.vue 1436–1439。 */
+  /** 在线管制席位数，只给管制那一项挂角标（模板里 `id === 'atcLive'` 那一段）。 */
   atcCount: number;
   /** 「有 n 块边界不完整没画」，已经把 n 填好；没有就是 null。 */
   partial: string | null;
