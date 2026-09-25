@@ -16,6 +16,11 @@
       "placeholder": "Jump to…",
       "noResults": "No matching page"
     },
+    "panel": {
+      "collapse": "Collapse panel",
+      "expand": "Expand panel",
+      "handle": "Drag, or use the arrow keys, to resize the panel"
+    },
     "account": {
       "menu": "Account menu",
       "signIn": "Sign in",

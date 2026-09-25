@@ -49,6 +49,8 @@ import { useTrafficLayer } from "@/components/map/useTrafficLayer";
 import { useRouteLayer } from "@/components/map/useRouteLayer";
 import { DEFAULT_PREFS, readPrefs, type LayerPrefs } from "@/lib/mapPrefs";
 import { hideNaip } from "@/lib/naip";
+import { subscribePanelLayout } from "@/lib/mapBus";
+import { mapPaddingFor, type MapPadding } from "@/lib/panelLayout";
 
 const props = defineProps<{
   /** 地图角上的说明，已翻译。 */
@@ -168,6 +170,19 @@ const ownButton = computed(() =>
   ownAt.value ? { callsign: ownAt.value.callsign } : null,
 );
 
+/**
+ * 面板盖住了哪一块。两处用：交给 RouteMap 做 `setPadding`，以及写成 CSS 变量，
+ * 让压在地图上的控件（`.map-overlay`、MapLibre 的四个控件角）跟着可见区走。
+ */
+const padding = ref<MapPadding>({ top: 0, right: 0, bottom: 0, left: 0 });
+const padStyle = computed(() => ({
+  "--map-pad-top": `${padding.value.top}px`,
+  "--map-pad-right": `${padding.value.right}px`,
+  "--map-pad-bottom": `${padding.value.bottom}px`,
+  "--map-pad-left": `${padding.value.left}px`,
+}));
+let unsubscribeLayout: (() => void) | null = null;
+
 /** 视野变了：静态层按缩放补数据，地面层按视野补机场。两者互不相干。 */
 function onViewport(v: Viewport) {
   lastViewport = v;
@@ -228,6 +243,12 @@ watch(hideNaip, () => {
 
 onMounted(() => {
   mounted.value = true;
+  unsubscribeLayout = subscribePanelLayout((layout) => {
+    padding.value = mapPaddingFor(layout, {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    });
+  });
   // 按偏好把图层打开 —— 这是「打开就看到航图」的那一步。不 await：地图不该等航路网
   // 下载完才出现。
   const saved = readPrefs();
@@ -242,17 +263,19 @@ onBeforeUnmount(() => {
   // 还活着，就是一个谁也看不见的泄漏。
   route.stop();
   live.stop();
+  unsubscribeLayout?.();
 });
 </script>
 
 <template>
-  <section class="app-map" :aria-label="label">
+  <section class="map-stage" :style="padStyle" :aria-label="label">
     <!-- `points` 为空也照样渲染：空点集只画底图，不会抛。 -->
     <RouteMap
       v-if="mounted"
       :points="points"
       :markers="markers"
       :focus="focus"
+      :padding="padding"
       :airways="airways"
       :airway-fixes="shownFixes"
       :airports="airports"

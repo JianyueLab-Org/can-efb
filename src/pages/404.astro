@@ -18,8 +18,10 @@ const t = useTranslations(getLocale(Astro.cookies), "efb");
     <p class="font-mono text-5xl font-semibold tracking-tight text-faint">
       404
     </p>
-    <h1 class="mt-4 text-lg font-semibold text-ink">{t("notFound.title")}</h1>
-    <p class="mt-2 max-w-sm text-sm text-muted">{t("notFound.body")}</p>
+    {
+      /* 标题由面板顶上的 PageHeader 出，这里再写一个 h1 就是同一页两个一样的 h1。 */
+    }
+    <p class="mt-4 max-w-sm text-sm text-muted">{t("notFound.body")}</p>
     <a href="/" class="btn btn-primary mt-6">{t("notFound.home")}</a>
   </div>
 </AppLayout>

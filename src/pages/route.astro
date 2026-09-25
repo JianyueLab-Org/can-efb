@@ -1,6 +1,5 @@
 ---
 import AppLayout from "@/layouts/AppLayout.astro";
-import PageHeader from "@/components/PageHeader.astro";
 import RoutePlanner from "@/components/RoutePlanner.vue";
 import RouteGenerator from "@/components/RouteGenerator.vue";
 import { getLocale, getMessages, useTranslations } from "@/lib/i18n";
@@ -12,7 +11,6 @@ const description = t("pages.route.description");
 ---
 
 <AppLayout title={title} description={description}>
-  <PageHeader title={title} description={description} />
   {
     /*
     两件事，都在这一页，顺序是刻意的：**先生成，后展开**。

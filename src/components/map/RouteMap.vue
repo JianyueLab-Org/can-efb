@@ -488,7 +488,7 @@ onMounted(() => {
       localIdeographFontFamily:
         'system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif',
       // 滚轮缩放恒开：地图铺满视口，页面本身不滚，不存在「滚轮停在地图上把页
-      // 面卡住」那回事了。以前这里问 CSS 的 `--shell-layout`，那个变量随三栏外壳
+      // 面卡住」那回事了。以前这里问 CSS 里三栏外壳的排布变量，那个变量随三栏外壳
       // 一起删了。
       scrollZoom: true,
     });

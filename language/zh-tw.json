@@ -16,6 +16,11 @@
       "placeholder": "跳轉到…",
       "noResults": "沒有符合的頁面"
     },
+    "panel": {
+      "collapse": "收起面板",
+      "expand": "展開面板",
+      "handle": "拖動或按方向鍵調整面板高度"
+    },
     "account": {
       "menu": "帳戶選單",
       "signIn": "登入",

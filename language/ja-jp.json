@@ -16,6 +16,11 @@
       "placeholder": "ページを検索…",
       "noResults": "該当するページがありません"
     },
+    "panel": {
+      "collapse": "パネルを畳む",
+      "expand": "パネルを開く",
+      "handle": "ドラッグまたは矢印キーでパネルの高さを変更"
+    },
     "account": {
       "menu": "アカウントメニュー",
       "signIn": "ログイン",
