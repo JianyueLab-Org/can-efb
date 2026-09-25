@@ -22,67 +22,54 @@ commit 指针 —— 根仓库只记录指针，指向一个没推过的 SHA 会
 航路展开）**和 can-db**（机场、航路网、导航台、空域、Grid MORA），加上 can-fsd 的
 实时 datafeed（在线管制、在线航班、自己那架飞机）。
 
-**只剩航图一页是占位**，因为那是有版权的数据，网络里没有任何一处提供它 —— 性能和
-检查单两页已经删掉而不是占着。详见〈还在占位的页面〉。
+**没有航图页面**，因为那是有版权的数据，网络里没有任何一处提供它；性能和检查单
+两页也删了，不是占着。详见〈没有占位页面〉。
 
 和 can-dev / can-radar 一样，这个站**一行数据库凭据都不该有**，而且比它们更进
 一步：**一个 Secret 都没有**。can-dev 要注册 OAuth 应用、要 client secret 和
 session secret；这个站不参与 OAuth，会话由 can-api 签在父域上，它只负责把
 cookie 转发回去。哪天有人要在这里加 Secret，先确认那件事不能靠转发 cookie 完成。
 
-## 三栏的宽度分配：地图要占多数，而这曾经不成立
+## 外壳：地图铺满，面板浮在上面
 
-外壳是 **轨 | 面板 | 地图**。曾经轨 17rem、面板**固定 30rem**，两个都是定值，于是屏
-越窄地图被挤得越狠 —— 算出来是这样：
+外壳是**一张铺满窗口的地图**，轨和面板都是浮在它上面的玻璃（`.glass`，材质取
+can-ui 的 `--material-regular` / `--material-blur-regular`）。以前是**轨 | 面板 |
+地图**三栏，地图只拿剩下的宽度 —— 1280 上四成，1024 上比轨还窄。现在地图永远是整
+个窗口，面板挡住的那一块用**内边距**让出来：
 
-| 屏宽 | 地图（旧） | 占比    | 地图（现在）     | 占比    |
-| ---- | ---------- | ------- | ---------------- | ------- |
-| 1024 | 272px      | **27%** | 整宽（改走堆叠） | —       |
-| 1280 | 528px      | 41%     | 688px            | **54%** |
-| 1440 | 688px      | 48%     | 837px            | 58%     |
-| 1920 | 1168px     | 61%     | 1232px           | 64%     |
+- 面板每次改变位置或大小，`lib/panelController.ts` 发一条 `panel:layout`（`mapBus`
+  上，新订阅者会收到上一条）。`MapStage` 用 `lib/panelLayout.ts` 的 `mapPaddingFor`
+  算出内边距交给 MapLibre，所以「居中」「框住航路」都是对**没被挡住的那一块**说的。
+- 面板宽度由页面声明：`standard`（26rem，列表和短表单）或 `wide`（44rem，飞行计划、
+  设置）。平板上 wide 退回 standard。
+- 面板可以收起成一条（`inert` 挡住里面的 Tab），地图跟着把内边距收回去。
 
-也就是说在本文件自己举的那块 **1280×800** 屏上，地图只拿到四成，而 1024 那一档它比
-轨本身还窄。「地图是主体」当时只是一句愿望。
+### 三种排布，断点只写在 CSS 里
 
-现在两处改动：
+| 宽度       | `--shell-mode` | 轨                 | 面板                              |
+| ---------- | -------------- | ------------------ | --------------------------------- |
+| ≥1152px    | `desktop`      | 展开（或按偏好）   | 左侧浮卡，standard / wide         |
+| 768–1151px | `tablet`       | 默认收起（`auto`） | 左侧浮卡，恒为 standard           |
+| <768px     | `phone`        | 没有，换底部标签栏 | 底部抽屉：收起 72px / 半屏 / 全屏 |
 
-- **面板 `clamp(20rem, 23vw, 26rem)`**，不再是定值。下限 20rem 是因为里面装表单，
-  上限 26rem 是因为再宽只会让每行文字更难读（原注释里对的那一半）。
-- **三栏的断点 1024 → 1152**。1024 那一档三栏根本排不下（地图只剩 432px 一条），
-  让它走堆叠 —— 地图 `40dvh × 整宽`，无论面积还是长宽比都比那一条强。**这更符合
-  「以地图为主」，不是退让。**
+768 和 1152 **只写在 `globals.css` 的媒体查询里**。JS 要知道当前排布就读
+`--shell-mode`（`parseShellMode`），要知道轨的默认就读 `--rail-auto`
+（`effectiveRail`）—— 不写 `matchMedia`。以前 RouteMap 自己写过一份
+`matchMedia("(min-width: 1024px)")`，改断点时两份分叉，那是没人查得到的毛病。
+
+手机的抽屉按 can-ui 的 `projectToDetent` 吸附到三档之一，拖动时越界有阻尼
+（`rubberbandClamp`），焦点进入抽屉时展开到全屏，免得输入框被键盘和地图夹住。
 
 ### 面板里的多列排布按容器判，不按视口判
 
-这一条是收窄面板时**必须一起改**的，否则会引入一个新故障。那些网格原来写的是
-`sm:grid-cols-2 lg:grid-cols-4` —— `lg:` 是**视口** ≥1024px，和面板自己有多宽毫无
-关系。面板 30rem 时四列还勉强（每列 96px），收到 20rem 之后每列只剩 **58px**，输入
-框排不下。
-
-前缀用错了工具，不是数值选错了：这是一条固定窄列，该问的是「这一列有多宽」。所以
-`.app-panel` 声明成 `container-type: inline-size`，里面改用 `@xs:` / `@md:` /
-`@2xl:` 这种容器前缀。结果是同一批组件在三栏下收成一到两列（每列 132–376px，**比
-原来的 96px 还宽**），在堆叠下才铺开四列。
-
-挑档的依据是**面板自身宽度**（320–416px），不是内边距之后的内容宽 —— 容器查询量的
-是容器。所以带输入框的那几处用 `@md`（448px，面板够不着），三栏下恒为单列，免得出
-现「1440 上单列 291px、1680 上反而挤成三列 105px」那种跳变。
-
-### 断点只有一个定义处
-
-三栏那个 1152 只写在 `globals.css` 的媒体查询里。RouteMap 也需要知道同一件事（堆叠
-时页面会滚，滚轮停在地图上会把它卡住，那时要关掉 `scrollZoom`），它**去问 CSS**：媒
-体查询里翻 `--shell-layout`，JS 读它。地图跨页面存活，所以它在窗口 `resize` 时
-重读一次，答案变了才切 `scrollZoom`。
-
-以前那里是自己写的一份 `matchMedia("(min-width: 1024px)")`，而这次改断点正好会让两
-份分叉 —— 表现是某个宽度区间里滚轮把页面卡住，那是没人查得到的毛病。
+面板声明成 `container-type: inline-size`（容器名 `efb-panel`），里面的网格用
+`@sm:` / `@md:` 这种容器前缀，表单用 `FieldGrid`（面板 ≥36rem 才分两列）。用视口
+前缀的话，1440 的屏上 standard 面板也会被排成两列，每列不到 200px。
 
 ## 这个站没有站头，这是整个布局的前提
 
 **不要加回顶栏。** 凡是会被放进顶栏的东西 —— 品牌、⌘K 快速跳转、主题、语言、
-账户 —— 都在左侧那条轨里（`src/components/ui/AppRail.vue`）。
+账户 —— 都在左侧那条轨里（`src/components/AppRail.vue`）。
 
 理由：EFB 是在飞行途中看的，屏幕多半是横放的平板或者副屏，**竖直方向是最紧张
 的资源**。一条 64px 的顶栏在 1280×800 上吃掉 8% 的高度，而它装的每一样东西在
@@ -90,39 +77,46 @@ cookie 转发回去。哪天有人要在这里加 Secret，先确认那件事不
 
 由此带来三个后果，都在 AppRail 里解决了，改动之前先读那里的注释：
 
-1. **手机上没有地方挂汉堡按钮**，所以左下角有一颗浮动按钮拉开抽屉。放左下是因
-   为没有顶栏时那里离拇指最近，右下留给将来的页面级动作。
+1. **手机上没有轨**，换成底部标签栏：五个导航项一行，拇指够得着。主题、语言、账
+   户和跨站链接在设置页最底下（`.phone-only`），那是它们在手机上唯一的家。
 2. **⌘K 快速跳转**不能跟着顶栏一起消失，它现在是轨里品牌下面的第一件东西，折
    叠态退化成一个放大镜方块。
 3. **主题 / 语言 / 账户在轨脚**，靠 `mt-auto` 撑下去而不是绝对定位 —— 导航长到
    要滚动时它得跟着滚走，而不是盖住最后一个链接。
 
-页面自己的标题、说明和动作按钮走 `src/components/PageHeader.astro`。它渲染的
-`<header>` 是**页面级**的标题区，不是站头，两者不要混为一谈。
+页面的标题和说明由 `FloatingPanel.astro` 用 `PageHeader.astro` 渲染，页面只传
+`title` / `description`。它渲染的 `<header>` 是**页面级**的标题区，不是站头，两者
+不要混为一谈。
 
 ### 折叠状态为什么不在组件的 state 里
 
-轨可以在 17rem 和 4.75rem 之间折叠。折叠要同时改两个东西：轨自己的宽度，和正
-文那一列的左内边距。而正文是 Astro 渲染的静态 HTML，和 AppRail 这个 Vue 岛屿之
-间**没有响应式通道** —— 用 props 传就得把整页塞进岛屿，那样每个页面都要为外壳
-付一次水合代价。
+轨可以在 17rem 和 4.75rem 之间折叠。`data-rail` 有三个值：`expanded`、`collapsed`、
+`auto`。`auto` 是**没存过偏好**：桌面展开、平板（768–1151px）收起，由 CSS 在媒体
+查询里给 `--rail-auto` 赋值。JS 要知道此刻实际是哪一种，用 `lib/panelLayout.ts`
+的 `effectiveRail(data-rail, --rail-auto)`，不自己写断点。手机上没有轨，换成底部
+标签栏。
+
+折叠要同时改两个东西：轨自己的宽度，和正文那一列的左内边距。而正文是 Astro 渲
+染的静态 HTML，和 AppRail 这个 Vue 岛屿之间**没有响应式通道** —— 用 props 传就
+得把整页塞进岛屿，那样每个页面都要为外壳付一次水合代价。
 
 所以状态存在 `<html data-rail>` 上，两边都从同一个 CSS 变量取值：
 
 - `src/components/RailScript.astro` —— 首屏绘制**之前**从 localStorage 读出来写
-  好。晚一步就是布局跳动：正文会横向平移 12rem，和主题闪烁是同一类毛病。
+  好，没存过就写 `auto`。晚一步就是布局跳动：正文会横向平移 12rem，和主题闪烁是
+  同一类毛病。
 - `src/styles/globals.css` 末尾的 `can-efb only` 一节 —— `--rail-current`、
-  `.app-rail`、`.app-shell`（它负责给轨让位），以及折叠态下的 `.rail-item` /
-  `.rail-label`。（这里以前还列着 `.app-main-offset`，那是**第一版外壳**的类，
-  三栏外壳上线后就没有使用者了，已经删掉。）
+  `.app-rail`，以及折叠态下的 `.rail-item` / `.rail-label`。给轨让位的是
+  `.floating-panel` 自己按 `--rail-current` 让开，不是一个专门的外壳类。（这里
+  以前还列着 `.app-main-offset`，那是**第一版外壳**的类，三栏外壳上线后就没有
+  使用者了，已经删掉；全仓没有任何 `.vue` / `.astro` 还在用它。）
 - `AppRail` 挂载时把 `data-rail` **读回来**当作初始值，而不是第二次去读
   localStorage：两处各判断一次就会有两个可能不一致的答案。
 - 之后它用 `MutationObserver` **一直跟着** `data-rail`，设置页那个开关也一样。
   两处都只写 `data-rail`，不互相改对方的 state —— `data-rail` 是唯一的来源。
 
-那两条折叠规则的选择器里 `.app-rail` 是必须的：手机抽屉渲染的是同一批组件、带
-着同一批 `.rail-*` 类，少了这层限定，桌面收起轨之后抽屉里的导航也会跟着只剩图
-标，而抽屉是全宽的。
+那两条折叠规则的选择器里保留 `.app-rail` 限定：`data-rail` 挂在 `<html>` 上，这一层
+让规则只作用于轨本身，别处出现的 `.rail-*` 不受折叠态影响。
 
 ## 数据：全部经由 can-api，浏览器只打同源
 
@@ -194,20 +188,20 @@ cookie 转发回去。哪天有人要在这里加 Secret，先确认那件事不
 下面这些和 can-web / can-dev / can-radar **逐字相同**。要改共有的行为，改在
 can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的那个毛病：
 
-| 文件                                      | 说明                                                                                                                                                                         |
-| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/lib/i18n.ts`                         | 除了只加载一个 `efb` 命名空间，其余逐字相同                                                                                                                                  |
-| `src/lib/useOverlay.ts`                   | 焦点陷阱 / 滚动锁 / Esc                                                                                                                                                      |
-| `src/components/ui/Icon.vue`              |                                                                                                                                                                              |
-| `src/components/ui/ThemeLangControls.vue` | 含视图过渡的圆形擦除                                                                                                                                                         |
-| `src/components/ThemeScript.astro`        | 无闪烁主题初始化                                                                                                                                                             |
-| `src/components/icons.ts`                 | **前 47 个键**逐字相同；本站新增的在末尾 `can-efb only` 一段                                                                                                                 |
-| `src/styles/globals.css`                  | 设计系统来自 `@jianyuelab-org/can-ui/styles`（一行 import）；本站新增的在其后 `can-efb only` 一节                                                                            |
-| `src/lib/geo.ts`                          | `distanceNm` / `greatCircle` / `arc` 逐字取自 can-radar 的 `radar.ts` 与 `RadarMap.vue`                                                                                      |
-| `src/lib/atc.ts`                          | `FACILITY_COLORS` / `facilityRank` / `stationAirport` / `parseFeedTime` 逐字取自 can-radar 的 `radar.ts`；`groupControllers` 是它 `RadarMap.vue` 里 `groupStations` 的列表版 |
-| `src/lib/traffic.ts`                      | 高度色带 / `altitudeBand` / `isOnGround` / `flightLevel` 逐字取自 can-radar 的 `radar.ts`（它又源自 vatsim-radar）                                                           |
+| 文件                     | 说明                                                                                                                                                                         |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/lib/i18n.ts`        | 除了只加载一个 `efb` 命名空间，其余逐字相同                                                                                                                                  |
+| `src/styles/globals.css` | 设计系统来自 `@jianyuelab-org/can-ui/styles`（一行 import）；本站新增的在其后 `can-efb only` 一节                                                                            |
+| `src/lib/geo.ts`         | `distanceNm` / `greatCircle` / `arc` 逐字取自 can-radar 的 `radar.ts` 与 `RadarMap.vue`                                                                                      |
+| `src/lib/atc.ts`         | `FACILITY_COLORS` / `facilityRank` / `stationAirport` / `parseFeedTime` 逐字取自 can-radar 的 `radar.ts`；`groupControllers` 是它 `RadarMap.vue` 里 `groupStations` 的列表版 |
+| `src/lib/traffic.ts`     | 高度色带 / `altitudeBand` / `isOnGround` / `flightLevel` 逐字取自 can-radar 的 `radar.ts`（它又源自 vatsim-radar）                                                           |
 
-`icons.ts` 和 `globals.css` 都按「上游部分在前、本站部分在末尾单独一节」切开，就是为了同步时可以
+`Icon`、`ThemeLangControls`、`ThemeScript`、`useOverlay` 不在这张表里：本地那几份拷贝
+（`components/ui/Icon.vue`、`components/ui/ThemeLangControls.vue`、
+`components/ThemeScript.astro`、`lib/useOverlay.ts`）已经删掉，四个都改成从
+`@jianyuelab-org/can-ui` 引入，`icons.ts` 那份键表也随 `Icon` 一起删了。
+
+`globals.css` 按「上游部分在前、本站部分在末尾单独一节」切开，就是为了同步时可以
 整段替换上半截。
 
 `geo.ts` 是**复制**，不是共享包：两个站分属不同仓库、不同 CI，为三个纯函数拉一
@@ -298,12 +292,14 @@ datafeed 给的那个经纬度是**管制员自己的视野中心** —— 既�
 个画的是**空域划分**（静态资料），这一个画的是**谁在线**（实时）。
 
 **这个站自己的**：外壳（`AppRail.vue`、`SidebarNav.vue`、`RailScript.astro`、
-两个 layout、`PageHeader.astro`、`Placeholder.astro`）、数据层
-（`lib/canApi.ts`、`server/canApi.ts`、`lib/config.ts`、`lib/session.ts`、
-`middleware.ts`、`pages/api/v1/[...path].ts`、`pages/api/db/[...path].ts`）、功能
-岛屿（`Dashboard`、`FlightPlan`、`Weather`、`RoutePlanner`、`RouteGenerator`、
-`Airports`、`Settings`）、地图那两件（`MapSurface.vue` 是外壳侧的常驻显示面，
-`RouteMap.vue` 是画布）、以及 `lib/nav.ts`、`language/*.json`。
+`FloatingPanel.astro` + `lib/panelController.ts`、两个 layout、`PageHeader.astro`）、
+数据层（`lib/canApi.ts`、`server/canApi.ts`、`lib/config.ts`、`lib/session.ts`、
+`middleware.ts`、`pages/api/v1/[...path].ts`、`pages/api/db/[...path].ts`）、页面
+岛屿（每页一个：`Dashboard`、`flightplan/FlightPlan`、`RouteTabs`、`Airports`、
+`Settings`）、共用的状态与表单件（`components/ui/`：`StateCard`、`PanelSection`、
+`Field`、`FieldGrid`）、地图（`components/map/`：`MapStage.vue` 是外壳侧的常驻显示
+面，四个 `use*Layer` 各管一类图层，`RouteMap.vue` 是画布），以及 `lib/nav.ts`、
+`language/*.json`。
 
 （这份清单里以前有 `Logbook`。那一页删掉时**词典里的 `logbook` 命名空间跟着一起
 删了，模板却没有** —— 概览页底下那两块统计还在调 `t("logbook.stats.flights")`，于
@@ -315,17 +311,12 @@ datafeed 给的那个经纬度是**管制员自己的视野中心** —— 既�
 那批词条一起加回来。）
 
 **`RouteMap.vue` 是这个站唯一一个不能被服务端渲染的组件**：**MapLibre GL** 在模块
-顶层就摸 `window`。规矩没变，但它周围的两件事都变了，这段以前写的是旧的：
+顶层就摸 `window`。引它的是 `MapStage.vue`，不是 `RoutePlanner`，而且地图挂在外壳
+上、每一页都在。所以"解出航路才下载"那条已经不成立了：那个 chunk 现在每页都要加
+载，这是为"地图是主体"付的钱。真要把它省回来，正确的做法是让画不出东西的页面根本
+不渲染那一列，而不是把底图换成一段文字（那正是上一版被推翻的做法）。
 
-- **库是 MapLibre，不是 Leaflet。** 换库是为了标签避让和 GPU 渲染 —— 这块地图要
-  把航路线、五字码、导航台、空域边界和它们的标注全叠在一起，而 Leaflet 把每个标
-  注渲染成 DOM 节点、且没有碰撞检测。理由写在 `RouteMap.vue` 顶上。
-- **引它的是 `MapSurface.vue`，不是 `RoutePlanner`，而且地图挂在外壳上、每一页都
-  在。** 所以"解出航路才下载"那条已经不成立了：那个 chunk 现在每页都要加载，这是
-  为"地图是主体"付的钱。真要把它省回来，正确的做法是让画不出东西的页面根本不渲染
-  那一列，而不是把底图换成一段文字（那正是上一版被推翻的做法）。
-
-守法仍然是同一条：`MapSurface` 用 `defineAsyncComponent` 加一个 `mounted` 守着。
+守法仍然是同一条：`MapStage` 用 `defineAsyncComponent` 加一个 `mounted` 守着。
 静态 import 它、或者去掉那个 `v-if`，**每一个**页面都会 500 —— 不再只是 `/route`。
 
 `SidebarNav.vue` 虽然形状来自 can-web，但把可折叠的 `children` 换成了**扁平分
@@ -339,7 +330,7 @@ datafeed 给的那个经纬度是**管制员自己的视野中心** —— 既�
 | 常量 / 函数                  | 内容                                                                    |
 | ---------------------------- | ----------------------------------------------------------------------- |
 | `COLORS`                     | 浅色、夜间两套颜色，各自写全，不做反色。语义色同色相，只调明度          |
-| `ZOOM`                       | 每类要素从哪一级出现。`MapSurface` 的取数门槛也读它                     |
+| `ZOOM`                       | 每类要素从哪一级出现。`useChartLayers` 的取数门槛也读它                 |
 | `WIDTH` / `OPACITY`          | 线宽、透明度，`[缩放, 值]` 锚点                                         |
 | `TEXT` / `ICON`              | 字号、图标尺寸                                                          |
 | `SHIELD`                     | 航路代号牌的字外留白                                                    |
@@ -517,29 +508,18 @@ cookie 名是 **`NEXT_LOCALE`**，Next.js 时代留下来的；四个站共用�
 传进岛屿的是 `getMessages(locale, "efb")` 这一本，不是整本词典 —— 岛屿的 props
 会原样序列化进每个页面的 HTML。
 
-## 还在占位的页面，以及为什么
+## 没有占位页面
 
-**这一节以前写的是"四个"，现在只剩一个。** 变化本身值得记下来，因为三条各有各的
-结局：
+**这一节以前列着四个，现在一个都没有。** `Placeholder.astro` 连同 `efb.placeholder.*`
+一起删了。三条各有各的结局，记下来：
 
-- **航图 `/charts`** —— **仍然是占位**（`Placeholder.astro`，文案在
-  `efb.placeholder.reasons.charts`）。有版权的数据，网络里没有任何一处提供它。
-  要么授权，要么自建图源。
+- **航图 `/charts`** —— 没有页面、没有入口。有版权的数据，网络里没有任何一处提供
+  它；要么授权，要么自建图源，那之前不摆一个打不开的入口。
+- **机场 `/airports`** —— 做了，数据来自 can-db。
+- **性能 / 检查单** —— 删了。要机型手册数据、要按机型逐条录入，两样都不存在。
 
-  注意它现在**不是一块空白**：地图挂在外壳上、每一页都在，所以打开这一页看到的是
-  左边一条占位说明、右边一张真的航路图。占位说的是"没有航图 PDF"，不是"这一页什
-  么都没有"。
-
-- **机场 `/airports`** —— **已经做了**，数据来自 can-db（`Airports.vue` +
-  `pages/api/db/[...path].ts`）。当初写的理由是"没有一份带跑道、频率、滑行道的机
-  场库可读"，而 can-db 就是后来长出来的那一份。
-- **性能 / 检查单** —— **两页删掉了**，不是还占着。理由没变（要机型手册数据、要
-  按机型逐条录入，两样都不存在），但摆一个永远打不开的入口本身就是噪音：删掉比留
-  一个占位诚实。想做的时候按〈导航是一份数据〉那节重新加回来即可。
-
-**别用假数据把剩下这一个填上。** 一个摆着占位数字的仪表盘会被当成坏掉的真页面，
-而不是还没做的页面 —— 飞行员会照着它做决定。同一条规矩也是**图层为空要说话**的由
-来，见下。
+**别用假数据填页面。** 摆着占位数字的仪表盘会被当成坏掉的真页面 —— 飞行员会照着它
+做决定。同一条规矩也是**图层为空要说话**的由来，见下。
 
 ## 图层没有数据的时候必须说出来
 
@@ -549,15 +529,18 @@ cookie 名是 **`NEXT_LOCALE`**，Next.js 时代留下来的；四个站共用�
 2. 权限不够（没有 `aipAccess`，每层都 401）—— **不说**，被 `deniedThisSession` 咽掉
 3. **取回来是空的** —— **不说**，因为它根本不是错误：200 加一个空数组，
    `toAirwayLines` 得到 0 个要素，一路顺畅地画出一张空图
+4. **请求失败** 现在除了退回关，还会在地图上留一条带「重试」的提示（`useLayerNotice`
+   的 `failure`，`MapControls.vue` 画它）。退回关的规矩不变 —— 开关要说真话；提示
+   是为了让人知道**为什么**关了，而不是只在控制台里留一行。
 
 第 3 种正是线上真实发生过的：can-db 的航段 `level` 一列全是默认值，高空视图因此返
 回 0 条（那个仓库的 TODO 里有整节）。而这个站的航路图层**默认是开的**
-（`MapSurface.vue` 的 `DEFAULT_PREFS`）—— 于是打开航图，一条航路都没有，控制台一
+（`lib/mapPrefs.ts` 的 `DEFAULT_PREFS`）—— 于是打开航图，一条航路都没有，控制台一
 个字都没有，看起来像**地图坏了**而不是**这一层没有数据**。（现在高低空一起取，见
 〈航图样式〉。）
 
-现在三种都会说话，走 `MapSurface.vue` 里的 `notice`（文案在 `map.emptyLayer.*` 和
-`map.denied`）。两条规矩：
+现在四种都会说话，走 `components/map/useLayerNotice.ts` 里的 `notice`（文案在
+`map.emptyLayer.*` 和 `map.denied`），由 `MapControls.vue` 渲染。两条规矩：
 
 - **"空"不是"错"，所以不退回关。** 人确实点了那一层，开关就该留在那儿；退回关会
   让人以为自己没点上。失败才退回关。
@@ -566,16 +549,17 @@ cookie 名是 **`NEXT_LOCALE`**，Next.js 时代留下来的；四个站共用�
 
 ### 一条通用判据：**别把「失败」画成「没有」**
 
-上面那条不是地图特有的，它在这个站里已经出现过三次，每次都长得不一样：
+上面那条不是地图特有的，它在这个站里已经出现过四次，每次都长得不一样：
 
 | 地方            | 失败时显示的           | 为什么是假话                                                     |
 | --------------- | ---------------------- | ---------------------------------------------------------------- |
 | 地图图层        | 一张空图，不作声       | 看起来像这一带没有航路                                           |
 | 概览的飞行计划  | 「还没有提交飞行计划」 | 他可能交了，只是没读上 —— 而按钮还写着「去提交」，在劝他再交一份 |
 | 设置的 SimBrief | 「未绑定」加一个输入框 | 他可能绑着，会以为掉了、再绑一次                                 |
+| 概览的 METAR    | 「暂无报文」           | 可能只是没读上；现在说「没能读取」并给重试                       |
 
-第二、三条比第一条**更贵**：图上少一层线是看得出来的，而「你没有计划」是一句读起来
-完全正常的话，人会照着它做决定。
+第二、三、四条比第一条**更贵**：图上少一层线是看得出来的，而「你没有计划」是一句
+读起来完全正常的话，人会照着它做决定。
 
 判据：**一个「什么都没有」的界面，必须能回答"是真的没有，还是没问到"。** 两种情形
 要么各说一句话，要么至少别用只对其中一种成立的措辞。写 `if (!result.ok) return;`
@@ -592,8 +576,8 @@ cookie 名是 **`NEXT_LOCALE`**，Next.js 时代留下来的；四个站共用�
 3. ~~**登录后跳回 EFB**~~ —— **做完了。** can-web 那边加了显式白名单，这个域在
    名单上；`signInUrl(returnTo)` 会带上 callbackUrl。线上未登录访问根路径已经能
    看到它。见上面那一段。
-4. **METAR 解码**。现在只显示原文，那是刻意的（`Weather.vue` 顶上有说明）。真
-   要做，它该是一个带测试的独立模块，不是组件里的一段正则。
+4. **METAR 解码**。现在只显示原文，那是刻意的（`Dashboard.vue` 的天气卡片只摆原
+   文）。真要做，它该是一个带测试的独立模块，不是组件里的一段正则。
 
 ## 命令
 
@@ -652,7 +636,7 @@ zh-cn，英文、繁体、日文三个站当场开始把键名画到屏幕上，
 只是**中文用户永远看不到**，于是没人会报。
 
 也就是说「先加中文，翻译以后再补」不是欠一笔债，是当场就坏。四本今天是齐的（各
-247 个键），这道闸让它保持齐。多出来的键也报：那多半是改键名时漏改了一本，只查
+274 个键），这道闸让它保持齐。多出来的键也报：那多半是改键名时漏改了一本，只查
 "缺"会看到一边缺一边多却只报一半。
 
 **预览构建产物时 `PUBLIC_ORIGIN` 不能省。** 写操作要比对 Origin 头，比对的
