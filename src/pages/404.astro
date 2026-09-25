@@ -4,24 +4,22 @@
  *
  * 走错一个地址的人下一步一定是去别的地方，而这个站的「别的地方」全在轨里。用
  * BaseLayout 渲染会让他们只剩下浏览器的后退按钮。
+ *
+ * 用 StateCard 而不是自己再写一遍「没有东西」的卡片样式 —— 这个组件不认识词典，
+ * 所以 Astro 页面和岛屿都能直接用同一份外观。
  */
 import AppLayout from "@/layouts/AppLayout.astro";
+import StateCard from "@/components/ui/StateCard.vue";
 import { getLocale, useTranslations } from "@/lib/i18n";
 
 const t = useTranslations(getLocale(Astro.cookies), "efb");
 ---
 
 <AppLayout title={t("notFound.title")}>
-  <div
-    class="surface-grid flex flex-col items-center justify-center rounded-card border border-dashed border-subtle px-6 py-20 text-center"
-  >
-    <p class="font-mono text-5xl font-semibold tracking-tight text-faint">
-      404
-    </p>
-    {
-      /* 标题由面板顶上的 PageHeader 出，这里再写一个 h1 就是同一页两个一样的 h1。 */
-    }
-    <p class="mt-4 max-w-sm text-sm text-muted">{t("notFound.body")}</p>
-    <a href="/" class="btn btn-primary mt-6">{t("notFound.home")}</a>
-  </div>
+  {
+    /* 不加 client: —— 这一页没有要在浏览器里做的事，StateCard 只渲染一次 HTML。 */
+  }
+  <StateCard kind="empty" title={t("notFound.title")} body={t("notFound.body")}>
+    <a slot="action" href="/" class="btn btn-primary">{t("notFound.home")}</a>
+  </StateCard>
 </AppLayout>

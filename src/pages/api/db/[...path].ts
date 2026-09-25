@@ -57,7 +57,7 @@ const ALLOW_LIST: Record<string, Allowed> = {
   // 这一层不抄。
   "aip/airports": {
     methods: ["GET"],
-    who: "lib/airports.ts，地面图层的机场索引",
+    who: "lib/airports.ts，地面图层的机场索引；Airports.vue 的重试",
   },
   // 把一条**填报的**航路解析成线。和 `aip/route` 不是一回事：那条回答「该怎么
   // 飞」，这条回答「他填的这条画在哪儿」，一段都不裁。
@@ -118,7 +118,7 @@ const ALLOW_PATTERNS: { pattern: RegExp; entry: Allowed }[] = [
     pattern: /^aip\/airports\/[A-Za-z]{4}$/,
     entry: {
       methods: ["GET"],
-      who: "lib/procedures.ts，进离场程序与跑道的选择器",
+      who: "lib/procedures.ts：进离场程序选择器、机场详情的跑道",
     },
   },
 ];

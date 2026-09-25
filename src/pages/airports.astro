@@ -10,14 +10,18 @@
  * 会拿到 401/403**。那是预期状态而不是故障：这一页把它当成一种正常结果说清楚，
  * 而不是弹一个像坏掉了的错误。在这里抄一份权限判断只会有两份可能不一致的答案。
  *
- * 三种结果各有各的说法，不要合并成一句「加载失败」：
- *   401/403  → 你的账号没有这项数据的权限（谁能给、去找谁）
- *   其他失败 → 资料库暂时取不到（是故障，稍后重试）
- *   成功     → 列表
+ * 四种结果各有各的说法，不要合并成一句「加载失败」：
+ *   401/403     → 你的账号没有这项数据的权限（谁能给、去找谁）
+ *   其他失败    → 资料库暂时取不到（是故障，稍后重试）
+ *   成功但为空  → 资料库里没有机场（不是失败，也不是权限）
+ *   成功        → 列表
+ *
+ * 四种结果由 `fromDbResponse` 分开，岛屿按类渲染 `StateCard`，这一层不再自己分支。
  */
 import AppLayout from "@/layouts/AppLayout.astro";
 import Airports from "@/components/Airports.vue";
 import { getLocale, getMessages, useTranslations } from "@/lib/i18n";
+import { fromDbResponse } from "@/lib/requestState";
 import { listAirports } from "@/server/canDb";
 
 const locale = getLocale(Astro.cookies);
@@ -25,45 +29,20 @@ const t = useTranslations(locale, "efb");
 const title = t("pages.airports.title");
 const description = t("pages.airports.description");
 
+// 401/403、别的失败、空、有数据 —— 四种结果在 fromDbResponse 里分开，岛屿各说各的。
 const result = await listAirports(Astro);
-const denied = result.status === 401 || result.status === 403;
-const airports = result.data ?? [];
+const initial = fromDbResponse(
+  result.ok,
+  result.status,
+  result.data,
+  (list) => !list.length,
+);
 ---
 
 <AppLayout title={title} description={description}>
-  {
-    denied && (
-      <div class="surface-grid rounded-card border border-dashed border-subtle px-6 py-12 text-center">
-        <p class="text-sm font-semibold text-ink">
-          {t("airports.denied.title")}
-        </p>
-        <p class="mx-auto mt-2 max-w-md text-sm text-muted">
-          {t("airports.denied.body")}
-        </p>
-      </div>
-    )
-  }
-
-  {
-    !denied && !result.ok && (
-      <div class="surface-grid rounded-card border border-dashed border-subtle px-6 py-12 text-center">
-        <p class="text-sm font-semibold text-ink">
-          {t("airports.error.title")}
-        </p>
-        <p class="mx-auto mt-2 max-w-md text-sm text-muted">
-          {t("airports.error.body")}
-        </p>
-      </div>
-    )
-  }
-
-  {
-    result.ok && (
-      <Airports
-        airports={airports}
-        messages={getMessages(locale, "efb")}
-        client:load
-      />
-    )
-  }
+  <Airports
+    initial={initial}
+    messages={getMessages(locale, "efb")}
+    client:load
+  />
 </AppLayout>

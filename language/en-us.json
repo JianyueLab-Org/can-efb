@@ -381,7 +381,15 @@
       },
       "mapLabel": "All airports",
       "prompt": "Search by code, name or FIR. {count} airports in the database.",
-      "truncated": "Showing {shown} of {total} matches — type more to narrow it down."
+      "truncated": "Showing {shown} of {total} matches — type more to narrow it down.",
+      "empty": "The database has no airports.",
+      "detail": {
+        "back": "Back to list",
+        "position": "Position",
+        "runways": "Runways",
+        "noRunways": "The database has no runways for this airport.",
+        "runwaysFailed": "Couldn't load the runways — that doesn't mean there are none."
+      }
     }
   }
 }

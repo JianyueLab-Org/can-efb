@@ -2,10 +2,10 @@
 /**
  * 机场索引。数据来自 **can-db**（航行资料库），由页面在服务端取好传进来。
  *
- * **为什么是 props 而不是自己 fetch**：这个岛屿从不直连 can-db。SSR 时
- * `server/canDb.ts` 已经带着成员的 cookie 问过一次了，再在浏览器里问一次，就得
- * 给 can-db 开 CORS、或者在本站反代白名单上多开一条 —— 两样都是为一个只读列表
- * 付的结构性代价。搜索是本地过滤，几百个机场不值得一个往返。
+ * **第一次由页面在服务端取好传进来**（`initial`）：SSR 时 `server/canDb.ts` 已经
+ * 带着成员的 cookie 问过一次，打开页面不必再等一个往返。**重试在浏览器里做**，走
+ * `/api/db/aip/airports` —— 那条本来就在本站反代白名单上（地面图层的机场索引也读
+ * 它），重试不多开任何一条路。
  *
  * **整张列表都推给地图，走 `markers` 而不是 `points`。** 那两个字段的区别不是样
  * 式：`points` 会被顺次连成一条航路线（那是 RouteMap 的用途），几百个机场塞进去
@@ -17,27 +17,53 @@
 import { computed, ref } from "vue";
 import { createTranslator } from "@/lib/i18n";
 import { focusMap, publishToMap } from "@/lib/mapBus";
-
-interface Airport {
-  icao: string;
-  fir: string | null;
-  name: string | null;
-  lat: number;
-  lon: number;
-  elev: number | null;
-  airac: string;
-  stands: number;
-}
+import { unwrapList } from "@/lib/aip";
+import { dbFetch } from "@/lib/naip";
+import { fromDbResponse, LOADING, type RequestState } from "@/lib/requestState";
+import StateCard from "@/components/ui/StateCard.vue";
+import Field from "@/components/ui/Field.vue";
+import AirportDetail from "./AirportDetail.vue";
+import type { AirportRow as Airport } from "@/lib/airports";
 
 const props = defineProps<{
-  airports: Airport[];
+  initial: RequestState<Airport[]>;
   messages: Record<string, unknown>;
 }>();
-
 const t = createTranslator(props.messages);
 
+const state = ref<RequestState<Airport[]>>(props.initial);
+const airports = computed(() =>
+  state.value.kind === "data" ? state.value.data : [],
+);
+
+/**
+ * **走 `dbFetch`，不是裸 `fetch`。** SSR 那次（`server/canDb.ts`）看不见
+ * localStorage，本来就没法按「隐藏 NAIP」过滤 —— 这是已知的 SSR 缺口，不是这里要
+ * 补的。但**浏览器里的每一次 `/api/db/*` 都必须走 `dbFetch`**：它按当下的开关状态
+ * 加 `?unrestricted=1`。裸 `fetch` 会漏掉这个参数，于是重试这一条路就会一直无视
+ * 成员刚在设置页打开的「隐藏 NAIP」，和这张图上其余每一次浏览器发起的请求都不一致
+ * （`lib/naip.ts`）。
+ */
+async function reload() {
+  state.value = LOADING;
+  const response = await dbFetch("aip/airports").catch(() => null);
+  if (!response) {
+    state.value = { kind: "error", status: 0 };
+    return;
+  }
+  const list = response.ok
+    ? unwrapList<Airport>(await response.json().catch(() => null))
+    : null;
+  state.value = fromDbResponse(
+    response.ok,
+    response.status,
+    list,
+    (l) => !l.length,
+  );
+}
+
 const query = ref("");
-const selected = ref<string | null>(null);
+const selected = ref<Airport | null>(null);
 
 /** 一次最多列这么多条。见 `filtered`。 */
 const MAX_RESULTS = 12;
@@ -56,7 +82,7 @@ const MAX_RESULTS = 12;
 const filtered = computed(() => {
   const q = query.value.trim().toUpperCase();
   if (!q) return [];
-  return props.airports
+  return airports.value
     .filter(
       (a) =>
         a.icao.includes(q) ||
@@ -70,23 +96,13 @@ const filtered = computed(() => {
 const matchCount = computed(() => {
   const q = query.value.trim().toUpperCase();
   if (!q) return 0;
-  return props.airports.filter(
+  return airports.value.filter(
     (a) =>
       a.icao.includes(q) ||
       (a.name ?? "").toUpperCase().includes(q) ||
       (a.fir ?? "").toUpperCase().includes(q),
   ).length;
 });
-
-/** 机场 → 地图上的一个点。`kind` 决定 RouteMap 把它画成方块而不是小圆点。 */
-function toMarker(airport: Airport) {
-  return {
-    ident: airport.icao,
-    lat: airport.lat,
-    lon: airport.lon,
-    kind: "airport",
-  };
-}
 
 /**
  * 挑中一个机场：**只推那一个**，不铺全量，再把镜头对过去。
@@ -100,39 +116,77 @@ function toMarker(airport: Airport) {
  * 先推点、再对焦，顺序是要紧的：地图收到新的点会把旧焦点作废（否则它不框选新内
  * 容），对焦要落在那之后。
  */
-function showOnMap(airport: Airport) {
+function show(airport: Airport) {
+  selected.value = airport;
   publishToMap({
-    markers: [toMarker(airport)],
+    markers: [
+      {
+        ident: airport.icao,
+        lat: airport.lat,
+        lon: airport.lon,
+        kind: "airport",
+      },
+    ],
     label: airport.name ? `${airport.icao} · ${airport.name}` : airport.icao,
   });
   focusMap({ kind: "point", lat: airport.lat, lon: airport.lon, zoom: 10 });
 }
-
-function show(airport: Airport) {
-  selected.value = airport.icao;
-  showOnMap(airport);
-}
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
-    <label class="sr-only" for="airport-search">{{
-      t("airports.search")
-    }}</label>
-    <input
-      id="airport-search"
-      v-model="query"
-      type="search"
-      autocomplete="off"
-      :placeholder="t('airports.search')"
-      class="input"
-    />
+  <StateCard
+    v-if="state.kind === 'loading'"
+    kind="loading"
+    :title="t('common.loading')"
+  />
+  <!-- 没权限是大多数飞行员的常态，不是故障：说清楚谁能开通。 -->
+  <StateCard
+    v-else-if="state.kind === 'forbidden'"
+    kind="forbidden"
+    :title="t('airports.denied.title')"
+    :body="t('airports.denied.body')"
+  />
+  <StateCard
+    v-else-if="state.kind === 'error'"
+    kind="error"
+    :title="t('airports.error.title')"
+    :body="t('airports.error.body')"
+    :retry-label="t('common.retry')"
+    @retry="reload"
+  />
+  <StateCard
+    v-else-if="state.kind === 'empty'"
+    kind="empty"
+    :title="t('airports.empty')"
+  />
 
-    <p v-if="!query.trim()" class="text-sm text-muted">
-      {{ t("airports.prompt", { count: String(props.airports.length) }) }}
+  <AirportDetail
+    v-else-if="selected"
+    :airport="selected"
+    :messages="messages"
+    @back="selected = null"
+  />
+
+  <div v-else class="flex flex-col gap-4">
+    <Field :label="t('airports.search')">
+      <template #default="{ id, describedby }">
+        <input
+          :id="id"
+          v-model="query"
+          type="search"
+          autocomplete="off"
+          :placeholder="t('airports.search')"
+          :aria-describedby="describedby"
+          class="input"
+        />
+      </template>
+    </Field>
+
+    <p v-if="!query.trim()" class="text-sm text-muted" role="status">
+      {{ t("airports.prompt", { count: String(airports.length) }) }}
     </p>
 
-    <p v-else-if="!filtered.length" class="text-sm text-muted">
+    <p v-else-if="!filtered.length" class="text-sm text-muted" role="status">
       {{ t("airports.none") }}
     </p>
 
@@ -145,12 +199,16 @@ function show(airport: Airport) {
       }}
     </p>
 
+    <!--
+      选中一个机场就切到 AirportDetail（上面 v-else-if="selected"），这个列表和
+      详情互斥 —— 走到这里 `selected` 必是 null，列表里不再需要一个「哪条被选
+      中」的高亮态。返回列表时 `selected` 重置为 null，`query` 原样保留。
+    -->
     <ul v-if="filtered.length" class="flex flex-col gap-2">
       <li v-for="airport in filtered" :key="airport.icao">
         <button
           type="button"
           class="card w-full p-3 text-left"
-          :class="selected === airport.icao ? 'ring-2 ring-accent' : ''"
           @click="show(airport)"
         >
           <span class="flex items-baseline justify-between gap-3">

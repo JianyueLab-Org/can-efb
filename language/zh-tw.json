@@ -381,7 +381,15 @@
       },
       "mapLabel": "全部機場",
       "prompt": "輸入代號、名稱或情報區來尋找。庫裡共 {count} 個機場。",
-      "truncated": "只列出 {shown} 條，共命中 {total} 條 —— 多打幾個字母縮小範圍。"
+      "truncated": "只列出 {shown} 條，共命中 {total} 條 —— 多打幾個字母縮小範圍。",
+      "empty": "資料庫裡沒有機場資料。",
+      "detail": {
+        "back": "返回列表",
+        "position": "位置",
+        "runways": "跑道",
+        "noRunways": "資料庫裡這個機場沒有跑道資料。",
+        "runwaysFailed": "沒能讀取跑道 —— 這不代表沒有。"
+      }
     }
   }
 }
