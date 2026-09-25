@@ -36,3 +36,5 @@ pnpm-debug.log*
 
 # 草稿和一次性脚本。见仓库外层的约定：临时文件放这里，用完删掉。
 .temp/
+
+.superpowers/
