@@ -16,6 +16,7 @@ import {
 import { announcePanelLayout } from "@/lib/mapBus";
 import {
   parseShellMode,
+  railChangeAnnouncesImmediately,
   type PanelWidth,
   type ShellMode,
 } from "@/lib/panelLayout";
@@ -288,10 +289,27 @@ export function mountPanel(): void {
   const resizeObserver = new ResizeObserver(onGeometryChange);
 
   /* 轨折叠或展开：面板的 `left` 跟着 `--rail-current` 变，宽度不变，所以
-     ResizeObserver 不响。有动画时靠 transitionend 报；减少动态效果时
-     `transition: none`，transitionend 不会来 —— 不看 `data-rail` 的话地图的内边
-     距一直按旧的轨宽算，差出一整条轨。 */
-  const railObserver = new MutationObserver(scheduleAnnounce);
+     ResizeObserver 不响。**这里曾经不管三七二十一地调 scheduleAnnounce**：80ms
+     的防抖比 `left` 的 200ms 过渡短，于是在过渡跑到一半时把矩形报给地图，
+     `camera.setPadding` 跟着往那个中间值 easeTo 一次；transitionend 到达时报的
+     终值又 easeTo 一次，镜头跟着跳 —— 表现是折叠/展开轨时地图的内边距一顿一顿。
+     `railChangeAnnouncesImmediately` 判断这次到底会不会有 `left` 过渡（减少动态
+     效果，或者当前排布本身没有 `left` 过渡，比如手机的底部抽屉）：会的话什么都
+     不做，交给 transitionend / transitioncancel 在过渡结束时报一次终值
+     （onTransitionEnd）；不会的话没有任何过渡事件会来，这里必须自己直接报。 */
+  function onRailChange() {
+    const style = getComputedStyle(root);
+    if (
+      railChangeAnnouncesImmediately(
+        prefersReducedMotion(),
+        style.transitionProperty,
+        style.transitionDuration,
+      )
+    ) {
+      announce();
+    }
+  }
+  const railObserver = new MutationObserver(onRailChange);
 
   toggle?.addEventListener("click", onToggle);
   handle?.addEventListener("click", onHandleClick);

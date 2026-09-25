@@ -5,6 +5,7 @@ import {
   MIN_VISIBLE_PX,
   PANEL_GAP_PX,
   parseShellMode,
+  railChangeAnnouncesImmediately,
 } from "@/lib/panelLayout";
 
 /**
@@ -106,5 +107,47 @@ describe("effectiveRail", () => {
     expect(effectiveRail("auto", " collapsed")).toBe("collapsed");
     expect(effectiveRail("auto", "expanded")).toBe("expanded");
     expect(effectiveRail(undefined, "")).toBe("expanded");
+  });
+});
+
+/**
+ * 折叠/展开轨会不会让面板的 `left` 跑一次过渡，决定观察器是自己直接报
+ * （panel:layout），还是等 transitionend / transitioncancel 报。判错的后果是
+ * 地图在过渡跑到一半时就把镜头往中间态 easeTo 一次，过渡结束时终值又报一次，
+ * 表现成 padding 跳两下。
+ */
+describe("railChangeAnnouncesImmediately", () => {
+  test("桌面/平板：left 有 200ms 过渡，交给 transitionend", () => {
+    expect(
+      railChangeAnnouncesImmediately(false, "width, left", "240ms, 200ms"),
+    ).toBe(false);
+  });
+
+  test("手机：这一排布的 transition 里根本没有 left，直接报", () => {
+    expect(railChangeAnnouncesImmediately(false, "transform", "320ms")).toBe(
+      true,
+    );
+  });
+
+  test("减少动态效果：不管 CSS 算出来的时长，直接报", () => {
+    expect(
+      railChangeAnnouncesImmediately(true, "width, left", "240ms, 200ms"),
+    ).toBe(true);
+  });
+
+  test("减少动态效果的 CSS 把 transition 折成 all/0s，同样直接报", () => {
+    expect(railChangeAnnouncesImmediately(false, "all", "0s")).toBe(true);
+  });
+
+  test("浏览器有时用秒而不是毫秒报时长", () => {
+    expect(
+      railChangeAnnouncesImmediately(false, "width, left", "0.24s, 0.2s"),
+    ).toBe(false);
+  });
+
+  test("left 的时长本来就是 0：不用等一个不会来的事件", () => {
+    expect(
+      railChangeAnnouncesImmediately(false, "width, left", "240ms, 0ms"),
+    ).toBe(true);
   });
 });

@@ -70,6 +70,52 @@ export function effectiveRail(
   return autoValue.trim() === "collapsed" ? "collapsed" : "expanded";
 }
 
+function cssTimeMs(raw: string | undefined): number {
+  const match = /^(-?[\d.]+)(ms|s)$/.exec((raw ?? "").trim());
+  if (!match) return 0;
+  const value = Number(match[1]);
+  return match[2] === "ms" ? value : value * 1000;
+}
+
+/**
+ * `transition-property` / `transition-duration` 是按声明顺序对应的两串逗号分隔
+ * 值（`getComputedStyle` 原样返回 CSS 简写 `transition` 展开后的结果）。取其中
+ * `property` 那一路的时长；`transition: none` 会把 property 折成单独一个 `all`，
+ * 这时按 `all` 的时长算，因为它确实盖住了每一个属性。查不到就当 0。
+ */
+function transitionDurationFor(
+  property: string,
+  transitionProperty: string,
+  transitionDuration: string,
+): number {
+  const props = transitionProperty.split(",").map((s) => s.trim());
+  const durations = transitionDuration.split(",").map((s) => s.trim());
+  const idx = props.indexOf(property);
+  const index = idx !== -1 ? idx : props.indexOf("all");
+  if (index === -1) return 0;
+  return cssTimeMs(durations[index] ?? durations[durations.length - 1]);
+}
+
+/**
+ * 轨折叠 / 展开会不会让面板的 `left` 跑一次过渡。
+ *
+ * 会的话，报告交给 transitionend / transitioncancel（面板过渡到一半时的矩形是
+ * 中间态，这时候报给地图，`camera.setPadding` 会对着这个中间值 easeTo 一次，
+ * 过渡结束时真正的终值又报一次，镜头跳两下）。不会的话（减少动态效果，或者当
+ * 前排布本身没有 `left` 过渡，比如手机的底部抽屉）不会有任何过渡事件到来，调用
+ * 方必须自己直接报一次。
+ */
+export function railChangeAnnouncesImmediately(
+  reducedMotion: boolean,
+  transitionProperty: string,
+  transitionDuration: string,
+): boolean {
+  if (reducedMotion) return true;
+  return (
+    transitionDurationFor("left", transitionProperty, transitionDuration) <= 0
+  );
+}
+
 /**
  * 面板盖住了哪一块，换成地图的内边距。
  *
