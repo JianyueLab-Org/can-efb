@@ -291,8 +291,11 @@ export function useChartLayers(options: ChartLayerOptions) {
       if (navaidCache.features.length) notice.clearNotice("navaids");
       else notice.setNotice("navaids", text.emptyNavaids);
     } catch (error) {
-      // 和航路那层同一条规矩：用户明确打开的图层，失败要说话并退回关，否则开关亮
-      // 着却什么都没画，看起来像这一带没有导航台。
+      // 过期的这一次（NAIP 开关翻过）失败了：重取的那一次还在路上或已经画上，
+      // 不许把它关掉，也不报失败 —— 和航路、MORA 那两层同一条规矩。
+      if (gen !== aip.gen) return;
+      // 用户明确打开的图层，失败要说话并退回关，否则开关亮着却什么都没画，看起
+      // 来像这一带没有导航台。
       if (isDenied(error)) notice.noteDenied();
       else notice.noteFailure("navaids");
       console.error("[efb:map] 导航台加载失败:", error);
