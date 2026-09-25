@@ -115,11 +115,12 @@ function toggleRail(next: boolean) {
  * 出来只会让人以为自己错过了什么。
  *
  * 本地镜像一份、挂载后才读：服务端不知道 localStorage，直接绑 `hideNaip` 会让水合
- * 前后对不上。之后跟着它走，别的标签页改了这里也变。
+ * 前后对不上。初值取默认（开），和服务端渲染的一致。之后跟着它走，别的标签页改了这
+ * 里也变。
  */
 const AIP_RESTRICTED_CALL = 3;
 const canHideNaip = props.aipAccess >= AIP_RESTRICTED_CALL;
-const naipHidden = ref(false);
+const naipHidden = ref(true);
 watch(hideNaip, (on) => {
   naipHidden.value = on;
 });

@@ -299,7 +299,7 @@
         "rail": "Collapse the sidebar by default",
         "railHint": "Shrinks the rail to a column of icons and gives the width back to the page.",
         "hideNaip": "Hide the restricted compilation",
-        "hideNaipHint": "Every AIP layer on this site uses tier 1–2 data only, leaving out NAIP: the chart layers, runways, airport ground, procedures and route generation alike. Anything you produce may be shared with members who do not hold that tier.",
+        "hideNaipHint": "Every AIP layer on this site uses tier 1–2 data only, leaving out NAIP: the chart layers, runways, airport ground, procedures and route generation alike. Anything you produce may be shared with members who do not hold that tier. On by default; turn it off to use NAIP.",
         "themeHint": "Theme and language are at the foot of the sidebar."
       }
     },

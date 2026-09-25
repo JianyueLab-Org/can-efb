@@ -157,7 +157,8 @@ cookie 转发回去。哪天有人要在这里加 Secret，先确认那件事不
 钟。这和 can-radar 给 METAR 补五分钟是同一条思路 —— 上游没说，而我们知道它多久变。
 
 **浏览器打 `/api/db/*` 一律走 `lib/naip.ts` 的 `dbFetch`。** 设置页「不使用受限汇编」
-（3 级起才显示）是全站一个开关，存 localStorage；开着时 `dbFetch` 给每个请求加
+（3 级起才显示）是全站一个开关，**默认开**，存 localStorage，只有明确存了 `"0"` 才
+显示 NAIP；开着时 `dbFetch` 给每个请求加
 `unrestricted=1`，can-db 把级别压到 2。新加的调用直接 `fetch` 就会漏掉它。按模块缓存
 的数据用 `aipScope()` 当键，地图 `watch(hideNaip)` 作废并重取开着的图层。
 

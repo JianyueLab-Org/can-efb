@@ -14,8 +14,9 @@
  * （`pages/api/db/[...path].ts`），带不带参数是两个不同的 URL，浏览器的十分钟缓存
  * 因此不会把两种答案混在一起。
  *
- * **存在 localStorage**，和侧栏折叠同一类：这台设备上的偏好，不值得占 can-api 一张
- * 表。读写都包在 try 里 —— 锁死的浏览器里 localStorage 会抛，那时退回默认（不隐藏），
+ * **默认开**（和 can-portal 一致）：没存过值就隐藏，只有明确存了 `"0"` 才显示
+ * NAIP。存在 localStorage，和侧栏折叠同一类：这台设备上的偏好，不值得占 can-api 一张
+ * 表。读写都包在 try 里 —— 锁死的浏览器里 localStorage 会抛，那时退回默认（隐藏），
  * 本次会话内开关照样生效。
  *
  * 值变了之后，**拿着按旧值取来的数据的一方自己负责重取**：库里按模块缓存的那几份
@@ -28,13 +29,13 @@ const STORAGE_KEY = "efb.hideNaip";
 
 function readStored(): boolean {
   try {
-    return localStorage.getItem(STORAGE_KEY) === "1";
+    return localStorage.getItem(STORAGE_KEY) !== "0";
   } catch {
-    return false;
+    return true;
   }
 }
 
-const state = ref(typeof window === "undefined" ? false : readStored());
+const state = ref(typeof window === "undefined" ? true : readStored());
 
 if (typeof window !== "undefined") {
   // 另一个标签页改了它：这里跟着变，地图照样重取。
@@ -49,8 +50,7 @@ export const hideNaip = readonly(state);
 export function setHideNaip(on: boolean): void {
   state.value = on;
   try {
-    if (on) localStorage.setItem(STORAGE_KEY, "1");
-    else localStorage.removeItem(STORAGE_KEY);
+    localStorage.setItem(STORAGE_KEY, on ? "1" : "0");
   } catch {
     // 见文件头：存不下也不中断，本次会话内照样生效。
   }
