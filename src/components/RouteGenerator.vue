@@ -26,6 +26,7 @@ import { computed, ref } from "vue";
 import { createTranslator } from "@/lib/i18n";
 import { publishToMap } from "@/lib/mapBus";
 import { saveDraft } from "@/lib/planDraft";
+import { isForbiddenStatus } from "@/lib/requestState";
 import {
   planEnroutePoints,
   planRoute,
@@ -34,6 +35,7 @@ import {
   type RoutePlan,
 } from "@/lib/routePlan";
 import ProcedurePicker from "@/components/ProcedurePicker.vue";
+import StateCard from "@/components/ui/StateCard.vue";
 
 const props = defineProps<{
   messages: Record<string, unknown>;
@@ -51,7 +53,14 @@ const level = ref("");
 
 const busy = ref(false);
 const plan = ref<RoutePlan | null>(null);
-const error = ref<string | null>(null);
+/** 上一次生成没出结果的原因。null＝还没生成过，或者生成出来了。 */
+const outcome = ref<
+  | { kind: "input"; text: string }
+  | { kind: "forbidden" }
+  | { kind: "empty" }
+  | { kind: "error" }
+  | null
+>(null);
 
 /**
  * 可以填的那串航路。
@@ -92,7 +101,7 @@ async function generate() {
   if (!a || !b) return;
 
   busy.value = true;
-  error.value = null;
+  outcome.value = null;
   plan.value = null;
 
   try {
@@ -104,17 +113,20 @@ async function generate() {
       label: `${result.from} → ${result.to}`,
     });
   } catch (e) {
-    // 400 和 404 是两种不同的答案，不合并成一句「失败」：一个是改输入，另一个是
-    // 这对城市在这个高度上没有走法，改输入也没用。
-    if (e instanceof RoutePlanError) {
-      error.value =
-        e.status === 404
-          ? t("route.generate.noRoute")
-          : e.status === 400
-            ? e.message || t("route.generate.badInput")
-            : t("route.generate.failed");
+    // 四种答案，不合并成一句「失败」：400 是改输入；404 是这对机场在这个高度上没有
+    // 走法，改输入也没用；401/403 是权限，向分区申请；剩下的才是真的失败，可以重试。
+    const status = e instanceof RoutePlanError ? e.status : 0;
+    if (isForbiddenStatus(status)) {
+      outcome.value = { kind: "forbidden" };
+    } else if (status === 404) {
+      outcome.value = { kind: "empty" };
+    } else if (status === 400) {
+      outcome.value = {
+        kind: "input",
+        text: (e as RoutePlanError).message || t("route.generate.badInput"),
+      };
     } else {
-      error.value = t("route.generate.failed");
+      outcome.value = { kind: "error" };
     }
   } finally {
     busy.value = false;
@@ -187,7 +199,32 @@ function toFlightPlan() {
       {{ busy ? t("route.generate.working") : t("route.generate.action") }}
     </button>
 
-    <p v-if="error" class="text-sm text-danger">{{ error }}</p>
+    <!-- 输入有误（400）留在一行字里：那是「改输入」，不是一种页面状态。 -->
+    <p v-if="outcome?.kind === 'input'" class="text-sm text-danger">
+      {{ outcome.text }}
+    </p>
+    <!-- 没权限：说清楚是权限，不是故障。规划器要读资料库，这一页的前端不替它判权限。 -->
+    <StateCard
+      v-else-if="outcome?.kind === 'forbidden'"
+      kind="forbidden"
+      :title="t('route.generate.forbidden.title')"
+      :body="t('route.generate.forbidden.body')"
+    />
+    <!-- 404：这对机场在这个高度上没有走法。读到了、确实没有 —— 是「空」，不是失败。 -->
+    <StateCard
+      v-else-if="outcome?.kind === 'empty'"
+      kind="empty"
+      :title="t('route.generate.noRoute')"
+      compact
+    />
+    <StateCard
+      v-else-if="outcome?.kind === 'error'"
+      kind="error"
+      :title="t('route.generate.failed')"
+      :retry-label="t('common.retry')"
+      compact
+      @retry="generate"
+    />
 
     <template v-if="plan">
       <!-- 汇编发布 vs 算出来的：见组件顶上第 1 条。 -->

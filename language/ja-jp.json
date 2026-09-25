@@ -187,6 +187,11 @@
       }
     },
     "route": {
+      "tabs": {
+        "label": "航路ツール",
+        "generate": "生成",
+        "expand": "展開"
+      },
       "departure": "出発空港",
       "arrival": "到着空港",
       "route": "ルート文字列",
@@ -229,10 +234,16 @@
         "toFlightPlan": "フライトプランに入力",
         "restrictedLegs": "以下の区間に制限があります",
         "restrictionTextWithheld": "制限の本文にはより高いデータベース権限が必要です",
-        "withoutRestricted": "制限付き資料は未使用"
+        "withoutRestricted": "制限付き資料は未使用",
+        "forbidden": {
+          "title": "航空情報の権限がありません",
+          "body": "航路の生成には航空情報データベースが必要です。障害ではなく権限の問題です。所属の管制区に申請してください。"
+        }
       },
       "expand": {
-        "title": "ルート文字列を展開"
+        "title": "ルート文字列を展開",
+        "failed": "航路を展開できませんでした",
+        "unavailableTitle": "航法データ未配備"
       },
       "procedures": {
         "title": "滑走路と出発・到着方式",

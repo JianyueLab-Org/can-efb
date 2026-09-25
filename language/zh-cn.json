@@ -187,6 +187,11 @@
       }
     },
     "route": {
+      "tabs": {
+        "label": "航路工具",
+        "generate": "生成",
+        "expand": "展开"
+      },
       "departure": "起飞机场",
       "arrival": "落地机场",
       "route": "航路串",
@@ -229,10 +234,16 @@
         "toFlightPlan": "填入飞行计划",
         "restrictedLegs": "以下航段受限",
         "restrictionTextWithheld": "限制原文需要更高的资料库权限",
-        "withoutRestricted": "未使用受限汇编"
+        "withoutRestricted": "未使用受限汇编",
+        "forbidden": {
+          "title": "没有航行资料权限",
+          "body": "生成航路要读资料库。这是权限，不是故障 —— 向所在管制分区申请开通。"
+        }
       },
       "expand": {
-        "title": "展开航路字符串"
+        "title": "展开航路字符串",
+        "failed": "没能展开这条航路",
+        "unavailableTitle": "导航数据未部署"
       },
       "procedures": {
         "title": "跑道与进离场程序",

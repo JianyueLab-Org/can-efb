@@ -25,6 +25,7 @@ import { createTranslator } from "@/lib/i18n";
 import { Icon } from "@jianyuelab-org/can-ui";
 import { distanceNm } from "@/lib/geo";
 import { publishToMap } from "@/lib/mapBus";
+import StateCard from "@/components/ui/StateCard.vue";
 
 const props = defineProps<{ messages: Record<string, unknown> }>();
 const t = createTranslator(props.messages);
@@ -61,7 +62,15 @@ watch(legs, (value) => {
 });
 const total = ref(0);
 const loading = ref(false);
-const error = ref("");
+/**
+ * 上一次操作没出结果的原因。读计划失败和展开失败都能重试，但重试的是不同的事，所
+ * 以记下重试哪一个。「没有计划」是读到了、确实没有 —— 空，不给重试。
+ */
+const problem = ref<
+  | { kind: "error"; title: string; body?: string; retry: "plan" | "resolve" }
+  | { kind: "empty"; title: string }
+  | null
+>(null);
 const unavailable = ref(false);
 const resolved = ref(false);
 
@@ -79,23 +88,27 @@ async function fromPlan() {
   } | null>("/api/v1/pilot/flightplan");
   // 没读到和没有计划分开说：读取失败时说「没有计划」，他会以为自己那份丢了。
   if (!result.ok) {
-    error.value = t("route.planFailed");
+    problem.value = {
+      kind: "error",
+      title: t("route.planFailed"),
+      retry: "plan",
+    };
     return;
   }
   if (!result.data) {
-    error.value = t("route.noPlan");
+    problem.value = { kind: "empty", title: t("route.noPlan") };
     return;
   }
   departure.value = result.data.departure;
   arrival.value = result.data.arrival;
   route.value = result.data.route;
-  error.value = "";
+  problem.value = null;
 }
 
 async function resolve() {
   if (loading.value) return;
   loading.value = true;
-  error.value = "";
+  problem.value = null;
   unavailable.value = false;
   // legs 不在这里清空：上面那个 watch 会把空数组发给地图，一次失败（比如
   // navDataUnavailable）就把图上原本画着的那条航路抹掉，换成什么都没有。
@@ -115,7 +128,12 @@ async function resolve() {
       unavailable.value = true;
       return;
     }
-    error.value = describeFailure(t, result);
+    problem.value = {
+      kind: "error",
+      title: t("route.expand.failed"),
+      body: describeFailure(t, result),
+      retry: "resolve",
+    };
     return;
   }
 
@@ -134,7 +152,7 @@ async function resolve() {
 
 <template>
   <div class="space-y-5">
-    <div class="card space-y-4 p-5">
+    <div class="space-y-4">
       <div class="grid gap-4 @xs:grid-cols-2 @2xl:grid-cols-4">
         <label class="block">
           <span class="mb-1 block text-sm font-medium text-ink">{{
@@ -187,27 +205,35 @@ async function resolve() {
       </div>
     </div>
 
-    <div
+    <StateCard
       v-if="unavailable"
-      class="rounded-card border border-subtle bg-warning-bg px-4 py-3 text-sm text-warning-fg"
-    >
-      {{ t("route.navdataUnavailable") }}
-    </div>
-
-    <div
-      v-else-if="error"
-      class="rounded-card border border-subtle bg-danger-bg px-4 py-3 text-sm text-danger-fg"
-    >
-      {{ error }}
-    </div>
+      kind="empty"
+      :title="t('route.expand.unavailableTitle')"
+      :body="t('route.navdataUnavailable')"
+    />
+    <StateCard
+      v-else-if="problem?.kind === 'error'"
+      kind="error"
+      :title="problem.title"
+      :body="problem.body"
+      :retry-label="t('common.retry')"
+      compact
+      @retry="problem.retry === 'plan' ? fromPlan() : resolve()"
+    />
+    <StateCard
+      v-else-if="problem?.kind === 'empty'"
+      kind="empty"
+      :title="problem.title"
+      compact
+    />
 
     <template v-else-if="resolved">
-      <p
+      <StateCard
         v-if="!legs.length"
-        class="surface-grid rounded-card border border-dashed border-subtle px-6 py-12 text-center text-sm text-muted"
-      >
-        {{ t("route.noPoints") }}
-      </p>
+        kind="empty"
+        :title="t('route.noPoints')"
+        compact
+      />
 
       <template v-else>
         <div class="card flex items-baseline justify-between gap-3 p-4">

@@ -187,6 +187,11 @@
       }
     },
     "route": {
+      "tabs": {
+        "label": "航路工具",
+        "generate": "生成",
+        "expand": "展開"
+      },
       "departure": "起飛機場",
       "arrival": "落地機場",
       "route": "航路字串",
@@ -229,10 +234,16 @@
         "toFlightPlan": "填入飛行計劃",
         "restrictedLegs": "以下航段受限",
         "restrictionTextWithheld": "限制原文需要更高的資料庫權限",
-        "withoutRestricted": "未使用受限彙編"
+        "withoutRestricted": "未使用受限彙編",
+        "forbidden": {
+          "title": "沒有航行資料權限",
+          "body": "生成航路要讀資料庫。這是權限，不是故障 —— 向所在管制分區申請開通。"
+        }
       },
       "expand": {
-        "title": "展開航路字串"
+        "title": "展開航路字串",
+        "failed": "沒能展開這條航路",
+        "unavailableTitle": "導航資料未部署"
       },
       "procedures": {
         "title": "跑道與進離場程序",

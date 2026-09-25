@@ -30,6 +30,8 @@ import { computed, ref, watch } from "vue";
 import { createTranslator } from "@/lib/i18n";
 import { publishToMap, type MapPoint } from "@/lib/mapBus";
 import { aipScope } from "@/lib/naip";
+import { isForbiddenStatus } from "@/lib/requestState";
+import StateCard from "@/components/ui/StateCard.vue";
 import {
   composeRoutePoints,
   fetchAirportProcedures,
@@ -118,7 +120,7 @@ async function loadBoth() {
   } catch (e) {
     depData.value = null;
     arrData.value = null;
-    if (e instanceof ProcedureError && (e.status === 401 || e.status === 403)) {
+    if (e instanceof ProcedureError && isForbiddenStatus(e.status)) {
       denied.value = true;
     } else {
       failed.value = true;
@@ -273,17 +275,27 @@ function kindLabel(kind: ProcedureKind): string {
       {{ t("route.procedures.title") }}
     </h3>
 
-    <p v-if="busy" class="text-sm text-muted">
-      {{ t("route.procedures.loading") }}
-    </p>
-
+    <StateCard
+      v-if="busy"
+      kind="loading"
+      :title="t('route.procedures.loading')"
+      compact
+    />
     <!-- 没权限是常态，不是故障 —— 和别的失败分开说。 -->
-    <p v-else-if="denied" class="text-sm text-muted">
-      {{ t("route.procedures.denied") }}
-    </p>
-    <p v-else-if="failed" class="text-sm text-danger">
-      {{ t("route.procedures.failed") }}
-    </p>
+    <StateCard
+      v-else-if="denied"
+      kind="forbidden"
+      :title="t('route.procedures.denied')"
+      compact
+    />
+    <StateCard
+      v-else-if="failed"
+      kind="error"
+      :title="t('route.procedures.failed')"
+      :retry-label="t('common.retry')"
+      compact
+      @retry="loadBoth"
+    />
 
     <template v-else>
       <div class="grid gap-3 @md:grid-cols-2">

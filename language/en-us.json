@@ -187,6 +187,11 @@
       }
     },
     "route": {
+      "tabs": {
+        "label": "Route tools",
+        "generate": "Generate",
+        "expand": "Expand"
+      },
       "departure": "Departure",
       "arrival": "Arrival",
       "route": "Route string",
@@ -229,10 +234,16 @@
         "toFlightPlan": "Fill into flight plan",
         "restrictedLegs": "These legs are restricted",
         "restrictionTextWithheld": "The restriction's text needs a higher database tier",
-        "withoutRestricted": "restricted compilation not used"
+        "withoutRestricted": "restricted compilation not used",
+        "forbidden": {
+          "title": "No aeronautical data access",
+          "body": "Generating a route reads the aeronautical database. This is a permission, not a fault — ask your division to enable it."
+        }
       },
       "expand": {
-        "title": "Expand a route string"
+        "title": "Expand a route string",
+        "failed": "Couldn't expand this route",
+        "unavailableTitle": "Navigation data not deployed"
       },
       "procedures": {
         "title": "Runways and terminal procedures",
