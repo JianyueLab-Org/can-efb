@@ -250,6 +250,11 @@
   .floating-panel:not([data-sheet="full"]) .panel-body {
     overflow-y: hidden;
   }
+  /* 没拉满时整张抽屉都能拖。不把竖向平移从浏览器手里拿过来，它会在过门槛附近认领
+     手势、发 pointercancel，抽屉拖不动。拉满之后正文要滚，只有把手是 none。 */
+  .floating-panel:not([data-sheet="full"]) {
+    touch-action: none;
+  }
 }
 
 /* 只在手机上出现的东西（设置页里的退出登录、跨站链接）：轨在手机上换成了标签栏，

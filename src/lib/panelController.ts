@@ -129,6 +129,9 @@ export function mountPanel(): void {
   let suppressClick = false;
 
   function onPointerDown(event: PointerEvent) {
+    // 拖过之后手指抬起时不一定有 click（触屏上移动过就没有），留着这个标记，下一次
+    // 点按 —— 把手、表单按钮、链接 —— 就会被 onClickCapture 吞掉。每次按下都清掉。
+    suppressClick = false;
     if (mode !== "phone" || event.button !== 0) return;
     // 拉满时只有把手能拖，正文留给滚动；没拉满时整张抽屉都能拖。
     if (snap === "full" && !handle?.contains(event.target as Node)) return;
@@ -174,6 +177,19 @@ export function mountPanel(): void {
     );
   }
 
+  /**
+   * 浏览器把手势收走了（pointercancel）：回到原来那一档，不按松手投影。取消事件的
+   * clientY 在有的引擎里是 0，拿它算落点会把抽屉甩到一个谁也没选的档位。取消之后
+   * 也不会补 click，所以不置 suppressClick。
+   */
+  function onPointerCancel(event: PointerEvent) {
+    if (event.pointerId !== pointerId) return;
+    pointerId = null;
+    if (!dragging) return;
+    dragging = false;
+    applySnap(snap);
+  }
+
   /** 拖完松手浏览器还会补一个 click；别让它落到把手上再翻一次档。 */
   function onClickCapture(event: MouseEvent) {
     if (!suppressClick) return;
@@ -210,6 +226,24 @@ export function mountPanel(): void {
     }
   }
 
+  /* ------------------------------------------------ 尺寸变化 */
+
+  /**
+   * 手机上视口高度变了（转屏、地址栏收放）而排布没变：`--sheet-offset` 是按旧高度
+   * 算出的 px，不重算的话横过来一半那档会比整张面板还长，抽屉掉出屏幕，报给地图的
+   * 矩形也跟着错。拖动中不动它，松手时会按新尺寸落档。
+   */
+  function onGeometryChange() {
+    if (mode === "phone" && pointerId === null) {
+      root.style.transition = "none";
+      root.style.setProperty(
+        "--sheet-offset",
+        `${sheetOffsets(geometry())[snap]}px`,
+      );
+    }
+    scheduleAnnounce();
+  }
+
   /* ------------------------------------------------ 跨过断点 */
 
   function onResize() {
@@ -226,13 +260,13 @@ export function mountPanel(): void {
       root.style.transition = "";
       if (body) body.inert = root.dataset.collapsed === "true";
     }
-    scheduleAnnounce();
+    onGeometryChange();
   }
 
   const onTransitionEnd = (event: TransitionEvent) => {
     if (event.target === root) announce();
   };
-  const resizeObserver = new ResizeObserver(scheduleAnnounce);
+  const resizeObserver = new ResizeObserver(onGeometryChange);
 
   toggle?.addEventListener("click", onToggle);
   handle?.addEventListener("click", onHandleClick);
@@ -240,7 +274,7 @@ export function mountPanel(): void {
   root.addEventListener("pointerdown", onPointerDown);
   root.addEventListener("pointermove", onPointerMove);
   root.addEventListener("pointerup", onPointerUp);
-  root.addEventListener("pointercancel", onPointerUp);
+  root.addEventListener("pointercancel", onPointerCancel);
   root.addEventListener("click", onClickCapture, true);
   root.addEventListener("focusin", onFocusIn);
   root.addEventListener("transitionend", onTransitionEnd);
@@ -258,7 +292,7 @@ export function mountPanel(): void {
     root.removeEventListener("pointerdown", onPointerDown);
     root.removeEventListener("pointermove", onPointerMove);
     root.removeEventListener("pointerup", onPointerUp);
-    root.removeEventListener("pointercancel", onPointerUp);
+    root.removeEventListener("pointercancel", onPointerCancel);
     root.removeEventListener("click", onClickCapture, true);
     root.removeEventListener("focusin", onFocusIn);
     root.removeEventListener("transitionend", onTransitionEnd);
