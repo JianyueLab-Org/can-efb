@@ -414,8 +414,11 @@ datafeed 给的那个经纬度是**管制员自己的视野中心** —— 既�
 
 **机场地面**在 `lib/ground.ts`。z9 起按机场取 can-db 的
 `/aip/airports/{ICAO}/ground`，视野里只取最近的 4 个场。数据只有一份：扇区包手工
-做的要素，源自 OSM，由 Ground 仓库维护。按 `kind` 分层画：航站楼与机坪、机位、滑
-行道与等待位置；单点要素画圆点。画了地面就在署名控件里显示
+做的要素，源自 OSM，由 Ground 仓库维护。按 `kind` 分层画：道肩（`shoulder`，面，
+机坪色）、航站楼与机坪、机位、滑行道与等待位置；跑道标志（`runway_marking`，面，白
+色）在跑道之上，和机位号同一级才出；单点要素画圆点。`taxiway_label` 是挂不上滑行道
+线的代号，一个点，只出字（`ground-labels-way-point`）。`shoulder` 和
+`runway_marking` 在 `geometryFor` 里出 Polygon，其余多点要素出 LineString。画了地面就在署名控件里显示
 `© OpenStreetMap contributors (ODbL)`，can-db 没给 `attribution` 时用
 `GROUND_ATTRIBUTION`。
 

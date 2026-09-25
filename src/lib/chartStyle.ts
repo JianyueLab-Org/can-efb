@@ -86,6 +86,8 @@ export interface ColorRoles {
   groundApron: string;
   groundStand: string;
   groundHold: string;
+  /** 跑道上的油漆标志。 */
+  groundMarking: string;
 }
 
 export const COLORS: Record<Theme, ColorRoles> = {
@@ -125,6 +127,7 @@ export const COLORS: Record<Theme, ColorRoles> = {
     groundApron: "#d3d9dd",
     groundStand: "#7f8b93",
     groundHold: "#c2185b",
+    groundMarking: "#ffffff",
   },
   dark: {
     ocean: "#16191c",
@@ -162,6 +165,7 @@ export const COLORS: Record<Theme, ColorRoles> = {
     groundApron: "#343b41",
     groundStand: "#9aa6ae",
     groundHold: "#f06292",
+    groundMarking: "#ffffff",
   },
 };
 
@@ -802,7 +806,19 @@ export function buildStyle(theme: Theme): StyleSpecification {
 
     // ------------------------------------------------ 机场地面
     {
-      // 自下而上：航站楼与机坪、停机位、滑行道、跑道。被挡住损失越大的越靠上。
+      // 自下而上：道肩、航站楼与机坪、停机位、滑行道、跑道、跑道标志。被挡住损失越大的越靠上。
+      id: "ground-shoulders",
+      type: "fill",
+      source: "ground",
+      minzoom: ZOOM.ground + 1,
+      filter: [
+        "all",
+        ["==", ["geometry-type"], "Polygon"],
+        ["==", ["get", "kind"], "shoulder"],
+      ],
+      paint: { "fill-color": c.groundApron, "fill-opacity": 0.9 },
+    },
+    {
       id: "ground-terminals",
       type: "line",
       source: "ground",
@@ -866,12 +882,29 @@ export function buildStyle(theme: Theme): StyleSpecification {
       },
     },
     {
-      // 单点要素：等待位置和一部分机位本来就是一个点。
+      // 跑道标志，和机位号同一级才出。
+      id: "ground-runway-markings",
+      type: "fill",
+      source: "ground",
+      minzoom: ZOOM.ground + 4,
+      filter: [
+        "all",
+        ["==", ["geometry-type"], "Polygon"],
+        ["==", ["get", "kind"], "runway_marking"],
+      ],
+      paint: { "fill-color": c.groundMarking },
+    },
+    {
+      // 单点要素：等待位置和一部分机位本来就是一个点。滑行道代号点只出字，见 ground-labels-way-point。
       id: "ground-points",
       type: "circle",
       source: "ground",
       minzoom: ZOOM.ground + 2,
-      filter: ["==", ["geometry-type"], "Point"],
+      filter: [
+        "all",
+        ["==", ["geometry-type"], "Point"],
+        ["!=", ["get", "kind"], "taxiway_label"],
+      ],
       paint: {
         "circle-radius": ramp([
           [13, 1.5],
@@ -1290,6 +1323,26 @@ export function buildStyle(theme: Theme): StyleSpecification {
         "text-size": TEXT.groundWay,
         "text-letter-spacing": 0.05,
         "symbol-spacing": 220,
+      },
+      paint: { "text-color": c.textMuted, ...halo },
+    },
+    {
+      // 挂不上滑行道线的代号：can-db 给一个点，按点放。字样同 ground-labels-way。
+      id: "ground-labels-way-point",
+      type: "symbol",
+      source: "ground",
+      minzoom: ZOOM.ground + 2,
+      filter: [
+        "all",
+        ["==", ["geometry-type"], "Point"],
+        ["!=", ["get", "name"], ""],
+        ["==", ["get", "kind"], "taxiway_label"],
+      ],
+      layout: {
+        "text-field": ["get", "name"],
+        "text-font": TEXT.font,
+        "text-size": TEXT.groundWay,
+        "text-letter-spacing": 0.05,
       },
       paint: { "text-color": c.textMuted, ...halo },
     },

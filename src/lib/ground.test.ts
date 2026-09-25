@@ -173,6 +173,69 @@ describe("几何", () => {
     ]);
   });
 
+  test("道肩和跑道标志出 Polygon，没闭合的环补上首点", () => {
+    const ring: [number, number][] = [
+      [40, 116],
+      [40, 116.1],
+      [40.1, 116.1],
+    ];
+    for (const kind of ["shoulder", "runway_marking"]) {
+      const d = toGroundDrawing([
+        ground({ features: [{ kind, points: ring }] }),
+      ]);
+      const geom = d.collection.features[0].geometry as {
+        type: string;
+        coordinates: number[][][];
+      };
+      expect(geom.type).toBe("Polygon");
+      expect(geom.coordinates[0]).toEqual([
+        [116, 40],
+        [116.1, 40],
+        [116.1, 40.1],
+        [116, 40],
+      ]);
+    }
+  });
+
+  test("已闭合的环不重复补点；不到三个点的面丢掉", () => {
+    const closed: [number, number][] = [
+      [40, 116],
+      [40, 116.1],
+      [40.1, 116.1],
+      [40, 116],
+    ];
+    const d = toGroundDrawing([
+      ground({
+        features: [
+          { kind: "shoulder", points: closed },
+          {
+            kind: "runway_marking",
+            points: [
+              [40, 116],
+              [40.1, 116],
+            ],
+          },
+        ],
+      }),
+    ]);
+    expect(d.collection.features).toHaveLength(1);
+    expect(
+      (d.collection.features[0].geometry as { coordinates: number[][][] })
+        .coordinates[0],
+    ).toHaveLength(4);
+  });
+
+  test("滑行道代号点出 Point 并带代号", () => {
+    const d = toGroundDrawing([
+      ground({
+        features: [{ kind: "taxiway_label", name: "A3", points: [[40, 116]] }],
+      }),
+    ]);
+    const f = d.collection.features[0];
+    expect(f.geometry.type).toBe("Point");
+    expect(f.properties?.name).toBe("A3");
+  });
+
   test("空点串的要素跳过，不产生坏几何", () => {
     const d = toGroundDrawing([
       ground({ features: [{ kind: "taxiway", points: [] }] }),

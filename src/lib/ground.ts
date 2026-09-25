@@ -126,7 +126,7 @@ export function toGroundDrawing(grounds: Ground[]): GroundDrawing {
     icaos.push(g.icao);
     let drawn = false;
     for (const f of g.features) {
-      const geom = geometryFor(f.points);
+      const geom = geometryFor(f.kind, f.points);
       if (!geom) continue;
       drawn = true;
       features.push({
@@ -183,20 +183,33 @@ function widthMetres(kind: string, published?: number): number {
   }
 }
 
+/** 按面画（`fill`）的类别：点串是一个闭合环。 */
+const POLYGON_KINDS = new Set(["shoulder", "runway_marking"]);
+
 /**
  * [纬, 经] 的点串 → GeoJSON 几何。**GeoJSON 是 [经, 纬]**，反了不会报错，只会把
  * 机场画到地球另一边。
  *
  * 单点要素是真实存在的（等待位置和一部分机位本来就是一个点，扇区包里有 733
  * 个），所以一个点出 Point 而不是丢掉 —— 丢掉它们等于把所有等待位置从图上抹去。
+ *
+ * `POLYGON_KINDS`（道肩、跑道标志）出 Polygon，环没闭合就补上首点；不到三个点的丢
+ * 掉。机坪和航站楼仍出 LineString，按线画。
  */
-function geometryFor(points: [number, number][]) {
+function geometryFor(kind: string, points: [number, number][]) {
   if (!points?.length) return null;
   if (points.length === 1) {
     return {
       type: "Point" as const,
       coordinates: [points[0][1], points[0][0]],
     };
+  }
+  if (POLYGON_KINDS.has(kind)) {
+    if (points.length < 3) return null;
+    const ring = points.map(([lat, lon]) => [lon, lat]);
+    const [first, last] = [ring[0], ring[ring.length - 1]];
+    if (first[0] !== last[0] || first[1] !== last[1]) ring.push([...first]);
+    return { type: "Polygon" as const, coordinates: [ring] };
   }
   return {
     type: "LineString" as const,

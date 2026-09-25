@@ -30,13 +30,18 @@ const layer = (id: string, theme: Theme = "light") => {
   return found;
 };
 
-/** 用 MapLibre 自己的过滤器求值：这个要素在这一级缩放上画不画。 */
-function shows(id: string, zoom: number, properties: Record<string, unknown>) {
+/** 用 MapLibre 自己的过滤器求值：这个要素在这一级缩放上画不画。`type`：1 点、2 线、3 面。 */
+function shows(
+  id: string,
+  zoom: number,
+  properties: Record<string, unknown>,
+  type: 1 | 2 | 3 = 1,
+) {
   const l = layer(id);
   if (l.minzoom !== undefined && zoom < l.minzoom) return false;
   if (l.maxzoom !== undefined && zoom >= l.maxzoom) return false;
   const f = featureFilter(l.filter as never, `layers[${id}].filter`);
-  return f.filter({ zoom } as never, { type: 1, properties } as never);
+  return f.filter({ zoom } as never, { type, properties } as never);
 }
 
 describe("样式合法", () => {
@@ -113,8 +118,11 @@ describe("图层顺序", () => {
     const order = [
       "ocean",
       "grid",
+      "ground-shoulders",
       "ground-terminals",
+      "ground-taxiways",
       "runways",
+      "ground-runway-markings",
       "atc-area-fill",
       "airspace-hatch",
       "fir-line",
@@ -163,6 +171,52 @@ describe("图层顺序", () => {
     expect(l?.["icon-text-fit"]).toBe("both");
     expect(JSON.stringify(l?.["icon-image"])).toContain("shield-rnav-light");
     expect(JSON.stringify(l?.["icon-image"])).toContain("shield-conv-light");
+  });
+});
+
+describe("地面", () => {
+  const z = ZOOM.ground;
+
+  test("道肩按面填，和机坪同色", () => {
+    const shoulder = { kind: "shoulder", name: "" };
+    expect(shows("ground-shoulders", z + 1, shoulder, 3)).toBe(true);
+    expect(shows("ground-shoulders", z + 1, shoulder, 2)).toBe(false);
+    expect(shows("ground-terminals", z + 1, shoulder, 3)).toBe(false);
+    expect(layer("ground-shoulders").paint?.["fill-color"]).toBe("#d3d9dd");
+  });
+
+  test("跑道标志白色，和机位号同一级才出", () => {
+    const marking = { kind: "runway_marking", name: "" };
+    expect(shows("ground-runway-markings", z + 3, marking, 3)).toBe(false);
+    expect(shows("ground-runway-markings", z + 4, marking, 3)).toBe(true);
+    expect(layer("ground-runway-markings").minzoom).toBe(
+      layer("ground-labels-spot").minzoom,
+    );
+    expect(layer("ground-runway-markings").paint?.["fill-color"]).toBe(
+      "#ffffff",
+    );
+  });
+
+  test("滑行道代号点按点放字，不画圆点", () => {
+    const label = { kind: "taxiway_label", name: "A3" };
+    expect(shows("ground-labels-way-point", z + 2, label, 1)).toBe(true);
+    expect(
+      shows("ground-labels-way-point", z + 2, { ...label, name: "" }, 1),
+    ).toBe(false);
+    expect(shows("ground-points", z + 2, label, 1)).toBe(false);
+    expect(
+      layer("ground-labels-way-point").layout?.["symbol-placement"],
+    ).toBeUndefined();
+    const text = (id: string) => {
+      const l = layer(id);
+      return [
+        l.layout?.["text-size"],
+        l.layout?.["text-font"],
+        l.layout?.["text-letter-spacing"],
+        l.paint?.["text-color"],
+      ];
+    };
+    expect(text("ground-labels-way-point")).toEqual(text("ground-labels-way"));
   });
 });
 
