@@ -21,7 +21,7 @@
  * 式通道。详见 globals.css 的 "can-efb only" 一节和 RailScript.astro。
  */
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { api } from "@/lib/canApi";
+import { signOut } from "@/lib/canApi";
 import { createTranslator } from "@/lib/i18n";
 import { Icon, ThemeLangControls, useOverlay } from "@jianyuelab-org/can-ui";
 import SidebarNav from "@/components/SidebarNav.vue";
@@ -161,19 +161,14 @@ const initials = computed(() => {
 });
 
 /**
- * 退出登录。
- *
- * 清 cookie 是 can-api 的活 —— 属性（域、SameSite、Secure）是它设的，这边补一
- * 个对不上的 Set-Cookie 只会让浏览器同时留着两个。跳转是我们的，而且**无论成
- * 败都跳**：按了退出的人不该因为请求失败就还停在一个登录态的页面上。
+ * 退出登录。请求加跳转本身在 `lib/canApi.ts` 的 `signOut()` 里 —— 手机上的设
+ * 置页有同一颗按钮，两处不各写一份。这里只管自己按钮的按下状态。
  */
 const signingOut = ref(false);
 function handleSignOut() {
   if (signingOut.value) return;
   signingOut.value = true;
-  api("/api/v1/auth/signout", { method: "POST" }).finally(() => {
-    window.location.assign("/");
-  });
+  void signOut();
 }
 
 /* -------------------------------------------------------------------------- */

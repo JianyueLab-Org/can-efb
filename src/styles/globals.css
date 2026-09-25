@@ -305,6 +305,13 @@
   }
 }
 
+/* 反过来：手机上没有意义的东西（比如「默认收起侧栏」—— 手机上没有侧栏）。 */
+@media (max-width: 767.98px) {
+  .phone-hidden {
+    display: none !important;
+  }
+}
+
 @media (min-width: 768px) {
   :root {
     --shell-mode: tablet;

@@ -2,6 +2,7 @@
 import AppLayout from "@/layouts/AppLayout.astro";
 import Settings from "@/components/Settings.vue";
 import { getLocale, getMessages, useTranslations } from "@/lib/i18n";
+import { buildCrossLinks } from "@/lib/nav";
 
 const locale = getLocale(Astro.cookies);
 const t = useTranslations(locale, "efb");
@@ -22,6 +23,8 @@ const session = Astro.locals.user;
     email={session?.email ?? ""}
     rating={session?.rating ?? 0}
     aipAccess={session?.aipAccess ?? 0}
+    crossLinks={buildCrossLinks(t)}
+    locale={locale}
     client:load
   />
 </AppLayout>
