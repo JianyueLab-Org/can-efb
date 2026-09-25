@@ -253,6 +253,9 @@
     },
     "dashboard": {
       "greeting": "Welcome back, {name}.",
+      "summary": {
+        "id": "CAN ID"
+      },
       "plan": {
         "title": "Current flight plan",
         "none": "No flight plan filed yet.",
@@ -265,7 +268,9 @@
         "level": "Level"
       },
       "weather": {
-        "none": "No report"
+        "title": "Departure and arrival weather",
+        "none": "No report",
+        "failed": "Couldn't load the METAR for {icao} — that doesn't mean there isn't one."
       },
       "atc": {
         "title": "Online ATC",

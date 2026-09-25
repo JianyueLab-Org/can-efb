@@ -10,6 +10,7 @@ import {
   PLAN_CHANGED_EVENT,
   subscribeToMap,
   subscribeMapFocus,
+  subscribePlanRequest,
   type MapFocus,
   type MapPoint,
 } from "@/lib/mapBus";
@@ -190,6 +191,7 @@ export function useRouteLayer(options: {
 
   let unsubscribe: (() => void) | null = null;
   let unsubscribeFocus: (() => void) | null = null;
+  let unsubscribePlanRequest: (() => void) | null = null;
 
   /**
    * 每次页面导航之后重读一次计划。
@@ -237,6 +239,16 @@ export function useRouteLayer(options: {
     unsubscribeFocus = subscribeMapFocus((target) => {
       focus.value = target;
     });
+    /* 「地图，回到我已提交的那份计划」——概览页打开时发一次（`mapBus.ts` 的
+       `showPlanOnMap`）。面板可能之前已经推过东西（`panelPublished`），这一声
+       要能把地图从那种状态拉回来，所以要清掉 `panelPublished` 和 `planKey` 再
+       重读，不能只调 `loadPlanRoute()`——否则它会在第一行 `if (panelPublished)
+       return;` 直接退出。 */
+    unsubscribePlanRequest = subscribePlanRequest(() => {
+      panelPublished = false;
+      planKey = "";
+      void loadPlanRoute();
+    });
   }
 
   function stop() {
@@ -244,6 +256,8 @@ export function useRouteLayer(options: {
     unsubscribe = null;
     unsubscribeFocus?.();
     unsubscribeFocus = null;
+    unsubscribePlanRequest?.();
+    unsubscribePlanRequest = null;
     document.removeEventListener("astro:after-swap", onPageSwap);
     window.removeEventListener(PLAN_CHANGED_EVENT, onPageSwap);
   }

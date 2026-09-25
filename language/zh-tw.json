@@ -253,6 +253,9 @@
     },
     "dashboard": {
       "greeting": "{name}，歡迎回來。",
+      "summary": {
+        "id": "CAN ID"
+      },
       "plan": {
         "title": "目前飛行計畫",
         "none": "還沒有送出飛行計畫。",
@@ -265,7 +268,9 @@
         "level": "巡航高度"
       },
       "weather": {
-        "none": "暫無報文"
+        "title": "起降天氣",
+        "none": "暫無報文",
+        "failed": "沒能讀取 {icao} 的報文 —— 這不代表沒有。"
       },
       "atc": {
         "title": "線上管制",

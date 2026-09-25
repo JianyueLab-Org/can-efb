@@ -18,6 +18,7 @@ const user = toEfbUser(Astro.locals.user);
   <Dashboard
     messages={getMessages(locale, "efb")}
     userName={user?.name ?? ""}
+    userId={user?.id ?? ""}
     client:load
   />
 </AppLayout>
