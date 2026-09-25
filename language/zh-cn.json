@@ -171,6 +171,19 @@
           "departure": "起飞机场",
           "arrival": "落地机场"
         }
+      },
+      "sections": {
+        "flight": "航班",
+        "route": "航路与备注"
+      },
+      "import": {
+        "hint": "从你绑定的 SimBrief 账号取最新的 OFP，填进表单，不会自动提交。"
+      },
+      "preview": {
+        "label": "正在填写：{from} → {to}",
+        "forbidden": "航路预览要航图权限，你暂时没有；不影响提交。",
+        "failed": "没能读取航路预览 —— 这不代表航路有误。",
+        "empty": "这串航路里没有能在图上找到的点。"
       }
     },
     "route": {

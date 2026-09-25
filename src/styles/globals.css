@@ -276,7 +276,10 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 0.25rem 1rem 1.5rem;
+  /* 左右内边距是一个变量：贴底的提交栏（`.panel-sticky-bar`）要用负外边距伸到面板边上，
+     两处读同一个值，改一处另一处跟着走。 */
+  --panel-pad-x: 1rem;
+  padding: 0.25rem var(--panel-pad-x) 1.5rem;
   /* 面板里的多列排布按**面板**宽度判，不按视口判（`.field-grid` 和各组件里的
      `@md:` 之类都问它）。 */
   container: efb-panel / inline-size;
@@ -346,7 +349,8 @@
     color: var(--color-ink);
   }
   .panel-body {
-    padding: 0 1.25rem 1.5rem;
+    --panel-pad-x: 1.25rem;
+    padding: 0 var(--panel-pad-x) 1.5rem;
   }
   .floating-panel[data-collapsed="true"] {
     width: var(--panel-collapsed);
@@ -627,4 +631,14 @@
   .field-grid > .field-wide {
     grid-column: 1 / -1;
   }
+}
+
+/* 贴在面板底部的提交栏（PlanForm.vue）。左右伸到面板边上：写死 `-mx-4` 的话，≥768px
+   时 `.panel-body` 的内边距是 1.25rem，栏的两头就比面板窄一截，下面滚过去的字从两边
+   露出来。 */
+.panel-sticky-bar {
+  position: sticky;
+  bottom: 0;
+  margin-inline: calc(-1 * var(--panel-pad-x, 1rem));
+  padding-inline: var(--panel-pad-x, 1rem);
 }

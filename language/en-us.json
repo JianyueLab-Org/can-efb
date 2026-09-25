@@ -171,6 +171,19 @@
           "departure": "departure",
           "arrival": "arrival"
         }
+      },
+      "sections": {
+        "flight": "Flight",
+        "route": "Route and remarks"
+      },
+      "import": {
+        "hint": "Fetches the latest OFP from your linked SimBrief account into the form. Nothing is filed until you submit."
+      },
+      "preview": {
+        "label": "Draft: {from} → {to}",
+        "forbidden": "Previewing the route needs chart access, which you don't have yet. You can still file.",
+        "failed": "Couldn't load the route preview — that doesn't mean the route is wrong.",
+        "empty": "None of the points in this route could be found on the map."
       }
     },
     "route": {
