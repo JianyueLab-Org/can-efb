@@ -144,6 +144,9 @@ export function useChartLayers(options: ChartLayerOptions) {
       if (lines.features.length) notice.clearNotice("airways");
       else notice.setNotice("airways", text.emptyAirways);
     } catch (error) {
+      // 过期的这一次（NAIP 开关翻过）失败了：重取的那一次还在路上或已经画上，
+      // 不许把它关掉，也不报失败。
+      if (gen !== aip.gen) return;
       // 用户明确打开的图层，失败要说话并退回关，否则开关亮着却什么都没画。
       if (isDenied(error)) notice.noteDenied();
       else notice.noteFailure("airways");
@@ -401,10 +404,11 @@ export function useChartLayers(options: ChartLayerOptions) {
       if (!showMora.value) return;
       mora.value = toMORAPoints([...moraCells.values()]);
     } catch (error) {
+      // 过期的这一次：块集合已经随 NAIP 开关清过，也不替新的那一次报失败。
+      if (gen !== aip.gen) return;
       if (isDenied(error)) notice.noteDenied();
       else notice.noteFailure("mora");
       // 取失败的块要放回去，否则这次会话里再也不会重试它。
-      if (gen !== aip.gen) return;
       for (const b of wanted) moraBlocks.delete(`${b.lat},${b.lon}`);
       console.error("[efb:map] Grid MORA 加载失败:", error);
     }
