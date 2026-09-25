@@ -136,8 +136,6 @@ const props = defineProps<{
     emptyAirways: string;
     emptyNavaids: string;
     emptyGeneric: string;
-    /** 画的是航图线画时那一句，`{m}` 是精度米数。 */
-    groundAccuracy: string;
     /** 地图上画着已提交计划时的角标，`{from}`/`{to}` 是起降机场。 */
     planOnMap: string;
   };
@@ -439,12 +437,7 @@ const mora = ref<FeatureCollection | null>(null);
 /**
  * 机场地面。**没有开关**，由缩放决定 —— 见 `loadGroundFor`。
  *
- * 三个 ref 是一组：几何、署名、精度。后两个不是装饰 ——
- *
- *   - `groundAttribution` 是 **ODbL 的许可条款**。OSM 那份数据用了就必须署名，而
- *     它由数据决定（只有真用了 OSM 的机场才有值），所以不能写死一句挂在图上。
- *   - `groundAccuracyM` 只在画**航图线画**那份时有值。那一份位置只能信到 5–20
- *     米；分好类的那份是米级的，给它标精度反而误导。
+ * 两个 ref 是一组：几何和署名。`groundAttribution` 是 ODbL 的署名，画了地面就显示。
  */
 /**
  * 全部机场的点。**没有开关，也不按视野裁** —— 见 lib/airports.ts。
@@ -469,7 +462,6 @@ const airports = ref<FeatureCollection | null>(null);
 const runways = ref<FeatureCollection | null>(null);
 const ground = ref<FeatureCollection | null>(null);
 const groundAttribution = ref<string[]>([]);
-const groundAccuracyM = ref(0);
 /** 已取回的格子，跨块累积；键是 `lat,lon`。 */
 const moraCells = new Map<string, MORACell>();
 /** 已经取过（或正在取）的块，键是块的左下角。避免同一块并发重复请求。 */
@@ -876,7 +868,7 @@ let groundShown = "";
  *
  * 没有这道闸时是**最后回来的赢**，而不是最新的视野赢：慢的 A 场请求可以在之后
  * 命中缓存的 B 场之后回来，把 B 盖掉；缩到门槛以下清空之后，前一次放大时发出的
- * 请求再回来，又把地面和那句精度提示一起放回去。视野每变一次都会再调一次这里（缩
+ * 请求再回来，又把地面放回去。视野每变一次都会再调一次这里（缩
  * 回去那一支也领号），所以「号还是最新的」就等于「缩放和视野还是它看到的那个」。 */
 let groundSeq = 0;
 
@@ -901,9 +893,7 @@ async function loadGroundFor(v: {
     if (ground.value) {
       ground.value = null;
       groundAttribution.value = [];
-      groundAccuracyM.value = 0;
       groundShown = "";
-      clearNotice("ground");
     }
     return;
   }
@@ -917,9 +907,7 @@ async function loadGroundFor(v: {
     if (ground.value) {
       ground.value = null;
       groundAttribution.value = [];
-      groundAccuracyM.value = 0;
       groundShown = "";
-      clearNotice("ground");
     }
     return;
   }
@@ -948,38 +936,14 @@ async function loadGroundFor(v: {
   if (!have.length) {
     ground.value = null;
     groundAttribution.value = [];
-    groundAccuracyM.value = 0;
-    clearNotice("ground");
     return;
   }
 
   const drawing = toGroundDrawing(have);
   ground.value = drawing.collection;
-  /* 署名**必须**显示 —— OSM 那份是 ODbL，署名是许可条款不是礼貌。由数据决定而不
-     是写死：只有真的用了 OSM 的机场才有值，写死会让纯扇区包的机场挂一个错误的出
-     处。汇编那份的规矩正好相反（来源不能外露），所以画 lines 时这里是空的。
-     这里传的是**纯文本**，转义在 RouteMap 挂署名控件那一步做（它按 HTML 渲染）。 */
+  /* 署名**必须**显示：地面数据是 ODbL。这里传纯文本，转义在 RouteMap 挂署名控件
+     那一步做（它按 HTML 渲染）。 */
   groundAttribution.value = drawing.attributions;
-  /* 画的是航图线画时才说精度：那一份位置只能信到 5–20 米，而分好类的那份是米级
-     的，给它标一个精度反而是误导。 */
-  groundAccuracyM.value = drawing.kind === "lines" ? drawing.worstAccuracyM : 0;
-
-  /* 只有画**航图线画**时才说精度。
-   *
-   * 分好类的那份是米级的，给它标一句「约 20 米」反而是误导。而航图那份非说不
-   * 可：它画出来和图纸一样利落，看不出位置只能信到 5–20 米 —— 正是那种"看起来
-   * 完全正常"的错，这个网络的文档里反复记的就是这一类。 */
-  if (groundAccuracyM.value > 0) {
-    setNotice(
-      "ground",
-      props.t.groundAccuracy.replace(
-        "{m}",
-        String(Math.round(groundAccuracyM.value)),
-      ),
-    );
-  } else {
-    clearNotice("ground");
-  }
 }
 
 async function loadMoraFor(v: {

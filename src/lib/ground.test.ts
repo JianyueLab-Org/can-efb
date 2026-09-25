@@ -1,126 +1,16 @@
 import { expect, test, describe } from "bun:test";
 
-import { toGroundDrawing, type Ground } from "@/lib/ground";
+import { GROUND_ATTRIBUTION, toGroundDrawing, type Ground } from "@/lib/ground";
 import { airportsInView, type AirportPin } from "@/lib/airports";
 
 function ground(over: Partial<Ground>): Ground {
   return {
     icao: "ZBAA",
     features: [],
-    lines: [],
-    accuracyM: 0,
-    runways: 0,
+    attribution: GROUND_ATTRIBUTION,
     ...over,
   };
 }
-
-describe("画哪一份", () => {
-  /**
-   * 有分好类的要素就不画航图线画。
-   *
-   * 两份并排画看着"信息更多"，实际是把同一条滑行道画两遍、位置差十几米，而读图的
-   * 人无法判断该信哪条。can-db 在合并 `ground_feature` 的两个来源时拒绝过同一件
-   * 事，画在图上是同一个道理。
-   */
-  test("有 features 时 lines 一条都不画", () => {
-    const d = toGroundDrawing([
-      ground({
-        features: [
-          {
-            kind: "taxiway",
-            source: "sector",
-            points: [
-              [40, 116],
-              [40.1, 116.1],
-            ],
-          },
-        ],
-        lines: [
-          {
-            rgb: "#4d4d4d",
-            widthM: 2,
-            points: [
-              [40, 116],
-              [40.1, 116.1],
-            ],
-          },
-          {
-            rgb: "#4d4d4d",
-            widthM: 2,
-            points: [
-              [41, 117],
-              [41.1, 117.1],
-            ],
-          },
-        ],
-        accuracyM: 20,
-      }),
-    ]);
-
-    expect(d.kind).toBe("features");
-    expect(d.collection.features).toHaveLength(1);
-    // 精度只在画 lines 时才说 —— features 是米级的，标一句「约 20 米」是误导。
-    expect(d.worstAccuracyM).toBe(0);
-  });
-
-  test("没有 features 时退到 lines，并带出精度", () => {
-    const d = toGroundDrawing([
-      ground({
-        lines: [
-          {
-            rgb: "#4d4d4d",
-            widthM: 2,
-            points: [
-              [40, 116],
-              [40.1, 116.1],
-            ],
-          },
-        ],
-        accuracyM: 20,
-      }),
-    ]);
-
-    expect(d.kind).toBe("lines");
-    expect(d.collection.features).toHaveLength(1);
-    expect(d.worstAccuracyM).toBe(20);
-  });
-
-  /** 逐个机场决定，不是整批二选一 —— 视野里两个场可以各画各的那一份。 */
-  test("一个场有要素、另一个只有线画时，两个都画得出来", () => {
-    const d = toGroundDrawing([
-      ground({
-        icao: "ZBAA",
-        features: [
-          {
-            kind: "runway",
-            source: "sector",
-            points: [
-              [40, 116],
-              [40.1, 116],
-            ],
-          },
-        ],
-      }),
-      ground({
-        icao: "ZBAD",
-        lines: [
-          {
-            rgb: "#4d4d4d",
-            widthM: 2,
-            points: [
-              [39, 116],
-              [39.1, 116],
-            ],
-          },
-        ],
-        accuracyM: 20,
-      }),
-    ]);
-
-    expect(d.icaos).toEqual(["ZBAA", "ZBAD"]);
-    expect(d.collection.features).toHaveLength(2);
-  });
-});
 
 describe("代号", () => {
   const nameOf = (kind: string, name?: string) => {
@@ -129,7 +19,6 @@ describe("代号", () => {
         features: [
           {
             kind,
-            source: "sector",
             name,
             points: [
               [40, 116],
@@ -153,31 +42,10 @@ describe("代号", () => {
    * 没代号的要素给空串，**不是省略**。
    *
    * 标注层的过滤是 `has(name)` 加 `name != ""`：两条都要。库里多数要素本来就没有
-   * 代号（滑行道 26421 条里 6927 条有），空串让它们被第二条挡掉；而航图线画那一份
-   * 一个 `name` 字段都没有，被第一条整份挡掉 —— 少了 `has` 那一条，`get("name")`
-   * 对它求值是 null，而 `!= ""` 对 null 成立，满图会是空标签占着避让位。
+   * 代号，空串让它们被第二条挡掉。
    */
   test("没代号的给空串", () => {
     expect(nameOf("taxiway")).toBe("");
-  });
-
-  test("航图线画根本没有 name 这个字段", () => {
-    const d = toGroundDrawing([
-      ground({
-        lines: [
-          {
-            rgb: "#4d4d4d",
-            widthM: 2,
-            points: [
-              [40, 116],
-              [40.1, 116],
-            ],
-          },
-        ],
-        accuracyM: 20,
-      }),
-    ]);
-    expect(d.collection.features[0].properties).not.toHaveProperty("name");
   });
 });
 
@@ -188,7 +56,6 @@ describe("线宽", () => {
         features: [
           {
             kind,
-            source: "sector",
             widthM,
             points: [
               [40, 116],
@@ -228,79 +95,42 @@ describe("线宽", () => {
 });
 
 describe("署名", () => {
-  /**
-   * OSM 那份是 ODbL，**署名是许可条款不是礼貌**。它由数据决定 —— 写死一句会让纯
-   * 扇区包的机场挂一个错误的出处，不写则是违反许可。
-   */
-  test("用了 OSM 的机场把署名带出来", () => {
+  const line: [number, number][] = [
+    [40, 116],
+    [40.1, 116],
+  ];
+
+  /** 数据是 ODbL，画了要素就必须带出署名。 */
+  test("画了要素就带出署名", () => {
+    const d = toGroundDrawing([
+      ground({ features: [{ kind: "taxiway", points: line }] }),
+    ]);
+    expect(d.attributions).toEqual([GROUND_ATTRIBUTION]);
+  });
+
+  test("can-db 没给署名时用兜底的那一句", () => {
     const d = toGroundDrawing([
       ground({
-        features: [
-          {
-            kind: "taxiway",
-            source: "osm",
-            points: [
-              [40, 116],
-              [40.1, 116],
-            ],
-          },
-        ],
-        attribution: "© OpenStreetMap contributors",
+        features: [{ kind: "taxiway", points: line }],
+        attribution: "",
       }),
     ]);
-    expect(d.attributions).toEqual(["© OpenStreetMap contributors"]);
+    expect(d.attributions).toEqual([GROUND_ATTRIBUTION]);
   });
 
   test("两个机场同一句署名只出现一次", () => {
     const d = toGroundDrawing([
-      ground({
-        icao: "ZBAA",
-        features: [
-          {
-            kind: "taxiway",
-            source: "osm",
-            points: [
-              [40, 116],
-              [40.1, 116],
-            ],
-          },
-        ],
-        attribution: "© OpenStreetMap contributors",
-      }),
-      ground({
-        icao: "ZBAD",
-        features: [
-          {
-            kind: "taxiway",
-            source: "osm",
-            points: [
-              [39, 116],
-              [39.1, 116],
-            ],
-          },
-        ],
-        attribution: "© OpenStreetMap contributors",
-      }),
+      ground({ icao: "ZBAA", features: [{ kind: "taxiway", points: line }] }),
+      ground({ icao: "ZBAD", features: [{ kind: "taxiway", points: line }] }),
     ]);
+    expect(d.icaos).toEqual(["ZBAA", "ZBAD"]);
+    expect(d.collection.features).toHaveLength(2);
     expect(d.attributions).toHaveLength(1);
   });
 
-  /** 汇编那份的规矩正好相反：**来源不能外露**，所以画 lines 时一个字都不提。 */
-  test("画航图线画时不带任何署名", () => {
+  test("一个要素都没画出来时不带署名", () => {
     const d = toGroundDrawing([
-      ground({
-        lines: [
-          {
-            rgb: "#4d4d4d",
-            widthM: 2,
-            points: [
-              [40, 116],
-              [40.1, 116],
-            ],
-          },
-        ],
-        accuracyM: 20,
-      }),
+      ground({ features: [{ kind: "taxiway", points: [] }] }),
     ]);
     expect(d.attributions).toEqual([]);
   });
@@ -314,9 +144,7 @@ describe("几何", () => {
   test("一个点的要素出 Point 而不是被丢掉", () => {
     const d = toGroundDrawing([
       ground({
-        features: [
-          { kind: "holding_position", source: "sector", points: [[40, 116]] },
-        ],
+        features: [{ kind: "holding_position", points: [[40, 116]] }],
       }),
     ]);
     expect(d.collection.features).toHaveLength(1);
@@ -330,7 +158,6 @@ describe("几何", () => {
         features: [
           {
             kind: "runway",
-            source: "sector",
             points: [
               [40, 116],
               [41, 117],
@@ -348,7 +175,7 @@ describe("几何", () => {
 
   test("空点串的要素跳过，不产生坏几何", () => {
     const d = toGroundDrawing([
-      ground({ features: [{ kind: "taxiway", source: "sector", points: [] }] }),
+      ground({ features: [{ kind: "taxiway", points: [] }] }),
     ]);
     expect(d.collection.features).toHaveLength(0);
   });
