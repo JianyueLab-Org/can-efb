@@ -150,4 +150,12 @@ describe("railChangeAnnouncesImmediately", () => {
       railChangeAnnouncesImmediately(false, "width, left", "240ms, 0ms"),
     ).toBe(true);
   });
+
+  test("duration 列比 property 列短：按 CSS 规则循环取值，不是塌到最后一个", () => {
+    // CSS 里 transition-duration 比 transition-property 短时是循环对应的：
+    // a→200ms、b→0ms、left→200ms（回到第一个），不是补最后一个 0ms。
+    expect(
+      railChangeAnnouncesImmediately(false, "a, b, left", "200ms, 0ms"),
+    ).toBe(false);
+  });
 });

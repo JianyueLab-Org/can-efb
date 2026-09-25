@@ -82,6 +82,11 @@ function cssTimeMs(raw: string | undefined): number {
  * 值（`getComputedStyle` 原样返回 CSS 简写 `transition` 展开后的结果）。取其中
  * `property` 那一路的时长；`transition: none` 会把 property 折成单独一个 `all`，
  * 这时按 `all` 的时长算，因为它确实盖住了每一个属性。查不到就当 0。
+ *
+ * **duration 列比 property 列短时按 CSS 规则循环取**（`durations[index %
+ * durations.length]`），不是塌到最后一个：`transition: a 200ms, b, left` 这种
+ * 写法里 `transition-duration` 只有一个值，CSS 把它接到每一路属性上，第三路
+ * （`left`）用的又是第一个值，不是「最后一个」这个不相干的概念。
  */
 function transitionDurationFor(
   property: string,
@@ -92,8 +97,8 @@ function transitionDurationFor(
   const durations = transitionDuration.split(",").map((s) => s.trim());
   const idx = props.indexOf(property);
   const index = idx !== -1 ? idx : props.indexOf("all");
-  if (index === -1) return 0;
-  return cssTimeMs(durations[index] ?? durations[durations.length - 1]);
+  if (index === -1 || durations.length === 0) return 0;
+  return cssTimeMs(durations[index % durations.length]);
 }
 
 /**
