@@ -10,7 +10,9 @@
  * 的表格都还在。生成器里的程序缓存本来就是模块级的，这里只是不把组件本身卸掉。
  *
  * 键盘按 WAI-ARIA 标签页的做法：左右箭头换标签并激活，Home/End 到两端，只有当前
- * 那个标签在 Tab 顺序里。
+ * 那个标签在 Tab 顺序里。索引算术（折返、Home/End）抽到 `lib/tabs.ts` 的
+ * `nextTabIndex` 里单独测 —— 这一轮没有浏览器可以验证按键效果，错了只有真的按
+ * 下方向键才看得出来。
  *
  * **没有 `aipAccess` prop。** 以前这里要把它转给 RouteGenerator 去出「不使用受限
  * 汇编」那个开关；那个开关现在是设置页的全站开关（lib/naip.ts），生成这一侧不用
@@ -19,6 +21,7 @@
  */
 import { nextTick, ref, useId } from "vue";
 import { createTranslator } from "@/lib/i18n";
+import { nextTabIndex } from "@/lib/tabs";
 import PanelSection from "@/components/ui/PanelSection.vue";
 import RouteGenerator from "./RouteGenerator.vue";
 import RoutePlanner from "./RoutePlanner.vue";
@@ -40,18 +43,10 @@ function select(tab: Tab) {
 }
 
 async function onKey(event: KeyboardEvent) {
-  const i = TABS.indexOf(active.value);
-  const next =
-    event.key === "ArrowRight"
-      ? (i + 1) % TABS.length
-      : event.key === "ArrowLeft"
-        ? (i - 1 + TABS.length) % TABS.length
-        : event.key === "Home"
-          ? 0
-          : event.key === "End"
-            ? TABS.length - 1
-            : -1;
-  if (next < 0) return;
+  // 折返和 Home/End 的算术在 lib/tabs.ts（纯函数，见 tabs.test.ts）；这里只管
+  // 副作用：换状态、防默认滚动、把焦点带过去。
+  const next = nextTabIndex(event.key, TABS.indexOf(active.value), TABS.length);
+  if (next === null) return;
   event.preventDefault();
   select(TABS[next]);
   await nextTick();
