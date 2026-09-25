@@ -6,9 +6,9 @@ Cerulean Aviation Network 的**电子飞行包**（Electronic Flight Bag）—�
 
 Astro SSR + Vue 岛屿 + Tailwind v4，和 can-web / can-dev / can-radar 同一套形状。
 
-已经接上 can-api：**概览、飞行计划（含 SimBrief 导入）、气象、飞行日志、航路展
-开、设置**都是真数据。**航图、机场、性能、检查单**还是占位 —— 它们没有数据源，
-页面上会写清楚缺的是什么。
+已经接上 can-api 和 can-db：**概览、飞行计划（含 SimBrief 导入）、气象、航路
+展开、设置、机场**都是真数据。**没有占位页面**：航图没有页面也没有入口 ——
+有版权的数据，网络里没有一处提供；性能、检查单两页删掉了，不是占着。
 
 > **本地跑起来会看到 302。** 整站要登录，而登录态是 can-api 签在
 > `.ceruleanavi.net` 上的 cookie，`localhost` 上拿不到，所以每个页面都会跳到主站
