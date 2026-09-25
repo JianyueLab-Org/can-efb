@@ -44,6 +44,22 @@ can-ui 的 `--material-regular` / `--material-blur-regular`）。以前是**轨 
   设置）。平板上 wide 退回 standard。
 - 面板可以收起成一条（`inert` 挡住里面的 Tab），地图跟着把内边距收回去。
 
+### mapBus：只有面板 → 地图，没有反向
+
+面板和地图是两个独立岛屿，中间没有父组件，通道是 `window` 上的 CustomEvent
+（`lib/mapBus.ts`）。**方向只有一种**：地图从不向面板发消息，防止两个岛屿互相
+改对方的状态。
+
+- `efb:map`（`publishToMap`）—— 要连成线的点（`points`）、只标点不连线的标注
+  （`markers`）、地图角上的说明。
+- `panel:layout`（`efb:panel-layout`，`announcePanelLayout`）—— 面板此刻盖住哪一
+  块，见上；新订阅者会收到上一条。
+- `map:focus`（`efb:map-focus`，`focusMap`）—— 把镜头对到一个点或一个框；非有限
+  数的目标被 `isMapFocus` 挡在发送之前，不会让地图飞去 NaN。
+- `map:plan`（`efb:map-plan`，`showPlanOnMap`）—— 「地图，回到我已提交的那份计
+  划」，地图自己向 can-api 读，不吃面板带的内容；Dashboard 打开时、FlightPlan 都
+  用它把地图拉回自己这份计划。
+
 ### 三种排布，断点只写在 CSS 里
 
 | 宽度       | `--shell-mode` | 轨                 | 面板                              |
@@ -564,6 +580,15 @@ cookie 名是 **`NEXT_LOCALE`**，Next.js 时代留下来的；四个站共用�
 判据：**一个「什么都没有」的界面，必须能回答"是真的没有，还是没问到"。** 两种情形
 要么各说一句话，要么至少别用只对其中一种成立的措辞。写 `if (!result.ok) return;`
 之前，先看一眼它落进哪个分支去。
+
+**这条判据在岛屿里落到一个类型上。** 每个岛屿的请求都收进 `lib/requestState.ts` 的
+`RequestState<T>`：`loading` / `data` / `empty` / `error`（可带 `failure`）/
+`forbidden`，用 `fromApiResult`（can-api）或 `fromDbResponse`（can-db）归类，渲
+染统一交给 `StateCard`。can-api 的失败一律是 `error`；can-db 的 401/403 是
+`forbidden` —— 说的是没有权限，不是故障，判定只有一处：`isForbiddenStatus`。
+`empty` 只在读到了、确实没有时用，读失败落进这里就是上面那句假话。Dashboard、
+FlightPlan、Airports、AirportDetail、ProcedurePicker、RouteGenerator、
+`routePreview` 都走这条路，没有第二种画法。
 
 ## 还没做的事（按该做的顺序）
 
