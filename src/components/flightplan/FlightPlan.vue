@@ -68,6 +68,15 @@ const loading = ref(true);
 const saving = ref(false);
 const deleting = ref(false);
 
+/**
+ * 页面已经卸载（导航去了别处）。`file()` / `remove()` 都在 `await api(...)`
+ * 之后接着写地图和自己的 state —— 请求还在路上时切到 /airports，回来的这两下会
+ * 把 /airports 页面刚画上去的标注和焦点整个抹掉（mapBus 没有卸载概念，谁发消息
+ * 地图就听谁的）。卸载之后不再碰地图、也不再写这些 ref，见文件末尾的
+ * onBeforeUnmount。
+ */
+const disposed = ref(false);
+
 /** 已存在的计划；null 表示这名成员现在没有计划 —— **前提是读到了**，见 loadFailed。 */
 const stored = ref<StoredPlan | null>(null);
 
@@ -209,6 +218,10 @@ async function file() {
     method: "POST",
     body: JSON.stringify({ ...form }),
   });
+  // 等回来这段时间可能已经导航去了别处（比如 /airports）。下面这些都是「这一份
+  // 计划现在的状态」——不再是当前页面时不要再写它，也不要再发 showPlanOnMap 之
+  // 类的 mapBus 消息去抢别的页面已经画在地图上的东西。
+  if (disposed.value) return;
   saving.value = false;
 
   if (result.ok) {
@@ -245,6 +258,9 @@ async function remove() {
   deleting.value = true;
   notice.value = null;
   const result = await api("/api/v1/pilot/flightplan", { method: "DELETE" });
+  // 同 file()：撤销请求还在路上时可能已经导航走了，回来的这些不再写、也不再动
+  // 地图。
+  if (disposed.value) return;
   deleting.value = false;
 
   if (!result.ok) {
@@ -394,6 +410,7 @@ onMounted(() => {
   void load();
 });
 onBeforeUnmount(() => {
+  disposed.value = true;
   clearTimeout(previewTimer);
   previewRequest.cancel();
 });
