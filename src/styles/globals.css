@@ -279,28 +279,135 @@
   padding: 0.375rem 0.75rem;
 }
 
-/* 航路图层开关。左下角 —— 左上是缩放控件、右上是那条提示、右下是角落坐标，四个
-   角里只剩这一个。 */
-.map-layers {
+/* ---------------------------------------------------------------------------
+   玻璃材质。轨、面板、地图上的控件共用这一个类。
+
+   取的是 can-ui 的材质令牌（`--material-regular` 那一组），深浅两套由令牌自己换，
+   这里不另写颜色。退路有两条，都退回 can-ui 的实心浮层色：浏览器不支持
+   backdrop-filter 时，一层 78% 不透明的底色压在地图上会让字直接落在航路线上；
+   成员要求减少透明度时，照 can-ui 自己的规矩整个去掉模糊，而不是留一层弱模糊。
+   --------------------------------------------------------------------------- */
+.glass {
+  background-color: var(--material-regular);
+  -webkit-backdrop-filter: saturate(var(--material-saturate))
+    blur(var(--material-blur-regular));
+  backdrop-filter: saturate(var(--material-saturate))
+    blur(var(--material-blur-regular));
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-popover);
+}
+@supports not (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
+  .glass {
+    background-color: var(--surface-overlay);
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass {
+    background-color: var(--surface-overlay);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* 地图上的覆盖层。铺在地图**露出来的那一块**上：`--map-pad-*` 由 MapStage 按面板
+   位置写（Task 7 之前都是 0）。自己不接指针 —— 压在地图上能挡住拖动的东西就是一
+   个看不出原因的死角 —— 里面的控件各自接。 */
+.map-overlay {
   position: absolute;
   z-index: 2;
+  top: var(--map-pad-top, 0px);
+  right: var(--map-pad-right, 0px);
+  bottom: var(--map-pad-bottom, 0px);
+  left: var(--map-pad-left, 0px);
+  pointer-events: none;
+  transition:
+    left 240ms ease,
+    bottom 240ms ease;
+}
+.map-overlay > * {
+  pointer-events: auto;
+}
+
+/* 「有 n 块边界不完整没画」。贴在可见区上沿居中：它说的是整张图缺了东西。 */
+.map-partial {
+  position: absolute;
+  top: 0.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(28rem, calc(100% - 8rem));
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-control);
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  color: var(--color-muted);
+  text-align: center;
+}
+
+/* 「这一层没有数据」/「没有航行资料库权限」。排在上一条下面，比它显眼一点。 */
+.map-notice {
+  position: absolute;
+  top: 2.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(30rem, calc(100% - 8rem));
+  padding: 0.375rem 0.75rem;
+  border-radius: var(--radius-control);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--color-ink);
+  text-align: center;
+}
+
+/* 「定位到我」。放在缩放控件下面：它是改变视野的动作，和 +/- 同一类。 */
+.map-locate {
+  position: absolute;
+  top: 5.25rem;
+  left: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: var(--radius-control);
+  font-size: 0.6875rem;
+  color: var(--color-ink);
+}
+.map-locate:hover {
+  background: var(--surface-overlay);
+}
+
+/* 图层菜单和失败提示，从可见区左下角往上长。 */
+.map-layers {
+  position: absolute;
   left: 0.5rem;
   bottom: 0.5rem;
   display: flex;
-  padding: 0.125rem;
-  gap: 0.125rem;
-
-  /* **必须能换行。** 图层这一排现在有六颗按钮，而这块地图是右侧那一列 —— 窗口
-     窄一点、或者平板竖着拿的时候，一排排不下就会溢出卡片被裁掉，后面几个图层从
-     此点不到。
-
-     靠 `bottom` 定位，所以换行是往**上**长的，不会盖住下面那一排。 */
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.375rem;
   max-width: calc(100% - 1rem);
 }
+.map-layer-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--radius-control);
+  font-size: 0.75rem;
+  color: var(--color-ink);
+}
+.map-layer-menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.125rem;
+  max-width: 22rem;
+  padding: 0.25rem;
+  border-radius: var(--radius-card);
+}
 .map-layer-btn {
-  font-size: 0.6875rem;
-  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.6rem;
   border-radius: 0.25rem;
   color: var(--color-muted);
 }
@@ -311,64 +418,10 @@
   background: var(--surface-overlay);
   color: var(--color-ink);
 }
-/* 「有 n 块边界不完整没画」那条提示。
-   贴在地图上沿、居中：它说的是**整张图缺了东西**，不属于左下角那排图层开关，
-   也不该挤在角落里被当成装饰。窄，因为它只有一句话。 */
-.map-partial {
-  position: absolute;
-  z-index: 2;
-  top: 0.5rem;
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: min(28rem, calc(100% - 8rem));
-  padding: 0.25rem 0.6rem;
-  font-size: 0.6875rem;
-  line-height: 1.4;
-  color: var(--color-muted);
-  text-align: center;
+.map-layer-btn:disabled {
+  opacity: 0.5;
 }
-
-/* 「这一层没有数据」/「你没有航行资料库权限」。
-   跟着 .map-partial 排在它下面（4.25rem 是那条一行时的高度加间距）。比它显眼一
-   点：那条说的是一张图缺了几块，这条说的是**你刚点开的东西整个是空的**，而后者
-   如果不说，看到的就是一张画不出线的地图 —— 那正是要修的那个故障。 */
-.map-notice {
-  position: absolute;
-  z-index: 2;
-  top: 2.5rem;
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: min(30rem, calc(100% - 8rem));
-  padding: 0.375rem 0.75rem;
-  font-size: 0.75rem;
-  line-height: 1.5;
-  color: var(--color-ink);
-  text-align: center;
-}
-
-/* 「定位到我」。
-   放左上角缩放控件的**下面**：它是一个改变视野的动作，和 +/- 是同一类，凑在
-   一起比混进右下角那排图层开关讲得通。缩放控件两颗按钮加内边距约 4.6rem 高，
-   所以从 5.25rem 起，留一点余量。 */
-.map-locate {
-  position: absolute;
-  z-index: 2;
-  top: 5.25rem;
-  left: 0.5rem;
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.2rem 0.45rem;
-  font-size: 0.6875rem;
-  color: var(--color-ink);
-}
-.map-locate:hover {
-  background: var(--surface-overlay);
-}
-
-/* 在线管制席位数，贴在「实时」那颗按钮上。
-   数字本身就是信息 —— 「现在有没有人管」是飞行员开图第一眼要的答案之一，
-   让它出现在按钮上比藏进图里省一次寻找。 */
+/* 在线管制席位数。「现在有没有人管」是开图第一眼要的答案之一。 */
 .map-layer-count {
   margin-left: 0.35rem;
   padding: 0 0.3rem;
@@ -378,7 +431,14 @@
   font-size: 0.65rem;
   font-variant-numeric: tabular-nums;
 }
-
-.map-layer-btn:disabled {
-  opacity: 0.5;
+/* 没取到的那一层。小，但带一个能按的重试。 */
+.map-layer-failure {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 22rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--radius-control);
+  font-size: 0.75rem;
+  color: var(--color-ink);
 }

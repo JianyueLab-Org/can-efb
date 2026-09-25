@@ -210,7 +210,7 @@ export function subscribeMapFocus(
 
 /**
  * 面板推过一次东西之后，地图这次会话里就不再画计划（不然面板刚画好的航路会被异
- * 步回来的计划顶掉，见 `MapSurface.vue` 的 `panelPublished`）。概览页要的正好是计
+ * 步回来的计划顶掉，见 `components/map/useRouteLayer.ts` 的 `panelPublished`）。概览页要的正好是计
  * 划，所以它得明说一声。不带内容：计划以 can-api 为准，地图收到后自己读。
  */
 export const MAP_PLAN_EVENT = "efb:map-plan";

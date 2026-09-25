@@ -327,7 +327,10 @@
       },
       "denied": "你的账号还没有航行资料库的读取权限，所以航路、导航台、空域这几层都取不到。找管理员开通 aipAccess。",
       "groundAccuracy": "机场地面是从航图上抠出来的线画，位置约 {m} 米 —— 画得很像图纸，但不能当坐标用。",
-      "planOnMap": "已提交的飞行计划 {from} → {to}"
+      "planOnMap": "已提交的飞行计划 {from} → {to}",
+      "layersMenu": "图层",
+      "layerFailed": "「{layer}」没取到，图上这一层是空的。",
+      "locate": "定位到我的飞机"
     },
     "airports": {
       "search": "搜索 ICAO、机场名或飞行情报区",

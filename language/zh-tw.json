@@ -327,7 +327,10 @@
       },
       "denied": "你的帳號還沒有航行資料庫的讀取權限，所以航路、導航台、空域這幾層都取不到。找管理員開通 aipAccess。",
       "groundAccuracy": "機場地面是從航圖上擷取的線畫，位置約 {m} 公尺 —— 畫得很像圖紙，但不能當座標用。",
-      "planOnMap": "已提交的飛行計畫 {from} → {to}"
+      "planOnMap": "已提交的飛行計畫 {from} → {to}",
+      "layersMenu": "圖層",
+      "layerFailed": "「{layer}」沒取到，圖上這一層是空的。",
+      "locate": "定位到我的飛機"
     },
     "airports": {
       "search": "搜尋 ICAO、機場名或飛航情報區",

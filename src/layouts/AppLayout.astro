@@ -24,7 +24,7 @@
  */
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import AppRail from "@/components/AppRail.vue";
-import MapSurface from "@/components/MapSurface.vue";
+import MapStage from "@/components/map/MapStage.vue";
 import BeianLine from "@jianyuelab-org/can-ui/components/BeianLine.vue";
 import { getLocale, getMessages, useTranslations } from "@/lib/i18n";
 import { buildCrossLinks, buildNav } from "@/lib/nav";
@@ -101,7 +101,7 @@ const crossLinks = buildCrossLinks(t);
       状态也在组件里），晚一步水合就是晚一步出现。
     */
     }
-    <MapSurface
+    <MapStage
       label={t("route.map.label")}
       cid={user?.id ?? null}
       t={{
@@ -112,6 +112,10 @@ const crossLinks = buildCrossLinks(t);
         emptyGeneric: t("map.emptyLayer.generic"),
         groundAccuracy: t("map.groundAccuracy"),
         planOnMap: t("map.planOnMap"),
+        layersMenu: t("map.layersMenu"),
+        layerFailed: t("map.layerFailed"),
+        retry: t("common.retry"),
+        locate: t("map.locate"),
       }}
       failureText={{
         init: t("map.failure.init"),

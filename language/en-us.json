@@ -327,7 +327,10 @@
       },
       "denied": "Your account does not have read access to the aeronautical database yet, so airways, navaids and airspace cannot be loaded. Ask an administrator for aipAccess.",
       "groundAccuracy": "Airport ground is traced from charts and sits within about {m} m — it looks like a diagram, but do not read coordinates off it.",
-      "planOnMap": "Filed flight plan {from} → {to}"
+      "planOnMap": "Filed flight plan {from} → {to}",
+      "layersMenu": "Layers",
+      "layerFailed": "Couldn't load {layer}; that layer is empty on the map.",
+      "locate": "Center on my aircraft"
     },
     "airports": {
       "search": "Search by ICAO, name or FIR",
