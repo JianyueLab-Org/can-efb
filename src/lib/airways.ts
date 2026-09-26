@@ -1,6 +1,7 @@
 import type { Feature, FeatureCollection } from "geojson";
 import { distanceNm, type LatLon } from "@/lib/geo";
 import { dbFetch } from "@/lib/naip";
+import { wrapLon } from "@/lib/mapText";
 
 /**
  * 航路网：从 can-db 取回来，转成地图能画的线。
@@ -12,12 +13,20 @@ import { dbFetch } from "@/lib/naip";
  *   /api/v1/aip/route  can-db   —— 「从 A 到 B 该怎么飞」的规划器，EFB 目前没用
  *   /api/v1/aip/airways can-db  —— **整张航路网**，这个文件用的就是它
  *
- * 前两个回答的是一条具体航路，这一个给的是全国的图 —— 图层要的是后者。
+ * 前两个回答的是一条具体航路，这一个给的是整张图 —— 图层要的是后者。
+ *
+ * ## 端点是图键，不是代号
+ *
+ * 航段的 `from` / `to` 是**图键**：Navigraph 的行是 `ident@region/kind`（例如
+ * `AKAGI@RJ/waypoint`），没匹配上的 NAIP 点是裸代号。`fixes` 按图键索引。给人看
+ * 的、和计划里的代号比的，一律用 `fromIdent` / `toIdent`（旧版 can-db 没有这两项，
+ * 退回 `from` / `to`，那时图键就是代号）。同一个代号在两个地区是两个图键、两个点，
+ * 不许按代号并起来。
  */
 
 /** can-db 的 `AirwayGraph`，字段和它的 Go 结构逐字对齐。 */
 export interface AirwayGraph {
-  /** ident → [lat, lon]。**注意是纬度在前**，和 GeoJSON 相反。 */
+  /** 图键 → [lat, lon]。**注意是纬度在前**，和 GeoJSON 相反。 */
   fixes: Record<string, [number, number]>;
   segments: AirwaySegment[];
   /** designator → 整条航路的属性。按 level 过滤时它不跟着筛。 */
@@ -26,8 +35,12 @@ export interface AirwayGraph {
 
 export interface AirwaySegment {
   airway: string;
+  /** 图键（见文件顶上）。只拿来查 `fixes` 和认航段，不给人看。 */
   from: string;
   to: string;
+  /** 两端的代号，标注和比对计划用。旧版 can-db 不给，用 `segmentIdents` 取。 */
+  fromIdent?: string;
+  toIdent?: string;
   /** "both" | "forward" | "backward"。 */
   dir: string;
   /** 英尺，可空 —— 来源不发布高度带时就是 null。 */
@@ -45,6 +58,49 @@ export interface AirwayMeta {
 }
 
 export type AirwayLevel = "high" | "low";
+
+/** 航段两端的代号。旧版 can-db 没有 `fromIdent` / `toIdent`，那时图键就是代号。 */
+export function segmentIdents(seg: AirwaySegment): [string, string] {
+  return [seg.fromIdent ?? seg.from, seg.toIdent ?? seg.to];
+}
+
+/** 取数框：`[south, west, north, east]`，度。`west > east` 表示跨 180°。 */
+export type AirwayBbox = [number, number, number, number];
+
+/** 航路网按视野取时一块多大（度）。块的边界是它的整数倍，从 -180 / -90 算起。 */
+export const AIRWAY_BLOCK = 10;
+/** 最多攒多少块。超过时丢视野外最早取的那些。 */
+export const AIRWAY_MAX_BLOCKS = 64;
+
+/**
+ * 视野框 → 覆盖它的那些块的左下角。
+ *
+ * 经度是 MapLibre 原样给的展开值（过日界线后是 `170..190` 或 `-200..-170`），这里
+ * 折回 [-180, 180) 再取块，所以跨 180° 的视野拆成两侧的块，每块自己不跨。视野横跨
+ * 360° 以上就是整圈。和 `lib/mora.ts` 的 `blocksFor` 同一个做法，只是纬度只取
+ * [-90, 90) 里的块 —— 航路没有 MORA 那个「格子北边」的偏移。
+ */
+export function airwayBlocksFor(
+  south: number,
+  west: number,
+  north: number,
+  east: number,
+): { lat: number; lon: number }[] {
+  const floor = (v: number) => Math.floor(v / AIRWAY_BLOCK) * AIRWAY_BLOCK;
+  const [from, to] =
+    east - west >= 360
+      ? [-180, 180 - AIRWAY_BLOCK]
+      : [floor(west), floor(east)];
+  const lons = new Set<number>();
+  for (let lon = from; lon <= to; lon += AIRWAY_BLOCK) lons.add(wrapLon(lon));
+  const out: { lat: number; lon: number }[] = [];
+  const lat0 = Math.max(-90, floor(south));
+  const lat1 = Math.min(90 - AIRWAY_BLOCK, floor(north));
+  for (let lat = lat0; lat <= lat1; lat += AIRWAY_BLOCK) {
+    for (const lon of lons) out.push({ lat, lon });
+  }
+  return out;
+}
 
 /**
  * 一条航段在图上归哪一层。`both` 是两个视图里都有的那些（can-db 的 `both` 加上没有
@@ -69,8 +125,12 @@ export interface TaggedAirwayGraph extends Omit<AirwayGraph, "segments"> {
  * 失败**抛出**而不是返回空：这一层是用户明确打开的图层，不是装饰性底图。悄悄给
  * 一张空图会被当成「这一带没有航路」，那是错的信息，比一个错误提示糟得多。
  */
-export async function fetchAirways(level: AirwayLevel): Promise<AirwayGraph> {
-  const response = await dbFetch(`aip/airways?level=${level}`);
+export async function fetchAirways(
+  level: AirwayLevel,
+  bbox?: AirwayBbox,
+): Promise<AirwayGraph> {
+  const box = bbox ? `&bbox=${bbox.join(",")}` : "";
+  const response = await dbFetch(`aip/airways?level=${level}${box}`);
   if (!response.ok) {
     throw new Error(`airways ${level}: ${response.status}`);
   }
@@ -87,12 +147,40 @@ export async function fetchAirways(level: AirwayLevel): Promise<AirwayGraph> {
  * 就是 `both`。地图按缩放决定画哪一层（`lib/chartStyle.ts` 的 `ZOOM`），不再让人去
  * 选。
  */
-export async function fetchAirwayNetwork(): Promise<TaggedAirwayGraph> {
+export async function fetchAirwayNetwork(
+  bbox?: AirwayBbox,
+): Promise<TaggedAirwayGraph> {
   const [high, low] = await Promise.all([
-    fetchAirways("high"),
-    fetchAirways("low"),
+    fetchAirways("high", bbox),
+    fetchAirways("low", bbox),
   ]);
   return mergeAirwayLevels(high, low);
+}
+
+/**
+ * 把按块取回来的几张图并成一张。
+ *
+ * 航段按图键认（`segmentKey`），跨块边界的那一段在两块里各出现一次，只留一份。两
+ * 块给同一段打的层级不一样时记为 `both` —— 每块都是高低空两次都取的，正常不会发生，
+ * 取并集只是防御。
+ */
+export function unionAirwayGraphs(
+  graphs: Iterable<TaggedAirwayGraph>,
+): TaggedAirwayGraph {
+  const fixes: AirwayGraph["fixes"] = {};
+  const airways: AirwayGraph["airways"] = {};
+  const byKey = new Map<string, TaggedSegment>();
+  for (const g of graphs) {
+    Object.assign(fixes, g.fixes);
+    Object.assign(airways, g.airways);
+    for (const seg of g.segments) {
+      const key = segmentKey(seg);
+      const seen = byKey.get(key);
+      if (!seen) byKey.set(key, { ...seg });
+      else if (seen.level !== seg.level) seen.level = "both";
+    }
+  }
+  return { fixes, airways, segments: [...byKey.values()] };
 }
 
 /** 同一行航段在两次响应里一模一样，按这几项认。 */
@@ -156,18 +244,72 @@ export function legKey(airway: string, a: string, b: string): string {
  * `via` 是**走这条腿用的航路代号**，属于到达的那个点。没有 `via`、或者它是 `DCT`，
  * 就说明这条腿不在任何航路上 —— 那种腿没有可点亮的东西，得自己画线。
  */
-export function routeLegKeys(
-  all: { ident: string; via?: string; shape?: boolean }[],
-): Set<string> {
-  const out = new Set<string>();
+export function routeLegKeys(all: RouteLegPoint[]): Set<string> {
+  return new Set(routeLegs(all).map((l) => l.key));
+}
+
+/** 计划里的一个点。`lat` / `lon` 有的话，同名航段靠它挑（见 `markRouteOnAirways`）。 */
+export interface RouteLegPoint {
+  ident: string;
+  via?: string;
+  shape?: boolean;
+  lat?: number;
+  lon?: number;
+}
+
+/** 计划里走航路的一条腿：键，加上两端在计划里的位置（有的话）。 */
+export interface RouteLeg {
+  key: string;
+  ends?: [[number, number], [number, number]];
+}
+
+/** 同 `routeLegKeys`，但带上两端位置。 */
+export function routeLegs(all: RouteLegPoint[]): RouteLeg[] {
+  const out: RouteLeg[] = [];
   // 画弯插进来的几何点不是航路点，比键时越过它们。
   const points = all.filter((p) => !p.shape);
   for (let i = 1; i < points.length; i++) {
     const via = points[i].via;
     if (!via || via === "DCT") continue;
-    out.add(legKey(via, points[i - 1].ident, points[i].ident));
+    const a = points[i - 1];
+    const b = points[i];
+    const leg: RouteLeg = { key: legKey(via, a.ident, b.ident) };
+    if (
+      a.lat !== undefined &&
+      a.lon !== undefined &&
+      b.lat !== undefined &&
+      b.lon !== undefined
+    ) {
+      leg.ends = [
+        [a.lat, a.lon],
+        [b.lat, b.lon],
+      ];
+    }
+    out.push(leg);
   }
   return out;
+}
+
+/** 两点的粗略距离（度的平方和，经度差折回 ±180）。只拿来比大小。 */
+function roughDist(a: [number, number], b: [number, number]): number {
+  const dLat = a[0] - b[0];
+  const dLon = wrapLon(a[1] - b[1]);
+  return dLat * dLat + dLon * dLon;
+}
+
+/** 航段要素两端（[lat, lon]），不分方向地和计划那条腿比有多远。 */
+function legDistance(
+  f: Feature,
+  ends: [[number, number], [number, number]],
+): number {
+  if (f.geometry.type !== "LineString") return Infinity;
+  const c = f.geometry.coordinates;
+  const p: [number, number] = [c[0][1], c[0][0]];
+  const q: [number, number] = [c[c.length - 1][1], c[c.length - 1][0]];
+  return Math.min(
+    roughDist(p, ends[0]) + roughDist(q, ends[1]),
+    roughDist(p, ends[1]) + roughDist(q, ends[0]),
+  );
 }
 
 /**
@@ -185,22 +327,56 @@ export function routeLegKeys(
  * 航路集合是按 level 缓存的（`airwayCache`），同一份对象会被反复使用。只加不清的
  * 话，上一条计划的高亮会留在上面 —— 换一条航路，图上会同时亮着两条。
  */
+/**
+ * ## 按代号比，不按图键比
+ *
+ * 计划里写的是代号，航段的 `from` / `to` 是图键。比的是要素上的 `fromIdent` /
+ * `toIdent`。同一个航路代号加同一对点名可能在两个地区各有一段（两个图键）：腿带着
+ * 位置（`routeLegs`）时只点亮离计划那条腿最近的一段；不带位置（传进来的是
+ * `Set`）时同名的都点亮。
+ */
 export function markRouteOnAirways(
   collection: FeatureCollection,
-  legs: Set<string>,
+  legs: Set<string> | RouteLeg[],
 ): Set<string> {
-  const marked = new Set<string>();
+  const list: RouteLeg[] = Array.isArray(legs)
+    ? legs
+    : [...legs].map((key) => ({ key }));
+  const byKey = new Map<string, Feature[]>();
   for (const f of collection.features) {
     const props = f.properties ?? {};
+    props.onRoute = 0;
+    f.properties = props;
     const key = legKey(
       String(props.airway ?? ""),
-      String(props.from ?? ""),
-      String(props.to ?? ""),
+      String(props.fromIdent ?? props.from ?? ""),
+      String(props.toIdent ?? props.to ?? ""),
     );
-    const on = legs.has(key);
-    props.onRoute = on ? 1 : 0;
-    f.properties = props;
-    if (on) marked.add(key);
+    const bucket = byKey.get(key);
+    if (bucket) bucket.push(f);
+    else byKey.set(key, [f]);
+  }
+
+  const marked = new Set<string>();
+  for (const leg of list) {
+    const candidates = byKey.get(leg.key);
+    if (!candidates) continue;
+    let chosen = candidates;
+    if (candidates.length > 1 && leg.ends) {
+      const ends = leg.ends;
+      let best = candidates[0];
+      let bestDist = legDistance(best, ends);
+      for (const f of candidates.slice(1)) {
+        const d = legDistance(f, ends);
+        if (d < bestDist) {
+          best = f;
+          bestDist = d;
+        }
+      }
+      chosen = [best];
+    }
+    for (const f of chosen) f.properties!.onRoute = 1;
+    marked.add(leg.key);
   }
   return marked;
 }
@@ -312,12 +488,17 @@ export function toAirwayLines(
       continue;
     }
     const meta = graph.airways[seg.airway];
+    const [fromIdent, toIdent] = segmentIdents(seg);
     const lengthNm = distanceNm(from, to);
     const gap = airwayGapNm(lengthNm);
     const start = gap ? alongGreatCircle(from, to, gap / lengthNm) : from;
     const end = gap ? alongGreatCircle(from, to, 1 - gap / lengthNm) : to;
-    // fixes 是 [lat, lon]，GeoJSON 要 [lon, lat] —— 这一步反过来，别省。
-    const xy = (p: LatLon): [number, number] => [p[1], p[0]];
+    /* fixes 是 [lat, lon]，GeoJSON 要 [lon, lat] —— 这一步反过来，别省。
+     * 经度挪到起点那一侧（可以超出 ±180）：跨 180° 的航段走短的那一边，不横穿整张图。 */
+    const xy = (p: LatLon): [number, number] => {
+      const d = p[1] - from[1];
+      return [Math.abs(d) > 180 ? from[1] + wrapLon(d) : p[1], p[0]];
+    };
     const properties = {
       airway: seg.airway,
       // 没打过标记的图（单层取的）按 `both` 算：哪一层都不该把它藏掉。
@@ -326,9 +507,11 @@ export function toAirwayLines(
       rnav: isRnavDesignator(seg.airway) ? 1 : 0,
       minAlt: seg.minAlt ?? 0,
       /* 两端代号带上，`markRouteOnAirways` 靠它算键。**属性里没有它就点不亮** ——
-       * 而那不会报错，只会让高亮一条都不出现。 */
+       * 而那不会报错，只会让高亮一条都不出现。`from` / `to` 是图键，只认航段。 */
       from: seg.from,
       to: seg.to,
+      fromIdent,
+      toIdent,
       onRoute: 0,
     };
     features.push({
@@ -389,25 +572,27 @@ export function toAirwayFixes(
 ): FeatureCollection {
   /* 点的层级跟着连着它的航段走，取最高的那一级：high > both > low。只被低空航段用
    * 到的点，只在低空那一层出现时才画。 */
-  const used = new Map<string, SegmentLevel>();
+  /* 按图键记：同名的两个点是两个要素。标注用代号。 */
+  const used = new Map<string, { ident: string; level: SegmentLevel }>();
   for (const seg of graph.segments) {
     // 两端都要在 —— 和 toAirwayLines 的丢弃条件同一句话。
     if (graph.fixes[seg.from] && graph.fixes[seg.to]) {
       const level: SegmentLevel = "level" in seg ? seg.level : "both";
-      for (const ident of [seg.from, seg.to]) {
-        const prev = used.get(ident);
-        if (!prev || LEVEL_RANK[level] > LEVEL_RANK[prev])
-          used.set(ident, level);
-      }
+      const idents = segmentIdents(seg);
+      [seg.from, seg.to].forEach((key, i) => {
+        const prev = used.get(key);
+        if (!prev) used.set(key, { ident: idents[i], level });
+        else if (LEVEL_RANK[level] > LEVEL_RANK[prev.level]) prev.level = level;
+      });
     }
   }
 
   const features: Feature[] = [];
-  for (const [ident, level] of used) {
-    const [lat, lon] = graph.fixes[ident];
+  for (const [key, { ident, level }] of used) {
+    const [lat, lon] = graph.fixes[key];
     features.push({
       type: "Feature",
-      properties: { ident, level, navaid: "" },
+      properties: { ident, key, level, navaid: "" },
       // fixes 是 [lat, lon]，GeoJSON 要 [lon, lat]。
       geometry: { type: "Point", coordinates: [lon, lat] },
     });

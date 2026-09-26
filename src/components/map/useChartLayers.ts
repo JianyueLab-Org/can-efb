@@ -8,10 +8,15 @@
 import { computed, ref, type Ref } from "vue";
 import type { FeatureCollection } from "geojson";
 import {
+  airwayBlocksFor,
   fetchAirwayNetwork,
   markNavaidFixes,
   toAirwayFixes,
   toAirwayLines,
+  unionAirwayGraphs,
+  AIRWAY_BLOCK,
+  AIRWAY_MAX_BLOCKS,
+  type TaggedAirwayGraph,
 } from "@/lib/airways";
 import {
   fetchAirspaces,
@@ -71,7 +76,7 @@ export interface ChartLayerOptions {
   prefs: LayerPrefs;
   /** 见 `AipGeneration`。 */
   aip: AipGeneration;
-  text: { emptyAirways: string; emptyNavaids: string; emptyGeneric: string };
+  text: { emptyNavaids: string; emptyGeneric: string };
   /** 航路网换了 —— 开、关、取回来、失败。计划高亮要跟着重算。 */
   onAirwaysChange: () => void;
 }
@@ -79,27 +84,116 @@ export interface ChartLayerOptions {
 export function useChartLayers(options: ChartLayerOptions) {
   const { airways, notice, prefs, aip, text, onAirwaysChange } = options;
 
-  /** 见 toggleAirways 上面的注释：跨组件重建保留。 */
-  let airwayCache: {
-    lines: FeatureCollection;
-    fixes: FeatureCollection;
-  } | null = null;
-
   let navaidCache: FeatureCollection | null = null;
 
   /**
    * 航路图层：开 / 关。
    *
-   * **高低空两层一次取齐，按缩放决定画哪层**：缩小只有高空（和两层都有的），放大
-   * 加上低空（门槛在 `lib/chartStyle.ts` 的 `ZOOM`）。以前是一个高空 / 低空的三选
-   * 一，而人在缩放时想要的正是这件事自动发生。
+   * **高低空两层一起取，按缩放决定画哪层**（门槛在 `lib/chartStyle.ts` 的 `ZOOM`）。
    *
-   * **按需拉，而且拉过的留着。** 整张全国航路网是几百 KB。缓存放在模块作用域：这块
-   * 地图跨页面存活，但保活失败时组件会重建，那时缓存还在就不必重拉。
+   * **按视野分块取，和 MORA 同一个做法。** 全球航路网约九万段，整张拉下来不现实。
+   * 视野在 `ZOOM.airwaysHigh` 以下不取（那时这层也不画）；以上按 `AIRWAY_BLOCK`
+   * 度的块取 can-db 的 `?bbox=`，每块高低空各一次，取过的块留着，平移不重取。块按
+   * 经度折回 ±180 算，所以跨日界线的视野拆成两侧的块，每块自己不跨 180°。攒下的块
+   * 超过 `AIRWAY_MAX_BLOCKS` 时丢掉视野外最早取的那些。
+   *
+   * 所有块并成一张图（`unionAirwayGraphs`，按图键去重）再转线和点：跨块边界的航段
+   * 两块里各有一份，只画一条。
    */
   const showAirways = ref(false);
   const airwayFixes = ref<FeatureCollection | null>(null);
   const airwayBusy = ref(false);
+  /** 已取回的块，按取回顺序（Map 的插入顺序）。键是块的左下角。 */
+  const airwayBlocks = new Map<string, TaggedAirwayGraph>();
+  /** 正在取的块，挡住同一块的并发重复请求。 */
+  const airwayPending = new Set<string>();
+  let airwayTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** 把已取回的块画上图。关着就不画。 */
+  function publishAirways() {
+    if (!showAirways.value) return;
+    if (!airwayBlocks.size) {
+      airways.value = null;
+      airwayFixes.value = null;
+      onAirwaysChange();
+      return;
+    }
+    const graph = unionAirwayGraphs(airwayBlocks.values());
+    const lines = toAirwayLines(graph);
+    airways.value = lines;
+    // 航路点和线一起来一起走：它们是同一份图的两个面。
+    airwayFixes.value = toAirwayFixes(graph);
+    onAirwaysChange();
+    /* 按视野取的块是空的，只说明这一片没有航路（比如海上），不说明库里没有 ——
+     * 所以不提示「没有航段」，什么都不说。 */
+    notice.clearNotice("airways");
+  }
+
+  /** 攒得太多时丢掉视野外最早取的块。 */
+  function trimAirwayBlocks(keep: Set<string>) {
+    for (const key of airwayBlocks.keys()) {
+      if (airwayBlocks.size <= AIRWAY_MAX_BLOCKS) return;
+      if (!keep.has(key)) airwayBlocks.delete(key);
+    }
+  }
+
+  async function loadAirwaysFor(v: Viewport) {
+    if (!showAirways.value || v.zoom < ZOOM.airwaysHigh) return;
+    if (notice.isDeniedThisSession()) return;
+    const blocks = airwayBlocksFor(v.south, v.west, v.north, v.east);
+    const inView = new Set(blocks.map((b) => `${b.lat},${b.lon}`));
+    const wanted = blocks.filter((b) => {
+      const key = `${b.lat},${b.lon}`;
+      return !airwayBlocks.has(key) && !airwayPending.has(key);
+    });
+    if (!wanted.length) return;
+    // 先记下来再取：同一块的第二次请求在第一次回来之前就该被挡掉。
+    for (const b of wanted) airwayPending.add(`${b.lat},${b.lon}`);
+
+    airwayBusy.value = true;
+    const gen = aip.gen;
+    try {
+      const graphs = await Promise.all(
+        wanted.map((b) =>
+          fetchAirwayNetwork([
+            b.lat,
+            b.lon,
+            b.lat + AIRWAY_BLOCK,
+            b.lon + AIRWAY_BLOCK,
+          ]),
+        ),
+      );
+      if (gen !== aip.gen) return;
+      wanted.forEach((b, i) => {
+        const key = `${b.lat},${b.lon}`;
+        airwayPending.delete(key);
+        airwayBlocks.set(key, graphs[i]);
+      });
+      trimAirwayBlocks(inView);
+      notice.clearFailure("airways");
+      // 取的途中被关掉了：块照样留着，但不许把图层写回来（publishAirways 自己挡）。
+      publishAirways();
+    } catch (error) {
+      // 过期的这一次（NAIP 开关翻过）：块集合已经清过，也不替新的那一次报失败。
+      if (gen !== aip.gen) return;
+      // 取失败的块放回去，下次视野变化或重试时再取。开关留着，和 MORA 同一条。
+      for (const b of wanted) airwayPending.delete(`${b.lat},${b.lon}`);
+      if (isDenied(error)) notice.noteDenied();
+      else notice.noteFailure("airways");
+      console.error("[efb:map] 航路网加载失败:", error);
+    } finally {
+      if (gen === aip.gen && !airwayPending.size) airwayBusy.value = false;
+    }
+  }
+
+  /** 视野停下来 250 ms 再取：连续缩放几下只取最后那个视野。 */
+  function scheduleAirways(v: Viewport) {
+    if (airwayTimer) clearTimeout(airwayTimer);
+    airwayTimer = setTimeout(() => {
+      airwayTimer = null;
+      void loadAirwaysFor(v);
+    }, 250);
+  }
 
   async function toggleAirways(on = !showAirways.value) {
     showAirways.value = on;
@@ -112,53 +206,9 @@ export function useChartLayers(options: ChartLayerOptions) {
       notice.clearNotice("airways");
       return;
     }
-
-    if (airwayCache) {
-      airways.value = airwayCache.lines;
-      airwayFixes.value = airwayCache.fixes;
-      onAirwaysChange();
-      // 缓存命中也要判一次空：缓存的正是"空"，而提示不该只在第一次出现。
-      if (airwayCache.lines.features.length) notice.clearNotice("airways");
-      else notice.setNotice("airways", text.emptyAirways);
-      return;
-    }
-
-    if (notice.isDeniedThisSession()) return;
-    airwayBusy.value = true;
-    const gen = aip.gen;
-    try {
-      const graph = await fetchAirwayNetwork();
-      if (gen !== aip.gen) return;
-      const lines = toAirwayLines(graph);
-      // 航路点和线一起来一起走：它们是同一份图的两个面，分开缓存迟早不同步。
-      const fixes = toAirwayFixes(graph);
-      airwayCache = { lines, fixes };
-      notice.clearFailure("airways");
-      // 取的途中被关掉了：数据照样缓存，但不许把图层写回来。
-      if (!showAirways.value) return;
-      airways.value = lines;
-      onAirwaysChange();
-      airwayFixes.value = fixes;
-
-      // **取回来是空的，不是失败。** 开关留在打开状态，用一句话说明它为什么空。
-      if (lines.features.length) notice.clearNotice("airways");
-      else notice.setNotice("airways", text.emptyAirways);
-    } catch (error) {
-      // 过期的这一次（NAIP 开关翻过）失败了：重取的那一次还在路上或已经画上，
-      // 不许把它关掉，也不报失败。
-      if (gen !== aip.gen) return;
-      // 用户明确打开的图层，失败要说话并退回关，否则开关亮着却什么都没画。
-      if (isDenied(error)) notice.noteDenied();
-      else notice.noteFailure("airways");
-      console.error("[efb:map] 航路网加载失败:", error);
-      showAirways.value = false;
-      airways.value = null;
-      airwayFixes.value = null;
-      onAirwaysChange();
-    } finally {
-      // 过期的这一次不收忙碌态：重取的那一次还在路上。
-      if (gen === aip.gen) airwayBusy.value = false;
-    }
+    // 已有的块先画上，再按当前视野补。还没收到过视野就等 `moveend` 送过来。
+    if (airwayBlocks.size) publishAirways();
+    if (lastViewport) await loadAirwaysFor(lastViewport);
   }
 
   /**
@@ -205,11 +255,10 @@ export function useChartLayers(options: ChartLayerOptions) {
   }
 
   /**
-   * Grid MORA。**唯一一个按视野取的图层**，其余几层都是一次拉全国。
+   * Grid MORA。和航路网一样按视野取，其余几层都是一次拉全。
    *
-   * 理由是量级：航路网全国八千段，格子光是覆盖框内就有几千个，而且它只在放大到
-   * 读得出数字时才有用。所以按 10 度分块取、块内整块缓存 —— 平移不重取，因为格
-   * 子本身固定不动。
+   * 理由是量级：格子光是覆盖框内就有几千个，而且它只在放大到读得出数字时才有用。
+   * 所以按 10 度分块取、块内整块缓存 —— 平移不重取，因为格子本身固定不动。
    */
   const showMora = ref(false);
   const mora = ref<FeatureCollection | null>(null);
@@ -529,7 +578,9 @@ export function useChartLayers(options: ChartLayerOptions) {
    * 的 `watch(hideNaip)` 先加一，再调这里 —— 号只有一个，各层共用。
    */
   function reloadAip() {
-    airwayCache = null;
+    airwayBlocks.clear();
+    airwayPending.clear();
+    airwayBusy.value = false;
     navaidCache = null;
     controlledCache = null;
     restrictedCache = null;
@@ -538,7 +589,12 @@ export function useChartLayers(options: ChartLayerOptions) {
     airports.value = null;
     runways.value = null;
 
-    if (showAirways.value) void toggleAirways(true);
+    if (showAirways.value) {
+      airways.value = null;
+      airwayFixes.value = null;
+      onAirwaysChange();
+      if (lastViewport) void loadAirwaysFor(lastViewport);
+    }
     if (showNavaids.value) {
       // toggleNavaids 是翻转式的：先摆回关，它再按新值打开。
       showNavaids.value = false;
@@ -586,13 +642,14 @@ export function useChartLayers(options: ChartLayerOptions) {
 
   /**
    * 视野变了。原来这一段在 MapSurface 的 onViewport 里和地面层挤在一起；地面层搬
-   * 走之后这里只剩机场、跑道和 MORA。
+   * 走之后这里只剩机场、跑道、航路网和 MORA。
    *
    * MORA 关着就什么都不做 —— 地图一直在动，而不看的东西不该产生流量。
    */
   function onViewport(v: Viewport) {
     lastViewport = v;
     void loadForZoom(v.zoom);
+    if (showAirways.value) scheduleAirways(v);
     if (!showMora.value || notice.isDeniedThisSession()) return;
     void loadMoraFor(v);
   }
@@ -619,6 +676,7 @@ export function useChartLayers(options: ChartLayerOptions) {
     switch (id) {
       case "airways":
         if (!showAirways.value) void toggleAirways(true);
+        else if (lastViewport) void loadAirwaysFor(lastViewport);
         return;
       case "navaids":
         if (!showNavaids.value) void toggleNavaids();

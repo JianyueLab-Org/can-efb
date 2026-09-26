@@ -14,7 +14,7 @@ import {
   type MapFocus,
   type MapPoint,
 } from "@/lib/mapBus";
-import { markRouteOnAirways, routeLegKeys } from "@/lib/airways";
+import { markRouteOnAirways, routeLegs } from "@/lib/airways";
 import { unwrapList } from "@/lib/aip";
 import { api } from "@/lib/canApi";
 import { dbFetch } from "@/lib/naip";
@@ -169,16 +169,19 @@ export function useRouteLayer(options: {
    */
   /** 上一次算出来的那批高亮键，拼成一个串用来比。见 refreshHighlight。 */
   let highlightSignature = "";
+  /** 上一次标过的那份航路网（标完换上去的那个新对象）。见 refreshHighlight。 */
+  let highlightedCollection: FeatureCollection | null = null;
 
   function refreshHighlight() {
     const collection = airways.value;
     if (!collection) {
       highlightedLegs.value = null;
       highlightSignature = "";
+      highlightedCollection = null;
       return;
     }
 
-    const legs = routeLegKeys(points.value);
+    const legs = routeLegs(points.value);
 
     /* **航路没变就什么都不做。**
      *
@@ -187,9 +190,20 @@ export function useRouteLayer(options: {
      * 换对象会让下游把整份重新上传给 MapLibre，那是一次看得见的顿。
      *
      * 比的是**算出来的键**而不是 `points` 的引用：面板可能推来一份内容相同的新数组
-     * （重新解析同一条计划就是这样），那时候不该重传。 */
-    const signature = [...legs].sort().join("|");
-    if (signature === highlightSignature && highlightedLegs.value) return;
+     * （重新解析同一条计划就是这样），那时候不该重传。
+     *
+     * 航路网自己换了（按视野补了一批块）也要重标：新的那份要素全是 `onRoute: 0`。
+     * 所以同时比集合的引用。 */
+    const signature = legs
+      .map((l) => l.key)
+      .sort()
+      .join("|");
+    if (
+      signature === highlightSignature &&
+      collection === highlightedCollection &&
+      highlightedLegs.value
+    )
+      return;
     highlightSignature = signature;
 
     const marked = markRouteOnAirways(collection, legs);
@@ -198,6 +212,7 @@ export function useRouteLayer(options: {
        那些 feature 的属性，集合本身还是同一个引用。这也是上面那道闸存在的理由：这一
        步不便宜。 */
     airways.value = { ...collection, features: [...collection.features] };
+    highlightedCollection = airways.value;
   }
 
   let unsubscribe: (() => void) | null = null;
