@@ -266,6 +266,8 @@ export function toTrafficPoints(
       type: "Feature",
       properties: {
         callsign: p.callsign,
+        // 点这架飞机时按它找详情。CID 而不是呼号：两个人可以填同一个呼号。
+        cid: p.cid,
         heading: p.heading,
         band: bandOf(p.altitude),
         // MapLibre 的过滤和表达式对布尔支持得别扭，用 0/1 省去一层判断。
@@ -306,6 +308,7 @@ export function toOwnPoint(pilot: DatafeedPilot | null): FeatureCollection {
         type: "Feature",
         properties: {
           callsign: pilot.callsign,
+          cid: pilot.cid,
           heading: pilot.heading,
           // 高度取整到百英尺：datafeed 给的是逐英尺的瞬时值，标注上会跳个不停，
           // 而这张图上没有任何决定取决于那几十英尺。

@@ -261,7 +261,9 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 
 数据在 `src/basemap/atc/`：`boundaries.geojson`、`firs.json`（VATSpy，含扇区划分）、`tracon.geojson`（SimAware）、`airports.json`（机场坐标）、`airport-codes.json`（三字码 → ICAO）。五份是 can-radar `public/` 下同名文件的拷贝，由它的 `scripts/build-vatspy.mjs` 生成，在那边刷新再拷过来。情报区图层用的 `src/basemap/firs.json` 是另一份，筛掉了扇区划分，不用于这一层。进近多边形 2.7 MB，只在有进近在线或 Covering 名字需要时取；两张机场表只在区域 / FSS 以外的席位或 ATIS 写了 Extending 时取。
 
-点地图上的席位（点、标注、区域或进近范围；范围圈不接点击）弹出详情卡 `components/map/AtcDetails.vue`，内容照 can-radar 的 `RadarDetails.vue`：管制区 / 覆盖扇区 / 延伸席位 / 频率 / 成员 / 等级 / 在线时长，加 ATC info 或 ATIS 原文。点空处收起，席位下线时跟着消失。卡片是地图岛屿自己的浮层，不经 mapBus。每个要素带 `station`（原席位呼号），Extending 出去的点也指回原席位。
+点地图上的席位（点、标注、区域或进近范围；范围圈不接点击）弹出详情卡 `components/map/AtcDetails.vue`，内容照 can-radar 的 `RadarDetails.vue`：管制区 / 覆盖扇区 / 延伸席位 / 频率 / 成员 / 等级 / 在线时长，加 ATC info 或 ATIS 原文。点空处收起，席位下线时跟着消失。卡片是地图岛屿自己的浮层，不经 mapBus。
+
+点飞机（别人的、自己那架、航班标注）弹出 `components/map/PilotDetails.vue`，内容照 can-radar：空中 / 地面、机型、起降机场、剩余距离和预计到达（机场表 `lib/airportCoords.ts`，地速低于 30 kt 不给 ETA）、高度 / 高度层 / 地速 / 航向、应答机、飞行规则、飞行计划、航路和备注（默认收起）、成员 / CAN ID / 在线时长，加一个「在地图上居中」。按 CID 认飞机。和席位卡同一位置，一次一张；关掉机组那层时收起。每个要素带 `station`（原席位呼号），Extending 出去的点也指回原席位。
 
 这一层不依赖边界图层的开关。测试在 `lib/atcCoverage.test.ts`。
 

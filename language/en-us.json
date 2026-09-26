@@ -385,6 +385,28 @@
         "online": "Online for",
         "atisText": "ATIS",
         "controllerInfo": "Controller info"
+      },
+      "pilot": {
+        "close": "Close",
+        "locate": "Centre on map",
+        "onGround": "On ground",
+        "airborne": "Airborne",
+        "noFlightPlan": "No flight plan filed",
+        "remaining": "Remaining",
+        "eta": "ETA",
+        "altitude": "Altitude",
+        "level": "Level",
+        "groundspeed": "Ground speed",
+        "heading": "Heading",
+        "squawk": "Squawk",
+        "rules": "Rules",
+        "flightPlan": "Flight plan",
+        "aircraft": "Aircraft",
+        "cruise": "Cruise level",
+        "tas": "Cruise TAS",
+        "alternate": "Alternate",
+        "member": "Member",
+        "online": "Online for"
       }
     },
     "airports": {

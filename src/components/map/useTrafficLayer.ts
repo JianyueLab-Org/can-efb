@@ -18,6 +18,7 @@ import {
   toOwnPoint,
   toTrafficPoints,
   type DatafeedController,
+  type DatafeedPilot,
 } from "@/lib/datafeed";
 import {
   buildCoverage,
@@ -72,6 +73,11 @@ async function loadTraconIndex(): Promise<TraconIndex | null> {
   }
   return traconIndex;
 }
+
+/** 地图上点中的东西。 */
+export type MapSelection =
+  | { kind: "atc"; callsign: string }
+  | { kind: "pilot"; cid: string };
 
 export function useTrafficLayer(options: {
   /**
@@ -130,11 +136,21 @@ export function useTrafficLayer(options: {
   const stations = ref(
     new Map<string, { station: DatafeedController; isAtis: boolean }>(),
   );
-  /** 点中的那个席位的呼号。下线了详情卡跟着消失，见 `selected`。 */
-  const selectedCallsign = ref<string | null>(null);
+  /** 这一轮的机组，按 CID，自己那架也在里面。点飞机时从这里取详情。 */
+  const pilots = ref(new Map<string, DatafeedPilot>());
+  /**
+   * 地图上点中的那一个：一个席位（按呼号）或一架飞机（按 CID）。一次只有一张详情卡。
+   * 对象下线了卡跟着消失，见下面两个 computed。
+   */
+  const selection = ref<MapSelection | null>(null);
   const selected = computed(() =>
-    selectedCallsign.value
-      ? (stations.value.get(selectedCallsign.value) ?? null)
+    selection.value?.kind === "atc"
+      ? (stations.value.get(selection.value.callsign) ?? null)
+      : null,
+  );
+  const selectedPilot = computed(() =>
+    selection.value?.kind === "pilot"
+      ? (pilots.value.get(selection.value.cid) ?? null)
       : null,
   );
   const own = ref<FeatureCollection | null>(null);
@@ -206,6 +222,7 @@ export function useTrafficLayer(options: {
           isOnGround,
           flightLevel,
         );
+        pilots.value = new Map(feed.pilots.map((p) => [p.cid, p]));
         const mine = ownPilot(feed, cid);
         own.value = toOwnPoint(mine);
         // 「定位到我」那颗按钮要有一个真的坐标才有意义。刚连上、还没发过位置包
@@ -293,7 +310,7 @@ export function useTrafficLayer(options: {
     atcAreas.value = null;
     atcLabels.value = null;
     stations.value = new Map();
-    selectedCallsign.value = null;
+    if (selection.value?.kind === "atc") selection.value = null;
     atcCount.value = 0;
   }
 
@@ -318,6 +335,8 @@ export function useTrafficLayer(options: {
       // 候，图上留一架自己也是噪音。
       if (which === "traffic") {
         traffic.value = null;
+        pilots.value = new Map();
+        if (selection.value?.kind === "pilot") selection.value = null;
         own.value = null;
         ownAt.value = null;
         ownTrack.value = null;
@@ -399,8 +418,9 @@ export function useTrafficLayer(options: {
     atc,
     atcAreas,
     atcLabels,
-    selectedCallsign,
+    selection,
     selected,
+    selectedPilot,
     own,
     ownTrack,
     atcCount,

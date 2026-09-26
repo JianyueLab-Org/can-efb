@@ -59,6 +59,7 @@ import {
   type RoutePoint,
 } from "@/lib/routeGeometry";
 import { createBasemapLoader } from "@/components/map/basemap";
+import type { MapSelection } from "@/components/map/useTrafficLayer";
 import { createAttribution } from "@/components/map/attribution";
 import { createCamera } from "@/components/map/camera";
 
@@ -97,28 +98,40 @@ export interface Viewport {
 
 const emit = defineEmits<{
   viewport: [Viewport];
-  /** 点中了一个管制席位（它的呼号），或者点在空处（null）。 */
-  station: [string | null];
+  /** 点中了一个席位或一架飞机，或者点在空处（null）。 */
+  select: [MapSelection | null];
 }>();
 
 /**
- * 点得中的管制图层，上面的先认：点、点的标注、范围的标注、范围本身。范围圈不在里
- * 面 —— can-radar 的圈也不接点击，它只是"大概在这一带"。
+ * 点得中的图层，上面的先认：飞机（自己那架、别人的、它们的标注），然后是管制的
+ * 点、点的标注、范围的标注、范围本身。范围圈不在里面 —— can-radar 的圈也不接点
+ * 击，它只是"大概在这一带"。
  */
+const PILOT_LAYERS = ["own", "traffic", "traffic-labels"];
 const STATION_LAYERS = [
   "atc",
   "atc-labels",
   "atc-area-labels",
   "atc-area-fill",
-] as const;
+];
 
-function stationAt(point: { x: number; y: number }): string | null {
+function selectionAt(point: { x: number; y: number }): MapSelection | null {
   if (!map) return null;
-  const layers = STATION_LAYERS.filter((id) => map!.getLayer(id));
+  const layers = [...PILOT_LAYERS, ...STATION_LAYERS].filter((id) =>
+    map!.getLayer(id),
+  );
   if (!layers.length) return null;
   const [hit] = map.queryRenderedFeatures([point.x, point.y], { layers });
-  const station = hit?.properties?.station;
-  return typeof station === "string" && station ? station : null;
+  if (!hit) return null;
+  const p = hit.properties ?? {};
+  if (PILOT_LAYERS.includes(hit.layer.id)) {
+    return typeof p.cid === "string" && p.cid
+      ? { kind: "pilot", cid: p.cid }
+      : null;
+  }
+  return typeof p.station === "string" && p.station
+    ? { kind: "atc", callsign: p.station }
+    : null;
 }
 
 const props = defineProps<{
@@ -566,11 +579,11 @@ onMounted(() => {
   });
   map.on("move", updateCorners);
   map.on("moveend", emitViewport);
-  map.on("click", (event) => emit("station", stationAt(event.point)));
-  // 悬停在席位上换成手指，否则没人知道这些东西点得动。
+  map.on("click", (event) => emit("select", selectionAt(event.point)));
+  // 悬停在席位或飞机上换成手指，否则没人知道这些东西点得动。
   map.on("mousemove", (event) => {
     if (!map) return;
-    map.getCanvas().style.cursor = stationAt(event.point) ? "pointer" : "";
+    map.getCanvas().style.cursor = selectionAt(event.point) ? "pointer" : "";
   });
 
   resizeObserver = new ResizeObserver(() => map?.resize());

@@ -40,6 +40,9 @@ import MapControls from "@/components/map/MapControls.vue";
 import AtcDetails, {
   type AtcDetailsText,
 } from "@/components/map/AtcDetails.vue";
+import PilotDetails, {
+  type PilotDetailsText,
+} from "@/components/map/PilotDetails.vue";
 import { useLayerNotice, type LayerId } from "@/components/map/useLayerNotice";
 import {
   useChartLayers,
@@ -48,7 +51,11 @@ import {
   type Viewport,
 } from "@/components/map/useChartLayers";
 import { useGroundLayer } from "@/components/map/useGroundLayer";
-import { useTrafficLayer } from "@/components/map/useTrafficLayer";
+import {
+  useTrafficLayer,
+  type MapSelection,
+} from "@/components/map/useTrafficLayer";
+import { hasPosition } from "@/lib/datafeed";
 import { useRouteLayer } from "@/components/map/useRouteLayer";
 import { DEFAULT_PREFS, readPrefs, type LayerPrefs } from "@/lib/mapPrefs";
 import { hideNaip } from "@/lib/naip";
@@ -77,6 +84,8 @@ const props = defineProps<{
     locate: string;
     /** 管制席位详情卡的文案。 */
     atc: AtcDetailsText;
+    /** 飞机详情卡的文案。 */
+    pilot: PilotDetailsText;
   };
   /** 地图整个起不来时那两句，转交给 RouteMap。 */
   failureText: { init: string; webgl: string };
@@ -144,15 +153,24 @@ const {
   atcAreas,
   atcLabels,
   selected,
+  selectedPilot,
   own,
   ownTrack,
   atcCount,
   ownAt,
 } = live;
 
-/** 点地图：点中席位就换成它，点在空处就收起详情卡。 */
-function onStation(callsign: string | null) {
-  live.selectedCallsign.value = callsign;
+/** 点地图：点中席位或飞机就换成它，点在空处就收起详情卡。 */
+function onSelect(next: MapSelection | null) {
+  live.selection.value = next;
+}
+
+/** 飞机详情卡上的「在地图上居中」。每次造新对象，理由见 `locateTarget`。 */
+function locatePilot() {
+  const p = selectedPilot.value;
+  if (p && hasPosition(p)) {
+    focus.value = { kind: "point", lat: p.latitude!, lon: p.longitude! };
+  }
 }
 const noticeLine = notice.notice;
 const failedLayer = notice.failure;
@@ -312,7 +330,7 @@ onBeforeUnmount(() => {
       :firs-label="layerLabels.firs"
       class="h-full"
       @viewport="onViewport"
-      @station="onStation"
+      @select="onSelect"
     />
     <!-- 水合之前的占位：没有它，首屏这一整块是空的，等 JS 到了才突然出现地图。 -->
     <div v-else class="surface-grid h-full"></div>
@@ -343,7 +361,14 @@ onBeforeUnmount(() => {
         :station="selected.station"
         :is-atis="selected.isAtis"
         :text="t.atc"
-        @close="onStation(null)"
+        @close="onSelect(null)"
+      />
+      <PilotDetails
+        v-else-if="selectedPilot"
+        :pilot="selectedPilot"
+        :text="t.pilot"
+        @close="onSelect(null)"
+        @locate="locatePilot"
       />
     </div>
   </section>

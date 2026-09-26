@@ -385,6 +385,28 @@
         "online": "接続時間",
         "atisText": "ATIS",
         "controllerInfo": "管制員情報"
+      },
+      "pilot": {
+        "close": "閉じる",
+        "locate": "地図の中心に表示",
+        "onGround": "地上",
+        "airborne": "飛行中",
+        "noFlightPlan": "フライトプランは提出されていません",
+        "remaining": "残り",
+        "eta": "到着予定",
+        "altitude": "高度",
+        "level": "フライトレベル",
+        "groundspeed": "対地速度",
+        "heading": "機首方位",
+        "squawk": "スコーク",
+        "rules": "飛行方式",
+        "flightPlan": "フライトプラン",
+        "aircraft": "機種",
+        "cruise": "巡航高度",
+        "tas": "巡航TAS",
+        "alternate": "代替飛行場",
+        "member": "メンバー",
+        "online": "接続時間"
       }
     },
     "airports": {

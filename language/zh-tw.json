@@ -385,6 +385,28 @@
         "online": "已在線",
         "atisText": "ATIS 內容",
         "controllerInfo": "管制員資訊"
+      },
+      "pilot": {
+        "close": "關閉",
+        "locate": "在地圖上置中",
+        "onGround": "地面",
+        "airborne": "空中",
+        "noFlightPlan": "未提交飛行計畫",
+        "remaining": "剩餘",
+        "eta": "預計到達",
+        "altitude": "高度",
+        "level": "高度層",
+        "groundspeed": "地速",
+        "heading": "航向",
+        "squawk": "回應機",
+        "rules": "飛行規則",
+        "flightPlan": "飛行計畫",
+        "aircraft": "機型",
+        "cruise": "巡航高度",
+        "tas": "巡航真空速",
+        "alternate": "備降場",
+        "member": "成員",
+        "online": "已在線"
       }
     },
     "airports": {
