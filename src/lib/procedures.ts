@@ -52,8 +52,16 @@ export interface ProcedureLeg {
   /** **编码字符串原样**，见文件头。不要在任何地方解码它。 */
   alt: string | null;
   speedKt: number | null;
-  /** `-` 上限 | `+` 下限 | null 就是那个数。 */
+  /**
+   * 速度限制的种类。can-db 迁移里写的是 `-` 上限 | `+` 下限，但 NAIP 那一份实际写的
+   * 是 `below`（全库 8673 条，没有一条 `-`/`+`）。两种都认，见 `speedLimitText`。
+   * null 就是那个数。
+   */
   speedKind: string | null;
+  /**
+   * 转弯方向。**属于这条腿的起点**：ARINC 424 的转弯方向说的是「转上这条腿」的那个
+   * 弯，发生在上一个定位点。见 `procedureToMapPoints`。
+   */
   turn: string | null;
   courseMag: number | null;
   vpaDeg: number | null;
@@ -319,7 +327,33 @@ export function pickProcedures(
 
 /** 显示用的名字：`R01L-Y`。变体是编码的一部分，不能省。 */
 export function procedureLabel(p: Procedure): string {
-  return p.variant ? `${p.name}-${p.variant.toUpperCase()}` : p.name;
+  if (!p.variant) return p.name;
+  const suffix = `-${p.variant.toUpperCase()}`;
+  // NAIP 有一批进近的名字里已经带着变体（`R01-Y` 配 `y`，89 条），再接一次就成了
+  // `R01-Y-Y`。
+  return p.name.toUpperCase().endsWith(suffix) ? p.name : p.name + suffix;
+}
+
+/**
+ * 腿表里的速度限制：`-210` 上限、`+210` 下限、`210` 就是那个数。
+ *
+ * NAIP 那一份写的是 `below`，迁移里约定的是 `-`/`+`，两种都认。认不出的种类原样摆在前
+ * 面，不猜 —— 和高度限制同一条：解错一个限制比没有更危险。
+ */
+export function speedLimitText(
+  leg: Pick<ProcedureLeg, "speedKt" | "speedKind">,
+): string {
+  if (!leg.speedKt) return "";
+  const kind = (leg.speedKind ?? "").trim().toLowerCase();
+  const sign =
+    kind === "-" || kind === "below"
+      ? "-"
+      : kind === "+" || kind === "above"
+        ? "+"
+        : kind
+          ? `${leg.speedKind} `
+          : "";
+  return `${sign}${leg.speedKt}`;
 }
 
 // ------------------------------------------------------------------ 画线
@@ -338,8 +372,11 @@ export function procedureLabel(p: Procedure): string {
  *
  * `B` 也得认：`RW19B` 不认的话会掉进下面「具名的航路转换」那一支，被当成一个接航路
  * 网的入口去比 `enrouteFix`。它指哪几条跑道由 `runwayMatches` 判。
+ *
+ * `RWY16` 也得认：ZSQD 的四条 SID 这么写。不认的话它同样掉进航路转换那一支 —— 选择器
+ * 把「RWY16」当航路转换列出来，选了 16 号跑道时两条跑道的转换首尾相接一起画。
  */
-const RUNWAY_TRANSITION = /^RW([0-9]{2}[LRCGB]?)$/;
+const RUNWAY_TRANSITION = /^RWY?([0-9]{2}[LRCGB]?)$/;
 
 /**
  * 一条程序里**实际要飞的那几段**。
@@ -442,6 +479,79 @@ export function procedureTransitions(p: Procedure): string[] {
   return [...names].sort((a, b) => a.localeCompare(b));
 }
 
+/** 连续一段同名转换的腿。`kind` 由名字定：跑道转换、公共段、具名的航路转换。 */
+interface TransitionRun {
+  name: string;
+  kind: "runway" | "common" | "enroute";
+  legs: ProcedureLeg[];
+}
+
+/**
+ * 把腿按转换切成**连续的段**，不是按名字归组。
+ *
+ * **同一个名字可以出现不止一段。** NAIP 常把一条跑道转换的尾巴标成 `ALL`：ZBAA 的
+ * `OMDE9Z` 是 `RW01 · ALL(AA137 AA197) · RW36L · RW36R · ALL(AA197 OMDEK)`，前一个
+ * `ALL` 其实是 RW01 那条的后半截。按名字归组会把两段 `ALL` 并成一个公共段，于是 36L
+ * 画成 `…AA197 AA137 AA197 OMDEK` —— 一根出去又折回来的刺，而每一段本身都画得很漂亮。
+ * 53 条 SID 和 5 条 STAR 是这样（ZSSS `SASAN7`、ZWWW `FKG5L` 是航路转换夹着 `ALL`）。
+ *
+ * 判据：夹在**两段同类转换之间**的 `ALL` 属于它前面那一段。边上的 `ALL` 仍是公共段 ——
+ * 公共段排在跑道转换前面的 SID（NAIP 里 28 条）靠的就是这一条。
+ *
+ * 那截尾巴也可能**紧贴着真正的公共段**，名字相同、连成一片：ZSPD `SURAK1` 的最后是
+ * `RW35R:…PD510 ALL:NINAS ALL:LASAN ALL:LASAN(IF) ALL:BOLEX…`。能分开它们的只有接缝
+ * 上那个重复的起始点 —— 后一段以 `IF` 从同一个点起头。所以一条重复前一个代号的 `IF`
+ * 腿另起一段；前面那截夹在转换和公共段之间，同样归前面那条转换。
+ */
+function transitionRuns(p: Procedure): TransitionRun[] {
+  const raw: TransitionRun[] = [];
+  for (const leg of p.path ?? []) {
+    const name = leg.transition ?? "";
+    const last = raw[raw.length - 1];
+    const prevLeg = last?.legs[last.legs.length - 1];
+    // 只在公共段里切：别的转换切开了，按外端挑航路转换时会丢掉前半截。
+    const restart =
+      last?.kind === "common" &&
+      (leg.path ?? "").toUpperCase() === "IF" &&
+      Boolean(leg.ident) &&
+      leg.ident === prevLeg?.ident;
+    if (last && last.name === name && !restart) {
+      last.legs.push(leg);
+      continue;
+    }
+    const kind =
+      name === "" || name === "ALL"
+        ? "common"
+        : RUNWAY_TRANSITION.test(name)
+          ? "runway"
+          : "enroute";
+    raw.push({ name, kind, legs: [leg] });
+  }
+  const out: TransitionRun[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const run = raw[i];
+    const prev = out[out.length - 1];
+    const next = raw[i + 1];
+    if (
+      run.kind === "common" &&
+      prev &&
+      next &&
+      prev.kind !== "common" &&
+      (prev.kind === next.kind || next.kind === "common")
+    ) {
+      out[out.length - 1] = { ...prev, legs: [...prev.legs, ...run.legs] };
+      continue;
+    }
+    out.push({ ...run, legs: [...run.legs] });
+  }
+  return out;
+}
+
+/** 航路转换接航路网的那一端：SID 是末点，STAR 是首点。 */
+function outerLeg(p: Procedure, run: TransitionRun): ProcedureLeg | undefined {
+  return p.kind === "star" ? run.legs[0] : run.legs[run.legs.length - 1];
+}
+
 export function procedureTrack(
   p: Procedure,
   opts: TrackOptions = {},
@@ -449,31 +559,26 @@ export function procedureTrack(
   if (p.kind === "approach" && (p.path ?? []).some((l) => l.part)) {
     return approachTrack(p, opts);
   }
-  const groups = new Map<string, ProcedureLeg[]>();
-  for (const leg of p.path ?? []) {
-    const key = leg.transition ?? "";
-    const list = groups.get(key);
-    if (list) list.push(leg);
-    else groups.set(key, [leg]);
+  // 只有一个名字就是「没有转换」，原样返回 —— 分段不该改变这类程序的任何行为。
+  if (new Set((p.path ?? []).map((l) => l.transition ?? "")).size <= 1) {
+    return [...(p.path ?? [])];
   }
-  // 只有一组就是「没有转换」，原样返回 —— 分组不该改变这类程序的任何行为。
-  if (groups.size <= 1) return [...(p.path ?? [])];
 
-  const isCommon = (name: string) => name === "" || name === "ALL";
   const wantRunway = (opts.runway ?? "").toUpperCase();
 
   const runwayLegs: ProcedureLeg[] = [];
   const commonLegs: ProcedureLeg[] = [];
   const enrouteLegs: ProcedureLeg[] = [];
-  for (const [name, legs] of groups) {
-    const rw = RUNWAY_TRANSITION.exec(name);
-    if (rw) {
-      if (wantRunway && runwayMatches(rw[1], wantRunway)) {
+  for (const run of transitionRuns(p)) {
+    const { name, legs } = run;
+    if (run.kind === "runway") {
+      const rw = RUNWAY_TRANSITION.exec(name);
+      if (rw && wantRunway && runwayMatches(rw[1], wantRunway)) {
         runwayLegs.push(...legs);
       }
       continue;
     }
-    if (isCommon(name)) {
+    if (run.kind === "common") {
       commonLegs.push(...legs);
       continue;
     }
@@ -486,8 +591,10 @@ export function procedureTrack(
       continue;
     }
     if (!opts.enrouteFix) continue;
-    const outer = p.kind === "star" ? legs[0] : legs[legs.length - 1];
-    if (name === opts.enrouteFix || outer?.ident === opts.enrouteFix) {
+    if (
+      name === opts.enrouteFix ||
+      outerLeg(p, run)?.ident === opts.enrouteFix
+    ) {
       enrouteLegs.push(...legs);
     }
   }
@@ -509,6 +616,20 @@ export function procedureTrack(
   return dedupeAdjacentLegs(ordered);
 }
 
+/**
+ * 一条程序实际飞的那几段里，最后一个画得出来的定位点。进近转换按它猜（STAR 的终点）。
+ * 地图（`composeRoutePoints`）和腿表都从这里取，两边才会挑中同一条转换。
+ */
+export function trackEndIdent(
+  p: Procedure,
+  opts: TrackOptions = {},
+): string | null {
+  const legs = procedureTrack(p, opts).filter(
+    (l) => l.ident && l.lat != null && l.lon != null,
+  );
+  return legs[legs.length - 1]?.ident || null;
+}
+
 export function procedureToMapPoints(
   p: Procedure,
   opts: TrackOptions & {
@@ -517,7 +638,29 @@ export function procedureToMapPoints(
   } = {},
 ): MapPoint[] {
   const out: MapPoint[] = [];
+  // 已经从后面的腿拿到转弯方向的那个点（下标）。见下面「转弯方向」。
+  let turned = -1;
   for (const leg of procedureTrack(p, opts)) {
+    // **转弯方向记在这条腿的起点上，不是终点。** ARINC 424 的转弯方向说的是转上这条
+    // 腿的那个弯，它发生在上一个定位点。记到终点上，画线时会在终点按这个方向强转 ——
+    // ZGDY `HUY2D` 的 `DF DG964 L` 说的是在 DG462 左转，DG964 那里其实右转 12°，记错
+    // 了就在 DG964 画出一圈 348° 的左转。
+    //
+    // 起点没画出来（`CA` 之类没有坐标的腿）时记到最后画出的那个点上。一个点只收第一
+    // 个：它才是在这个点上的那个弯，后面的发生在没画出来的地方。等待腿的方向是等待自
+    // 己的；`RF` 的方向是那段弧的，弧从起点相切出去，起点上没有弯 —— 两者都不往前记。
+    const turn = (leg.turn ?? "").toUpperCase();
+    const last = out.length - 1;
+    if (
+      (turn === "L" || turn === "R") &&
+      !isHoldLeg(leg.path) &&
+      (leg.path ?? "").toUpperCase() !== "RF" &&
+      last >= 0 &&
+      turned !== last
+    ) {
+      out[last] = { ...out[last], turn };
+      turned = last;
+    }
     if (leg.lat == null || leg.lon == null) continue;
     // 等待腿挂到它的定位点上，不另起一个点。定位点就是上一个点时挂到上一个点上。
     if (isHoldLeg(leg.path) && leg.courseMag != null) {
@@ -545,14 +688,12 @@ export function procedureToMapPoints(
       });
       continue;
     }
-    const turn = (leg.turn ?? "").toUpperCase();
     out.push({
       ident: leg.ident || "",
       lat: leg.lat,
       lon: leg.lon,
       kind: p.kind,
       via: p.name,
-      ...(turn === "L" || turn === "R" ? { turn } : {}),
       ...(leg.flyover ? { flyover: true } : {}),
     });
   }
@@ -584,9 +725,18 @@ export function joinsRoute(
   // 端点只由 `joinIdent` 一处决定：它按公共段取，不拿整串首末（跑道转换会排在两头）。
   // 两处各取一次，界面摆出来的「两头」和这里的判断就可能不是同一个点。方向同样在那
   // 里由类别决定，不由调用方传。
+  //
+  // **航路转换的外端也算接上。** ZSSS `SASAN9` 的航路以 PIMOL 收尾，地图按 PIMOL 那条
+  // 转换画得完全正确，公共段的首点却是 SASAN —— 只比公共段就会对一条对的航路喊「接不
+  // 上」。按名字或外端那个点认，和 `procedureTrack` 挑转换是同一个判据。
+  const want = enrouteIdent.toUpperCase();
+  const gates = transitionRuns(procedure)
+    .filter((run) => run.kind === "enroute")
+    .flatMap((run) => [run.name, outerLeg(procedure, run)?.ident ?? ""]);
+  if (gates.some((g) => g && g.toUpperCase() === want)) return true;
   const edge = joinIdent(procedure);
   if (edge == null) return null;
-  return edge.toUpperCase() === enrouteIdent.toUpperCase();
+  return edge.toUpperCase() === want;
 }
 
 /** 程序和航路相接的那一端的代号 —— 界面要把两头都摆出来，不然「接不上」没法查。 */
@@ -715,14 +865,25 @@ export function composeRoutePoints(parts: {
     chain.push(parts.departure);
   }
   if (parts.sid) {
-    chain.push(
-      ...procedureToMapPoints(parts.sid, {
-        runway: parts.sidRunway,
-        enrouteFix: first,
-        transition: parts.sidTransition,
-        variation: parts.departureVariation,
-      }),
-    );
+    const sidPoints = procedureToMapPoints(parts.sid, {
+      runway: parts.sidRunway,
+      enrouteFix: first,
+      transition: parts.sidTransition,
+      variation: parts.departureVariation,
+    });
+    // **SID 从跑道头起头时不再画一遍跑道头。** 上面已经从跑道头画到了另一头；ZGDY
+    // `LIN5D` 的第一条腿是 `IF RW08`，照抄的话线从另一头折回跑道头再出去，沿跑道画出一
+    // 根来回的线，RW08 的标注也叠成两个。
+    const head = sidPoints[0];
+    if (
+      depRwy &&
+      head &&
+      (head.ident.toUpperCase() === `RW${depRwy.id}`.toUpperCase() ||
+        (head.lat === depRwy.lat && head.lon === depRwy.lon))
+    ) {
+      sidPoints.shift();
+    }
+    chain.push(...sidPoints);
   }
   if (parts.enroute) chain.push(...parts.enroute);
   const starPoints = parts.star
@@ -735,7 +896,15 @@ export function composeRoutePoints(parts: {
     : [];
   chain.push(...starPoints);
   if (parts.approach) {
-    const starEnd = starPoints[starPoints.length - 1]?.ident || last || null;
+    const starEnd =
+      (parts.star &&
+        trackEndIdent(parts.star, {
+          runway: parts.starRunway,
+          enrouteFix: last,
+          transition: parts.starTransition,
+        })) ||
+      last ||
+      null;
     chain.push(
       ...procedureToMapPoints(parts.approach, {
         runway: parts.starRunway,
@@ -781,8 +950,12 @@ export function composeRoutePoints(parts: {
         : p.lat === prev.lat && p.lon === prev.lon
       : false;
     if (same) {
-      // 收掉的那个点可能挂着等待（STAR 终点和进近起点是同一个点时常见），并过去。
-      if (p.hold && !prev.hold) out[out.length - 1] = { ...prev, hold: p.hold };
+      // 收掉的那个点可能挂着等待（STAR 终点和进近起点是同一个点时常见），并过去。转弯
+      // 方向同理：进近第二条腿转上去的那个弯记在进近的首点上，而首点正是被收掉的这个。
+      let kept = prev;
+      if (p.hold && !kept.hold) kept = { ...kept, hold: p.hold };
+      if (p.turn && !kept.turn) kept = { ...kept, turn: p.turn };
+      out[out.length - 1] = kept;
       continue;
     }
     out.push(p);

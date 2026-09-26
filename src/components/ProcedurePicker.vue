@@ -66,6 +66,8 @@ import {
   runwayIdents,
   runwayTrueBearing,
   servesAllRunways,
+  speedLimitText,
+  trackEndIdent,
   type AirportProcedures,
   type Procedure,
   type ProcedureKind,
@@ -447,6 +449,23 @@ watch(
 // ---------------------------------------------------------------- 腿表
 
 /**
+ * 进近转换按什么猜：STAR 实际飞的那一段的终点，没有 STAR 时是航路的最后一个点。和
+ * `composeRoutePoints` 同一个取法 —— 以前这里传的是 null，地图画了进近转换，腿表里
+ * 却没有。
+ */
+const starEnd = computed(
+  () =>
+    (star.value &&
+      trackEndIdent(star.value, {
+        runway: sel.value.arrRunway,
+        enrouteFix: lastEnroute.value,
+        transition: sel.value.starTransition,
+      })) ||
+    lastEnroute.value ||
+    null,
+);
+
+/**
  * 选中的三条程序按飞行顺序接起来。和地图一样只列**实际飞的那几段**；进近连复飞一起
  * 列（地图的主线不画复飞）。
  */
@@ -465,7 +484,12 @@ const legs = computed(() =>
         lastEnroute.value,
         sel.value.starTransition,
       ],
-      [approach.value, sel.value.arrRunway, null, sel.value.approachTransition],
+      [
+        approach.value,
+        sel.value.arrRunway,
+        starEnd.value,
+        sel.value.approachTransition,
+      ],
     ] as const
   )
     .filter((row): row is readonly [Procedure, string, string | null, string] =>
@@ -817,10 +841,7 @@ function crossText(row: RunwayRow): string {
               <td class="py-1 pr-3 text-muted">{{ row.leg.path ?? "—" }}</td>
               <td class="py-1 pr-3">{{ row.leg.alt ?? "—" }}</td>
               <td class="py-1 pr-3">
-                <template v-if="row.leg.speedKt">
-                  {{ row.leg.speedKind ?? "" }}{{ row.leg.speedKt }}
-                </template>
-                <template v-else>—</template>
+                {{ speedLimitText(row.leg) || "—" }}
               </td>
             </tr>
           </tbody>

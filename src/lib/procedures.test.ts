@@ -15,9 +15,14 @@ import {
   runwayTrueBearing,
   servesAllRunways,
   servesRunway,
+  speedLimitText,
+  trackEndIdent,
+  type AirportRunway,
   type Procedure,
   type ProcedureLeg,
 } from "@/lib/procedures";
+import { smoothProcedureTurns } from "@/lib/procedureGeometry";
+import type { MapPoint } from "@/lib/mapBus";
 
 /**
  * 这几条测的都是**错了不会被屏幕出卖**的判断 —— 这个站的判据（见 CLAUDE.md）。
@@ -791,5 +796,446 @@ describe("等待腿", () => {
     const points = composeRoutePoints({ star, approach: app });
     expect(points).toHaveLength(1);
     expect(points[0].hold).toBeDefined();
+  });
+});
+
+/**
+ * 下面这些用的是 NAIP 里真实出过错的程序：代号和结构照抄，**坐标是合成的**（这个仓库是
+ * 公开的，导航数据不进来）。几何只保留出错所需的那几个方位。
+ */
+
+/** 赤道附近按海里摆点：从 `from` 沿真方位 `brg` 走 `nm` 海里。 */
+function step(
+  from: { lat: number; lon: number },
+  brg: number,
+  nm: number,
+): { lat: number; lon: number } {
+  const rad = (brg * Math.PI) / 180;
+  return {
+    lat: from.lat + (nm * Math.cos(rad)) / 60,
+    lon: from.lon + (nm * Math.sin(rad)) / 60,
+  };
+}
+
+function tleg(
+  ident: string,
+  at: { lat: number; lon: number } | null,
+  over: Partial<ProcedureLeg> = {},
+): ProcedureLeg {
+  return {
+    ...leg(ident, at?.lat ?? null, at?.lon ?? null),
+    path: "TF",
+    ...over,
+  };
+}
+
+/** 沿线累计航向变化（度，右转为正），记在每个画在线上的定位点上，然后清零。 */
+function turnsBefore(points: MapPoint[]): Map<string, number> {
+  const brg = (a: MapPoint, b: MapPoint) =>
+    (Math.atan2(b.lon - a.lon, b.lat - a.lat) * 180) / Math.PI;
+  const out = new Map<string, number>();
+  let prev: MapPoint | null = null;
+  let last: number | null = null;
+  let acc = 0;
+  for (const p of smoothProcedureTurns(points)) {
+    if (p.offPath) continue;
+    if (prev) {
+      const b = brg(prev, p);
+      if (last != null) acc += ((b - last + 540) % 360) - 180;
+      last = b;
+    }
+    if (!p.shape) {
+      out.set(p.ident, acc);
+      acc = 0;
+    }
+    prev = p;
+  }
+  return out;
+}
+
+describe("转弯方向记在腿的起点", () => {
+  // ZGDY HUY2D：CF DG462（飞越）→ DF DG964 L → TF HUY。L 说的是在 DG462 左转；DG964
+  // 那里其实右转 12°。记在终点上，DG964 就会画出一圈 348° 的左转。
+  const rw26 = { lat: 0, lon: 0 };
+  const dg462 = step(rw26, 256, 5);
+  const dg964 = step(dg462, 226, 8);
+  const huy = step(dg964, 238, 20);
+  const huy2d = proc({
+    name: "HUY2D",
+    path: [
+      tleg("DG462", dg462, { path: "CF", flyover: true, courseMag: 259 }),
+      tleg("DG964", dg964, { path: "DF", turn: "L" }),
+      tleg("HUY", huy),
+    ],
+  });
+
+  test("L 挂在 DG462 上，不挂在 DG964 上", () => {
+    const points = procedureToMapPoints(huy2d);
+    expect(points.map((p) => [p.ident, p.turn])).toEqual([
+      ["DG462", "L"],
+      ["DG964", undefined],
+      ["HUY", undefined],
+    ]);
+  });
+
+  test("DG964 之后不再绕一圈", () => {
+    const start: MapPoint = { ident: "RW26", ...rw26, kind: "sid" };
+    const turns = turnsBefore([start, ...procedureToMapPoints(huy2d)]);
+    // DG964 是旁切点，只留标注，所以从 DG462 到 HUY 算一段：左 30°、右 12°，净左 18°。
+    // 记错那一版这里是左转 347°。
+    const net = turns.get("HUY") ?? 999;
+    expect(net).toBeLessThan(-10);
+    expect(net).toBeGreaterThan(-30);
+  });
+
+  test("起点没画出来（CA）时记到最后画出的点上，一个点只收第一个", () => {
+    const p = proc({
+      path: [
+        tleg("A", { lat: 0, lon: 0 }),
+        tleg("", null, { path: "CA", turn: "R" }),
+        tleg("B", { lat: 0, lon: 1 }, { path: "DF", turn: "L" }),
+        tleg("C", { lat: 1, lon: 1 }),
+      ],
+    });
+    expect(procedureToMapPoints(p).map((x) => x.turn)).toEqual([
+      "R",
+      undefined,
+      undefined,
+    ]);
+  });
+
+  test("RF 和等待腿的方向不往前记", () => {
+    const p = proc({
+      path: [
+        tleg("A", { lat: 0, lon: 0 }),
+        tleg("B", { lat: 0, lon: 1 }, { path: "RF", turn: "L" }),
+        tleg("B", { lat: 0, lon: 1 }, { path: "HM", turn: "L", courseMag: 90 }),
+      ],
+    });
+    const points = procedureToMapPoints(p);
+    expect(points.map((x) => x.turn)).toEqual([undefined, undefined]);
+    expect(points[1].hold?.turn).toBe("L");
+  });
+
+  test("合成时被收掉的首点把转弯方向并给留下的那个", () => {
+    const star = proc({
+      kind: "star",
+      name: "XAC1B",
+      path: [tleg("BACON", { lat: 1, lon: 1 })],
+    });
+    const app = proc({
+      kind: "approach",
+      name: "L22",
+      path: [
+        tleg("BACON", { lat: 1, lon: 1 }, { path: "IF" }),
+        tleg("CF22", { lat: 1, lon: 2 }, { path: "TF", turn: "R" }),
+      ],
+    });
+    const points = composeRoutePoints({ star, approach: app });
+    expect(points.map((p) => [p.ident, p.turn])).toEqual([
+      ["BACON", "R"],
+      ["CF22", undefined],
+    ]);
+  });
+});
+
+describe("SID 从跑道头起头", () => {
+  // ZGDY LIN5D 的第一条腿是 IF RW08。跑道已经从 RW08 画到了另一头，再照抄就折回来。
+  const rwy: AirportRunway = {
+    id: "08",
+    opposite: "26",
+    hdg: null,
+    lat: 0,
+    lon: 0,
+    endLat: 0,
+    endLon: 0.04,
+  };
+  const lin5d = proc({
+    name: "LIN5D",
+    path: [
+      tleg("RW08", { lat: 0, lon: 0 }, { path: "IF", transition: "ALL" }),
+      tleg("DG702", { lat: 0.03, lon: 0.12 }, { transition: "ALL" }),
+    ],
+  });
+
+  test("跑道头只出现一次，线不折回", () => {
+    const points = composeRoutePoints({
+      departureRunway: rwy,
+      sid: lin5d,
+      sidRunway: "08",
+    });
+    expect(points.map((p) => p.ident)).toEqual(["RW08", "", "DG702"]);
+  });
+
+  test("按坐标也认：代号写法不同时", () => {
+    const renamed = proc({
+      ...lin5d,
+      path: [{ ...lin5d.path[0], ident: "RWY08" }, lin5d.path[1]],
+    });
+    const points = composeRoutePoints({
+      departureRunway: rwy,
+      sid: renamed,
+      sidRunway: "08",
+    });
+    expect(points.map((p) => p.ident)).toEqual(["RW08", "", "DG702"]);
+  });
+});
+
+describe("转换按连续的段切，不按名字归组", () => {
+  const at = (i: number) => ({ lat: i / 10, lon: i / 10 });
+  const t = (
+    ident: string,
+    transition: string,
+    over: Partial<ProcedureLeg> = {},
+  ) =>
+    tleg(ident, at(ident.length + ident.charCodeAt(ident.length - 1)), {
+      transition,
+      ...over,
+    });
+  const ids = (legs: ProcedureLeg[]) =>
+    legs.map((l) => l.ident || `(${l.path})`);
+
+  // ZBAA OMDE9Z：第一个 ALL 是 RW01 那条的后半截。
+  const omde9z = proc({
+    name: "OMDE9Z",
+    path: [
+      t("", "RW01", { path: "CA" }),
+      t("AA171", "RW01"),
+      t("AA136", "RW01"),
+      t("AA137", "ALL"),
+      t("AA197", "ALL"),
+      t("", "RW36L", { path: "CA" }),
+      t("AA111", "RW36L"),
+      t("AA116", "RW36L"),
+      t("AA197", "RW36L"),
+      t("AA131", "RW36R"),
+      t("AA136", "RW36R"),
+      t("AA137", "RW36R"),
+      t("AA197", "RW36R"),
+      t("AA197", "ALL", { path: "IF" }),
+      t("OMDEK", "ALL"),
+    ],
+  });
+
+  test.each([
+    ["01", ["(CA)", "AA171", "AA136", "AA137", "AA197", "OMDEK"]],
+    ["36L", ["(CA)", "AA111", "AA116", "AA197", "OMDEK"]],
+    ["36R", ["AA131", "AA136", "AA137", "AA197", "OMDEK"]],
+  ])("OMDE9Z 跑道 %s 没有折回的刺", (runway, want) => {
+    expect(ids(procedureTrack(omde9z, { runway }))).toEqual(want);
+  });
+
+  test("OMDE9Z 不给跑道时公共段只是真正的那一段", () => {
+    expect(ids(procedureTrack(omde9z))).toEqual(["AA197", "OMDEK"]);
+    expect(joinIdent(omde9z)).toBe("OMDEK");
+  });
+
+  // ZSPD SURAK1：RW35R 的尾巴和公共段同名、连成一片，只有 IF 重起的那个点分得开。
+  test("SURAK1：紧贴公共段的尾巴归前面那条跑道转换", () => {
+    const surak1 = proc({
+      name: "SURAK1",
+      path: [
+        t("PD311", "RW16L"),
+        t("NINAS", "RW16L"),
+        t("LASAN", "RW16L"),
+        t("PD501", "RW35R"),
+        t("PD510", "RW35R"),
+        t("NINAS", "ALL"),
+        t("LASAN", "ALL"),
+        t("LASAN", "ALL", { path: "IF" }),
+        t("BOLEX", "ALL"),
+        t("SURAK", "ALL"),
+      ],
+    });
+    expect(ids(procedureTrack(surak1, { runway: "16L" }))).toEqual([
+      "PD311",
+      "NINAS",
+      "LASAN",
+      "BOLEX",
+      "SURAK",
+    ]);
+    expect(ids(procedureTrack(surak1, { runway: "35R" }))).toEqual([
+      "PD501",
+      "PD510",
+      "NINAS",
+      "LASAN",
+      "BOLEX",
+      "SURAK",
+    ]);
+  });
+
+  // ZSSS SASAN7：STAR 的两条航路转换夹着一个 ALL，那是 ESBAG 那条的尾巴。
+  const sasan7 = proc({
+    kind: "star",
+    name: "SASAN7",
+    path: [
+      t("ESBAG", "ESBAG"),
+      t("SS602", "ESBAG"),
+      t("SS603", "ALL"),
+      t("PIMOL", "PIMOL"),
+      t("SS614", "PIMOL"),
+      t("SASAN", "PIMOL"),
+      t("SASAN", "ALL", { path: "IF" }),
+      t("SS420", "ALL"),
+      t("SS201", "ALL"),
+    ],
+  });
+
+  test.each([
+    ["PIMOL", ["PIMOL", "SS614", "SASAN", "SS420", "SS201"]],
+    ["ESBAG", ["ESBAG", "SS602", "SS603", "SASAN", "SS420", "SS201"]],
+  ])("SASAN7 从 %s 进场没有折回的刺", (enrouteFix, want) => {
+    expect(ids(procedureTrack(sasan7, { enrouteFix }))).toEqual(want);
+  });
+
+  test("SASAN7 的公共段首点是 SASAN", () => {
+    expect(joinIdent(sasan7)).toBe("SASAN");
+  });
+
+  // 边上的 ALL 仍是公共段：公共段排在跑道转换前面的 SID 靠的就是这一条（上面
+  // 「跑道转换存在最后时」那条测试是同一件事）。
+  test("不夹在两段转换之间的 ALL 不动", () => {
+    const p = proc({
+      path: [t("AD535", "ALL"), t("ELKUR", "ALL"), t("AD551", "RW01L")],
+    });
+    expect(ids(procedureTrack(p))).toEqual(["AD535", "ELKUR"]);
+  });
+});
+
+describe("RWY 写法的跑道转换", () => {
+  // ZSQD QD512：`RWY16` / `RWY17`。不认的话它们被当成航路转换。
+  const qd512 = proc({
+    name: "QD512",
+    runways: "16,17",
+    path: [
+      tleg("", null, { path: "CA", transition: "RWY16" }),
+      tleg("QD511", { lat: 0, lon: 1 }, { transition: "RWY16" }),
+      tleg("QD512", { lat: 0, lon: 2 }, { transition: "RWY16" }),
+      tleg("QD501", { lat: 1, lon: 1 }, { transition: "RWY17" }),
+      tleg("QD512", { lat: 0, lon: 2 }, { transition: "RWY17" }),
+    ],
+  });
+
+  test("不列成航路转换", () => {
+    expect(procedureTransitions(qd512)).toEqual([]);
+  });
+
+  test("选 16 只画 16 那条", () => {
+    expect(
+      procedureTrack(qd512, { runway: "16", enrouteFix: "QD512" }).map(
+        (l) => l.ident || `(${l.path})`,
+      ),
+    ).toEqual(["(CA)", "QD511", "QD512"]);
+  });
+});
+
+describe("joinsRoute 认航路转换的外端", () => {
+  // ZSSS SASAN9：航路以 PIMOL 收尾，地图按 PIMOL 那条转换画对了，公共段首点却是 SASAN。
+  const sasan9 = proc({
+    kind: "star",
+    name: "SASAN9",
+    path: [
+      tleg("ESBAG", { lat: 0, lon: 0 }, { transition: "ESBAG" }),
+      tleg("SASAN", { lat: 0, lon: 1 }, { transition: "ESBAG" }),
+      tleg("PIMOL", { lat: 1, lon: 0 }, { transition: "PIMOL" }),
+      tleg("SASAN", { lat: 0, lon: 1 }, { transition: "PIMOL" }),
+      tleg("SASAN", { lat: 0, lon: 1 }, { transition: "ALL", path: "IF" }),
+      tleg("SS204", { lat: 0, lon: 2 }, { transition: "ALL" }),
+    ],
+  });
+
+  test.each(["PIMOL", "ESBAG", "SASAN", "pimol"])("%s 接得上", (fix) => {
+    expect(joinsRoute(sasan9, fix)).toBe(true);
+  });
+
+  test("别的点仍然接不上", () => {
+    expect(joinsRoute(sasan9, "SS204")).toBe(false);
+  });
+
+  test("按转换名也认（外端代号是别名时）", () => {
+    const aliased = proc({
+      ...sasan9,
+      path: sasan9.path.map((l) =>
+        l.ident === "PIMOL" ? { ...l, ident: "PML" } : l,
+      ),
+    });
+    expect(joinsRoute(aliased, "PIMOL")).toBe(true);
+  });
+});
+
+describe("进近转换：腿表和地图取同一个 STAR 终点", () => {
+  const star = proc({
+    kind: "star",
+    name: "SASAN9",
+    path: [
+      tleg("SASAN", { lat: 0, lon: 0 }),
+      tleg("SS204", { lat: 0, lon: 1 }),
+      tleg("", null, { path: "VI" }),
+    ],
+  });
+  const app = proc({
+    kind: "approach",
+    name: "I35L",
+    path: [
+      { ...tleg("FI35L", { lat: 1, lon: 1 }, { path: "IF" }), part: "final" },
+      {
+        ...tleg(
+          "SS204",
+          { lat: 0, lon: 1 },
+          { path: "IF", transition: "SS204" },
+        ),
+        part: "transition",
+      },
+      {
+        ...tleg("FI35L", { lat: 1, lon: 1 }, { transition: "SS204" }),
+        part: "transition",
+      },
+    ],
+  });
+
+  test("STAR 终点跳过没坐标的腿", () => {
+    expect(trackEndIdent(star)).toBe("SS204");
+  });
+
+  test("按它猜出来的进近转换就是地图画的那条", () => {
+    const fromTable = procedureTrack(app, {
+      enrouteFix: trackEndIdent(star),
+    }).map((l) => l.ident);
+    const onMap = composeRoutePoints({ star, approach: app })
+      .filter((p) => p.kind === "approach")
+      .map((p) => p.ident);
+    expect(fromTable).toEqual(["SS204", "FI35L"]);
+    // 地图上 SS204 和 STAR 的终点合成一个点（归 STAR），进近那一段从 FI35L 起。
+    expect(onMap).toEqual(["FI35L"]);
+  });
+});
+
+describe("速度限制", () => {
+  test.each([
+    ["below", "-210"],
+    ["-", "-210"],
+    ["above", "+210"],
+    ["+", "+210"],
+    [null, "210"],
+  ])("%s → %s", (kind, want) => {
+    expect(speedLimitText({ speedKt: 210, speedKind: kind })).toBe(want);
+  });
+
+  test("认不出的种类原样摆出，不猜", () => {
+    expect(speedLimitText({ speedKt: 210, speedKind: "at" })).toBe("at 210");
+  });
+
+  test("没有速度就是空的", () => {
+    expect(speedLimitText({ speedKt: null, speedKind: "below" })).toBe("");
+  });
+});
+
+describe("变体标签不重复", () => {
+  test("名字里已经带着变体时不再接一次（NAIP 的 R01-Y 配 y）", () => {
+    expect(procedureLabel(proc({ name: "R01-Y", variant: "y" }))).toBe("R01-Y");
+  });
+
+  test("名字里没有时照旧接上", () => {
+    expect(procedureLabel(proc({ name: "R01", variant: "y" }))).toBe("R01-Y");
   });
 });
