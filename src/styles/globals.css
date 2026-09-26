@@ -470,25 +470,10 @@
   pointer-events: auto;
 }
 
-/* 「有 n 块边界不完整没画」。贴在可见区上沿居中：它说的是整张图缺了东西。 */
-.map-partial {
-  position: absolute;
-  top: 0.5rem;
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: min(28rem, calc(100% - 8rem));
-  padding: 0.25rem 0.6rem;
-  border-radius: var(--radius-control);
-  font-size: 0.6875rem;
-  line-height: 1.4;
-  color: var(--color-muted);
-  text-align: center;
-}
-
-/* 「这一层没有数据」/「没有航行资料库权限」。排在上一条下面，比它显眼一点。 */
+/* 「这一层没有数据」/「没有航行资料库权限」。贴在可见区上沿居中。 */
 .map-notice {
   position: absolute;
-  top: 2.5rem;
+  top: 0.5rem;
   left: 50%;
   transform: translateX(-50%);
   max-width: min(30rem, calc(100% - 8rem));

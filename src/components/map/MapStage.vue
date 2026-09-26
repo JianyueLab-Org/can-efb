@@ -69,10 +69,8 @@ const props = defineProps<{
   cid: string | null;
   /** 九个图层开关的文案，已翻译。 */
   layerLabels: Record<LayerToggle, string>;
-  /** 图层相关的几句话，已翻译。`partial` 带 `{n}`，
-   *  `planOnMap` 带 `{from}` / `{to}`，`layerFailed` 带 `{layer}`。 */
+  /** 图层相关的几句话，已翻译。`planOnMap` 带 `{from}` / `{to}`，`layerFailed` 带 `{layer}`。 */
   t: {
-    partial: string;
     denied: string;
     emptyAirways: string;
     emptyNavaids: string;
@@ -136,16 +134,7 @@ const live = useTrafficLayer({
 
 /* 模板里只有顶层的 ref 会自动解包，所以把要用的拆出来。 */
 const { points, markers, focus, label, highlightedLegs } = route;
-const {
-  shownFixes,
-  airports,
-  runways,
-  navaids,
-  firs,
-  mora,
-  airspaces,
-  skippedTotal,
-} = chart;
+const { shownFixes, airports, runways, navaids, firs, mora, airspaces } = chart;
 const { ground, groundAttribution } = groundLayer;
 const {
   traffic,
@@ -191,12 +180,6 @@ const busy = computed(() => ({
   airways: chart.airwayBusy.value,
   other: chart.layerBusy.value,
 }));
-
-const partial = computed(() =>
-  skippedTotal.value
-    ? props.t.partial.replace("{n}", String(skippedTotal.value))
-    : null,
-);
 
 const ownButton = computed(() =>
   ownAt.value ? { callsign: ownAt.value.callsign } : null,
@@ -346,7 +329,6 @@ onBeforeUnmount(() => {
       :on="layerState"
       :busy="busy"
       :atc-count="atcCount"
-      :partial="partial"
       :notice="noticeLine"
       :failure="failedLayer"
       :own="ownButton"

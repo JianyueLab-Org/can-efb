@@ -249,14 +249,6 @@ export function useChartLayers(options: ChartLayerOptions) {
   let controlledCache: Airspace[] | null = null;
   let restrictedCache: Airspace[] | null = null;
 
-  /**
-   * 因为边界不完整而没画的块数，分层记着。
-   *
-   * **要显示出来。** 汇编对将近一半的区域管制区只发布了边界的一段（其余沿国境线
-   * 走，而国境线不在数据里），照着画会得到一条看起来合理的错边界，所以那些块被跳
-   * 过了 —— 但**静默地少画和静默地画错一样糟**，得让人知道图上缺了几块。
-   */
-  const skipped = ref({ ctr: 0, app: 0, restricted: 0 });
   const airspaces = ref<FeatureCollection | null>(null);
 
   const layerBusy = ref(false);
@@ -468,25 +460,17 @@ export function useChartLayers(options: ChartLayerOptions) {
    */
   function composeAirspaces() {
     const parts: Airspace[] = [];
-    const counts = { ctr: 0, app: 0, restricted: 0 };
 
     if (showCtr.value && controlledCache) {
-      const list = onlyParents(controlledCache, "CTA");
-      const built = toAirspacePolygons(list);
-      counts.ctr = built.skipped;
-      parts.push(...list);
+      parts.push(...onlyParents(controlledCache, "CTA"));
     }
     if (showApp.value && controlledCache) {
-      const list = onlyParents(controlledCache, "APP");
-      counts.app = toAirspacePolygons(list).skipped;
-      parts.push(...list);
+      parts.push(...onlyParents(controlledCache, "APP"));
     }
     if (showRestricted.value && restrictedCache) {
-      counts.restricted = toAirspacePolygons(restrictedCache).skipped;
       parts.push(...restrictedCache);
     }
 
-    skipped.value = counts;
     airspaces.value = parts.length ? toAirspacePolygons(parts).features : null;
   }
 
@@ -533,11 +517,6 @@ export function useChartLayers(options: ChartLayerOptions) {
       layerBusy.value = false;
     }
   }
-
-  /** 三层里一共跳过了多少块，给那条提示用。 */
-  const skippedTotal = computed(
-    () => skipped.value.ctr + skipped.value.app + skipped.value.restricted,
-  );
 
   /**
    * 「不使用受限汇编」变了（设置页，或另一个标签页）。
@@ -678,7 +657,6 @@ export function useChartLayers(options: ChartLayerOptions) {
     showApp,
     showRestricted,
     airspaces,
-    skippedTotal,
     toggleAirspace,
     layerBusy,
     airports,

@@ -364,7 +364,6 @@
         "app": "APP",
         "restricted": "Restricted"
       },
-      "partial": "{n} airspaces are not drawn: the AIP publishes only part of their boundary (it follows a national border, or an arc).",
       "failure": {
         "init": "The map failed to start. Reload the page; if it still fails, send us the console error.",
         "webgl": "This browser has no working WebGL, so the map cannot be drawn. Enable hardware acceleration in your browser settings and try again."

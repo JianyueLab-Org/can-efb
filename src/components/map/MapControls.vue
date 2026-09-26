@@ -23,8 +23,6 @@ const props = defineProps<{
   busy: { airways: boolean; other: boolean };
   /** 在线管制席位数，只给管制那一项挂角标（模板里 `id === 'atcLive'` 那一段）。 */
   atcCount: number;
-  /** 「有 n 块边界不完整没画」，已经把 n 填好；没有就是 null。 */
-  partial: string | null;
   notice: { layer: string; text: string } | null;
   failure: LayerId | null;
   /** 自己连着线时才有；「定位到我」按钮只在那时出现。 */
@@ -100,10 +98,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="map-overlay">
-    <!-- 因为边界不完整而没画的块数。说的是「这张图缺了几块」。 -->
-    <p v-if="partial" class="map-partial glass">{{ partial }}</p>
-
-    <!-- 「这一层没有数据」/「你没有航行资料库权限」。和上一条分开，两者可能同时成立。 -->
+    <!-- 「这一层没有数据」/「你没有航行资料库权限」。 -->
     <p v-if="notice" class="map-notice glass" :data-notice="notice.layer">
       {{ notice.text }}
     </p>
