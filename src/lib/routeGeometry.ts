@@ -127,7 +127,7 @@ export function routeLines(
         coordinates: racetrack(point.lat, point.lon, point.hold),
       },
     });
-    // 方向箭头和两条边的航向（`holdMarks`）。点要素，线图层不画它们；`holdMark` 给
+    // 方向箭头和入航航向（`holdMarks`）。点要素，线图层不画它们；`holdMark` 给
     // `hold-arrows` / `hold-courses` 两层挑。
     for (const mark of holdMarks(point.lat, point.lon, point.hold)) {
       features.push({
@@ -135,9 +135,8 @@ export function routeLines(
         properties: {
           seg,
           holdMark: mark.kind,
-          rotate: mark.rotate,
+          rotate: mark.kind === "arrow" ? mark.rotate : 0,
           text: mark.kind === "course" ? mark.text : "",
-          side: mark.kind === "course" ? mark.side : 0,
         },
         geometry: { type: "Point", coordinates: mark.at },
       });

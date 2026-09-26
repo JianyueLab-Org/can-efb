@@ -165,8 +165,10 @@ describe("holdMarks", () => {
     lat * 60,
   ];
   const base = { legNm: 4, radiusNm: 1 };
+  const round = (v: [number, number]) =>
+    v.map((x) => Math.round(x * 1e6) / 1e6 + 0);
 
-  test("one arrow per leg, pointing the way the aircraft flies", () => {
+  test("one arrow per leg, 30% in from the leg's start, pointing the way it is flown", () => {
     const marks = holdMarks(0, 0, {
       ...base,
       inboundTrue: 0,
@@ -175,60 +177,75 @@ describe("holdMarks", () => {
     });
     const arrows = marks.filter((m) => m.kind === "arrow");
     expect(arrows.map((m) => m.rotate)).toEqual([0, 180]);
-    // Inbound leg is the fix's own meridian, halfway back; outbound is 2 NM east.
-    const [inX, inY] = nm(arrows[0].at);
-    expect(inX).toBeCloseTo(0, 6);
-    expect(inY).toBeCloseTo(-2, 6);
-    const [outX, outY] = nm(arrows[1].at);
-    expect(outX).toBeCloseTo(2, 6);
-    expect(outY).toBeCloseTo(-2, 6);
-    // A left hold puts the outbound arrow on the west side.
+    // Inbound leg runs north from (0,-4) to the fix; outbound runs south from (2,0).
+    expect(arrows.map((m) => round(nm(m.at)))).toEqual([
+      [0, -2.8],
+      [2, -1.2],
+    ]);
     const left = holdMarks(0, 0, {
       ...base,
       inboundTrue: 0,
       inboundMag: 7,
       turn: "L",
     }).filter((m) => m.kind === "arrow");
-    expect(nm(left[1].at)[0]).toBeCloseTo(-2, 6);
+    expect(round(nm(left[1].at))).toEqual([-2, -1.2]);
   });
 
-  test("courses are the published magnetic inbound and its reciprocal", () => {
-    const texts = holdMarks(0, 0, {
+  test("the inbound magnetic course once, at the centre of the racetrack", () => {
+    const courses = holdMarks(0, 0, {
       ...base,
-      inboundTrue: 340,
-      inboundMag: 347,
+      inboundTrue: 256,
+      inboundMag: 263,
       turn: "R",
-    }).flatMap((m) => (m.kind === "course" ? [m.text] : []));
-    expect(texts).toEqual(["347°", "167°"]);
+    }).filter((m) => m.kind === "course");
+    expect(courses).toHaveLength(1);
+    expect(courses[0].kind === "course" && courses[0].text).toBe("263°");
+    // Centre of the pattern: r·n − L/2·u. Check against the ring's own extent.
+    const ring = racetrack(0, 0, {
+      ...base,
+      inboundTrue: 256,
+      inboundMag: 263,
+      turn: "R",
+    }).map(nm);
+    const mid = (i: 0 | 1) =>
+      (Math.max(...ring.map((p) => p[i])) +
+        Math.min(...ring.map((p) => p[i]))) /
+      2;
+    const [x, y] = nm(courses[0].at);
+    expect(x).toBeCloseTo(mid(0), 1);
+    expect(y).toBeCloseTo(mid(1), 1);
   });
 
-  // Every inbound course, both turn directions: the text never reads upside down
-  // and is pushed to the outside of the racetrack, not across the other leg.
   test.each(["L", "R"] as const)(
-    "course labels read upright and sit outside (%s turns)",
+    "every arrow sits on the drawn racetrack (%s turns)",
     (turn) => {
-      for (let inbound = 0; inbound < 360; inbound += 15) {
+      for (let inbound = 0; inbound < 360; inbound += 30) {
         const shape = {
           ...base,
           inboundTrue: inbound,
           inboundMag: inbound,
           turn,
         };
-        const th = (inbound * Math.PI) / 180;
-        const u = [Math.sin(th), Math.cos(th)];
-        const n = turn === "R" ? [u[1], -u[0]] : [-u[1], u[0]];
-        const centre = [n[0] - 2 * u[0], n[1] - 2 * u[1]];
+        const ring = racetrack(0, 0, shape).map(nm);
         for (const m of holdMarks(0, 0, shape)) {
-          if (m.kind !== "course") continue;
-          expect(m.rotate).toBeGreaterThan(-90);
-          expect(m.rotate).toBeLessThanOrEqual(90);
-          // Text "up" points at true bearing `rotate`; side -1 moves up.
-          const b =
-            (((m.side < 0 ? m.rotate : m.rotate + 180) % 360) * Math.PI) / 180;
+          if (m.kind !== "arrow") continue;
           const [x, y] = nm(m.at);
-          const outward =
-            Math.sin(b) * (x - centre[0]) + Math.cos(b) * (y - centre[1]);
-          expect(outward).toBeGreaterThan(0.5);
+          const near = Math.min(
+            ...ring.slice(1).map(([bx, by], i) => {
+              const [ax, ay] = ring[i];
+              const dx = bx - ax;
+              const dy = by - ay;
+              const t = Math.max(
+                0,
+                Math.min(
+                  1,
+                  ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1),
+                ),
+              );
+              return Math.hypot(x - ax - t * dx, y - ay - t * dy);
+            }),
+          );
+          expect(near).toBeLessThan(0.01);
         }
       }
     },

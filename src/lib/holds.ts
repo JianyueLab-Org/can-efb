@@ -145,7 +145,7 @@ export function courseText(mag: number): string {
   return `${String(deg).padStart(3, "0")}°`;
 }
 
-/** 等待上的一个标记：一个方向箭头，或者一条边上的航向。坐标 `[lon, lat]`。 */
+/** 等待上的一个标记：一个方向箭头，或者入航航向。坐标 `[lon, lat]`。 */
 export type HoldMark =
   | {
       kind: "arrow";
@@ -156,21 +156,22 @@ export type HoldMark =
   | {
       kind: "course";
       at: [number, number];
-      /** 航图上的写法，`347°`。 */
+      /** 航图上的写法，`263°`。 */
       text: string;
-      /** 字的旋转（度，顺时针），让字顺着边读、且永远不倒过来。 */
-      rotate: number;
-      /**
-       * 字往哪边挪：`-1` 往字的上方、`1` 往下方。按字的朝向算好，让它落在跑道形**外侧**
-       * —— 在里侧会压到另一条边的字和箭头上。
-       */
-      side: -1 | 1;
     };
 
+/** 边上的箭头放在从这条边起点往里多远（边长的比例）。 */
+const ARROW_ALONG = 0.3;
+
 /**
- * 等待的方向箭头和航向标注：入航边、出航边的中点各一个箭头（顺着飞的方向），各一个
- * 航向（入航写数据给的磁航向，出航写它的反方向）。几何和 `racetrack` 同一套：入航边
- * 从 `-L·u` 到定位点，出航边在转弯一侧 `2r` 外，方向反过来。
+ * 等待的方向箭头和入航航向，照航图的画法：
+ *
+ * - 箭头两支，压在线上、顺着飞的方向：入航边、出航边各一支，都在从这条边起点往里三成
+ *   处（入航边从远端起，出航边从过定位点那个弯起）。转弯弧上不放。
+ * - 航向一个，写在跑道形正中：数据给的**入航磁航向**，不写出航的反方向。
+ *
+ * 几何和 `racetrack` 同一套：入航边从 `-L·u` 到定位点，出航边在转弯一侧 `2r` 外、从
+ * `2r·n` 往 `-u` 走，中心在 `r·n − L/2·u`。
  */
 export function holdMarks(
   lat: number,
@@ -184,52 +185,40 @@ export function holdMarks(
   ];
   const th = (shape.inboundTrue * Math.PI) / 180;
   const u: [number, number] = [Math.sin(th), Math.cos(th)];
-  const right = shape.turn === "R";
-  const n: [number, number] = right ? [u[1], -u[0]] : [-u[1], u[0]];
+  const n: [number, number] =
+    shape.turn === "R" ? [u[1], -u[0]] : [-u[1], u[0]];
   const r = shape.radiusNm;
   const L = shape.legNm;
-  const inboundMid: [number, number] = [(-L / 2) * u[0], (-L / 2) * u[1]];
-  const outboundMid: [number, number] = [
-    2 * r * n[0] - (L / 2) * u[0],
-    2 * r * n[1] - (L / 2) * u[1],
-  ];
-
   const norm = (deg: number) => ((deg % 360) + 360) % 360;
-  // 字顺着边读：旋转落在 (-90, 90]，两条边平行，所以是同一个角度。
-  let rotate = norm(shape.inboundTrue - 90);
-  if (rotate > 90 && rotate <= 270) rotate -= 180;
-  else if (rotate > 270) rotate -= 360;
-  // 字的「上方」指向真方位 `rotate`。外侧离它不到 90° 就往上挪，否则往下。
-  const turnSide = norm(shape.inboundTrue + (right ? 90 : -90));
-  const sideToward = (bearing: number): -1 | 1 => {
-    const diff = Math.abs(((bearing - rotate + 540) % 360) - 180);
-    return diff < 90 ? -1 : 1;
-  };
+
+  const inboundArrow: [number, number] = [
+    -(1 - ARROW_ALONG) * L * u[0],
+    -(1 - ARROW_ALONG) * L * u[1],
+  ];
+  const outboundArrow: [number, number] = [
+    2 * r * n[0] - ARROW_ALONG * L * u[0],
+    2 * r * n[1] - ARROW_ALONG * L * u[1],
+  ];
+  const centre: [number, number] = [
+    r * n[0] - (L / 2) * u[0],
+    r * n[1] - (L / 2) * u[1],
+  ];
 
   return [
     {
       kind: "arrow",
-      at: toLonLat(inboundMid),
+      at: toLonLat(inboundArrow),
       rotate: norm(shape.inboundTrue),
     },
     {
       kind: "arrow",
-      at: toLonLat(outboundMid),
+      at: toLonLat(outboundArrow),
       rotate: norm(shape.inboundTrue + 180),
     },
     {
       kind: "course",
-      at: toLonLat(inboundMid),
+      at: toLonLat(centre),
       text: courseText(shape.inboundMag),
-      rotate,
-      side: sideToward(turnSide + 180),
-    },
-    {
-      kind: "course",
-      at: toLonLat(outboundMid),
-      text: courseText(shape.inboundMag + 180),
-      rotate,
-      side: sideToward(turnSide),
     },
   ];
 }

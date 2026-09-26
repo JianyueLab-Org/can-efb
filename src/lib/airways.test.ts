@@ -10,9 +10,12 @@ import {
   mergeAirwayLevels,
   toAirwayFixes,
   toAirwayLines,
+  airwayGapNm,
+  AIRWAY_FIX_GAP_NM,
   type AirwayGraph,
   type AirwaySegment,
 } from "@/lib/airways";
+import { distanceNm } from "@/lib/geo";
 
 const seg = (airway: string, from: string, to: string) => ({
   type: "Feature" as const,
@@ -284,5 +287,78 @@ describe("和导航台重合的航路点", () => {
   test("不改输入", () => {
     markNavaidFixes(fixes, navaids);
     expect(tagOf(fixes, "SJD")).toBe("");
+  });
+});
+
+/**
+ * 航段两端各让 1 NM 给定位点：实线停在点外，让出来的那截单独一条虚线接进去。坐标是
+ * 合成的。
+ */
+describe("航段在定位点前让出 1 NM", () => {
+  const graph = (to: [number, number]): AirwayGraph => ({
+    fixes: { AAAAA: [30, 120], BBBBB: to },
+    airways: {},
+    segments: [
+      {
+        airway: "W11",
+        from: "AAAAA",
+        to: "BBBBB",
+        dir: "both",
+        minAlt: null,
+        maxAlt: null,
+      },
+    ],
+  });
+  // GeoJSON 是 [lon, lat]，distanceNm 要 [lat, lon]。
+  const ll = (c: number[]): [number, number] => [c[1], c[0]];
+  const coords = (f: { geometry: unknown }) =>
+    (f.geometry as { coordinates: number[][] }).coordinates;
+
+  test("一条实线加两截虚线，实线两端离点正好 1 NM，虚线接到点上", () => {
+    const lines = toAirwayLines(graph([30.5, 120.4]));
+    const parts = lines.features.map((f) => f.properties?.part);
+    expect(parts).toEqual(["line", "stub", "stub"]);
+    const [line, s1, s2] = lines.features;
+    const [a, b] = coords(line).map(ll);
+    expect(distanceNm([30, 120], a)).toBeCloseTo(1, 3);
+    expect(distanceNm([30.5, 120.4], b)).toBeCloseTo(1, 3);
+    // 虚线从实线端点接到定位点，不留缝也不重叠。
+    expect(coords(s1)).toEqual([coords(line)[0], [120, 30]]);
+    expect(coords(s2)).toEqual([coords(line)[1], [120.4, 30.5]]);
+    // 让出的点在大圆上：三段长度加起来就是整段。
+    const whole = distanceNm([30, 120], [30.5, 120.4]);
+    expect(distanceNm(a, b) + 2).toBeCloseTo(whole, 3);
+  });
+
+  test("三段带同一组航段属性，高亮照样点得亮整段", () => {
+    const lines = toAirwayLines(graph([30.5, 120.4]));
+    for (const f of lines.features) {
+      expect(f.properties?.airway).toBe("W11");
+      expect(f.properties?.from).toBe("AAAAA");
+      expect(f.properties?.to).toBe("BBBBB");
+    }
+    const marked = markRouteOnAirways(
+      lines,
+      new Set([legKey("W11", "BBBBB", "AAAAA")]),
+    );
+    expect(marked.size).toBe(1);
+    expect(lines.features.every((f) => f.properties?.onRoute === 1)).toBe(true);
+  });
+
+  test("短航段按比例让：min(1, 0.4 × 长度)，2.5 NM 处接上", () => {
+    expect(airwayGapNm(60)).toBe(AIRWAY_FIX_GAP_NM);
+    expect(airwayGapNm(2.5)).toBeCloseTo(1, 9);
+    expect(airwayGapNm(2)).toBeCloseTo(0.8, 9);
+    expect(airwayGapNm(0)).toBe(0);
+    // 一条 2 NM 的航段：两端各让 0.8，中间留 0.4 实线。
+    const to = [30 + 2 / 60, 120] as [number, number];
+    const [line] = toAirwayLines(graph(to)).features;
+    const [a, b] = coords(line).map(ll);
+    expect(distanceNm(a, b)).toBeCloseTo(0.4, 2);
+  });
+
+  test("两端重合的航段不切，也不出零长的虚线", () => {
+    const lines = toAirwayLines(graph([30, 120]));
+    expect(lines.features.map((f) => f.properties?.part)).toEqual(["line"]);
   });
 });

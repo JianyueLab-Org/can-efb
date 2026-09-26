@@ -309,27 +309,92 @@ function aircraft(): ImageData | null {
   return ctx.getImageData(0, 0, size, size);
 }
 
-/** 等待航线的方向箭头：朝北的实心箭头。SDF，所以画成白色实心，颜色和描边由样式给。 */
-function holdArrow(): ImageData | null {
-  const size = 16;
-  const ctx = canvas(size);
-  if (!ctx) return null;
-  ctx.fillStyle = "#ffffff";
-  ctx.beginPath();
-  ctx.moveTo(size / 2, 2);
-  ctx.lineTo(size - 3, size - 3);
-  ctx.lineTo(size / 2, size - 6);
-  ctx.lineTo(3, size - 3);
-  ctx.closePath();
-  ctx.fill();
-  return ctx.getImageData(0, 0, size, size);
+/**
+ * 等待航线的方向箭头：朝北的实心等腰三角形，压在线上，和线同色。
+ *
+ * **按真正的距离场画，不是画一个实心形状再标 SDF。** MapLibre 把 SDF 图的 alpha 当成
+ * 到边的距离读：0.75 是边，往外每 1/8 是一个 CSS 像素（`symbol_sdf` 着色器的
+ * `SDF_PX`）。实心形状的 alpha 在边上一像素之内从 1 掉到 0，于是本体被抗锯齿削掉一圈、
+ * 描边（`icon-halo-*`）没有地方画 —— 第一版 16 像素的画布在地图上只剩三四个像素的一点。
+ * 这里逐像素算到三角形的有符号距离，按那个刻度写 alpha。
+ *
+ * 尺寸以 CSS 像素算（`pixelRatio` 2）：长 13、宽 8，约是等待线宽的三倍；四周各留 3
+ * 像素给描边。
+ */
+export const HOLD_ARROW = {
+  pixelRatio: 2,
+  /** 画布边长，图片像素。 */
+  size: 38,
+  /** 三角形，图片像素，y 向下，尖朝上：尖、右底角、左底角。 */
+  polygon: [
+    [19, 6],
+    [27, 32],
+    [11, 32],
+  ] as [number, number][],
+} as const;
+
+/** 点到线段的距离。 */
+function segmentDistance(
+  px: number,
+  py: number,
+  [ax, ay]: [number, number],
+  [bx, by]: [number, number],
+): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const t = Math.max(
+    0,
+    Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)),
+  );
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+/**
+ * 箭头的距离场，RGBA（白色，alpha 是距离）。纯函数，测试直接读它。
+ *
+ * alpha = 0.75 − d / 8，d 是像素中心到边的有符号距离（CSS 像素，里面为负）。
+ */
+export function holdArrowImage(): {
+  width: number;
+  height: number;
+  data: Uint8ClampedArray;
+} {
+  const { size, polygon, pixelRatio } = HOLD_ARROW;
+  const data = new Uint8ClampedArray(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const px = x + 0.5;
+      const py = y + 0.5;
+      let inside = false;
+      let d = Infinity;
+      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const [xi, yi] = polygon[i];
+        const [xj, yj] = polygon[j];
+        if (
+          yi > py !== yj > py &&
+          px < ((xj - xi) * (py - yi)) / (yj - yi) + xi
+        ) {
+          inside = !inside;
+        }
+        d = Math.min(d, segmentDistance(px, py, polygon[i], polygon[j]));
+      }
+      const css = (inside ? -d : d) / pixelRatio;
+      const o = (y * size + x) * 4;
+      data[o] = data[o + 1] = data[o + 2] = 255;
+      data[o + 3] = Math.round((0.75 - css / 8) * 255);
+    }
+  }
+  return { width: size, height: size, data };
 }
 
 /** 注册 `allImageIds()` 里的每一张图。重复调用无害。 */
 export function registerChartIcons(map: MapLibreMap): void {
   const add = (
     id: string,
-    data: ImageData | null,
+    data:
+      | ImageData
+      | { width: number; height: number; data: Uint8ClampedArray }
+      | null,
     options: ImageOptions = {},
   ) => {
     if (!data || map.hasImage(id)) return;
@@ -337,7 +402,10 @@ export function registerChartIcons(map: MapLibreMap): void {
   };
 
   add(AIRCRAFT_ICON, aircraft(), { sdf: true });
-  add(HOLD_ARROW_ICON, holdArrow(), { sdf: true });
+  add(HOLD_ARROW_ICON, holdArrowImage(), {
+    sdf: true,
+    pixelRatio: HOLD_ARROW.pixelRatio,
+  });
 
   for (const theme of ["light", "dark"] as Theme[]) {
     const c = COLORS[theme];

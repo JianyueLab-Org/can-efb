@@ -1,4 +1,5 @@
 import type { Feature, FeatureCollection } from "geojson";
+import { distanceNm, type LatLon } from "@/lib/geo";
 import { dbFetch } from "@/lib/naip";
 
 /**
@@ -237,6 +238,66 @@ export function isRnavDesignator(designator: string): boolean {
   return RNAV_LETTERS.has(d.charAt(0));
 }
 
+/** 航段在两端各让出多少海里给定位点（航图画法：实线停在点外，虚线接进去）。 */
+export const AIRWAY_FIX_GAP_NM = 1;
+
+/**
+ * 一端实际让出多少海里：`min(1, 0.4 × 航段长)`。
+ *
+ * 2.5 NM 以上的航段两端各让 1 NM，中间至少还剩 0.5 NM 实线；更短的按比例让，两个量在
+ * 2.5 NM 处接上，不会在门槛两边跳一下。重合的两点（长度 0）不让。
+ */
+export function airwayGapNm(lengthNm: number): number {
+  if (!(lengthNm > 0)) return 0;
+  return Math.min(AIRWAY_FIX_GAP_NM, 0.4 * lengthNm);
+}
+
+/**
+ * 大圆上从 `from` 往 `to` 走 `fraction`（0–1）处的点。`geo.ts` 是从 can-radar 逐字抄的，
+ * 不往里加东西，所以这一个插值写在这里。
+ */
+export function alongGreatCircle(
+  from: LatLon,
+  to: LatLon,
+  fraction: number,
+): LatLon {
+  const rad = Math.PI / 180;
+  const [lat1, lon1] = [from[0] * rad, from[1] * rad];
+  const [lat2, lon2] = [to[0] * rad, to[1] * rad];
+  const d =
+    2 *
+    Math.asin(
+      Math.sqrt(
+        Math.sin((lat2 - lat1) / 2) ** 2 +
+          Math.cos(lat1) * Math.cos(lat2) * Math.sin((lon2 - lon1) / 2) ** 2,
+      ),
+    );
+  if (d < 1e-12) return [from[0], from[1]];
+  const a = Math.sin((1 - fraction) * d) / Math.sin(d);
+  const b = Math.sin(fraction * d) / Math.sin(d);
+  const x =
+    a * Math.cos(lat1) * Math.cos(lon1) + b * Math.cos(lat2) * Math.cos(lon2);
+  const y =
+    a * Math.cos(lat1) * Math.sin(lon1) + b * Math.cos(lat2) * Math.sin(lon2);
+  const z = a * Math.sin(lat1) + b * Math.sin(lat2);
+  return [
+    Math.atan2(z, Math.sqrt(x * x + y * y)) / rad,
+    Math.atan2(y, x) / rad,
+  ];
+}
+
+/**
+ * 航路网：每个航段一条线。
+ *
+ * **实线在两端各停在定位点外 1 NM**（`airwayGapNm`），让出来的那一截单独出一条
+ * `part: "stub"` 的线，样式画成细淡的虚线接进点里 —— 照航图画法，点的符号和点名落在
+ * 空白里，不被实线穿过。在数据里切而不是用 `line-offset` 一类的样式技巧：缩放变了，
+ * 让出的距离还是 1 NM。
+ *
+ * 三段都带同一组 `airway` / `from` / `to`，所以 `markRouteOnAirways` 照样点得亮整段；
+ * 计划走过的那几段，虚线那两截也画成实线（样式里按 `onRoute` 收回实线层），计划航线
+ * 在点上不断开。代号牌只放在实线那一段上（`part: "line"`）。
+ */
 export function toAirwayLines(
   graph: AirwayGraph | TaggedAirwayGraph,
 ): FeatureCollection {
@@ -251,30 +312,46 @@ export function toAirwayLines(
       continue;
     }
     const meta = graph.airways[seg.airway];
+    const lengthNm = distanceNm(from, to);
+    const gap = airwayGapNm(lengthNm);
+    const start = gap ? alongGreatCircle(from, to, gap / lengthNm) : from;
+    const end = gap ? alongGreatCircle(from, to, 1 - gap / lengthNm) : to;
+    // fixes 是 [lat, lon]，GeoJSON 要 [lon, lat] —— 这一步反过来，别省。
+    const xy = (p: LatLon): [number, number] => [p[1], p[0]];
+    const properties = {
+      airway: seg.airway,
+      // 没打过标记的图（单层取的）按 `both` 算：哪一层都不该把它藏掉。
+      level: "level" in seg ? seg.level : "both",
+      locType: meta?.locType ?? "",
+      rnav: isRnavDesignator(seg.airway) ? 1 : 0,
+      minAlt: seg.minAlt ?? 0,
+      /* 两端代号带上，`markRouteOnAirways` 靠它算键。**属性里没有它就点不亮** ——
+       * 而那不会报错，只会让高亮一条都不出现。 */
+      from: seg.from,
+      to: seg.to,
+      onRoute: 0,
+    };
     features.push({
       type: "Feature",
-      properties: {
-        airway: seg.airway,
-        // 没打过标记的图（单层取的）按 `both` 算：哪一层都不该把它藏掉。
-        level: "level" in seg ? seg.level : "both",
-        locType: meta?.locType ?? "",
-        rnav: isRnavDesignator(seg.airway) ? 1 : 0,
-        minAlt: seg.minAlt ?? 0,
-        /* 两端代号带上，`markRouteOnAirways` 靠它算键。**属性里没有它就点不亮** ——
-         * 而那不会报错，只会让高亮一条都不出现。 */
-        from: seg.from,
-        to: seg.to,
-        onRoute: 0,
-      },
-      geometry: {
-        type: "LineString",
-        // fixes 是 [lat, lon]，GeoJSON 要 [lon, lat] —— 这一步反过来，别省。
-        coordinates: [
-          [from[1], from[0]],
-          [to[1], to[0]],
-        ],
-      },
+      properties: { ...properties, part: "line" },
+      geometry: { type: "LineString", coordinates: [xy(start), xy(end)] },
     });
+    if (gap) {
+      // 两截都从实线端点画进定位点。
+      for (const [edge, fix] of [
+        [start, from],
+        [end, to],
+      ] as const) {
+        features.push({
+          type: "Feature",
+          properties: { ...properties, part: "stub" },
+          geometry: {
+            type: "LineString",
+            coordinates: [xy(edge), xy(fix)],
+          },
+        });
+      }
+    }
   }
 
   if (dropped) {

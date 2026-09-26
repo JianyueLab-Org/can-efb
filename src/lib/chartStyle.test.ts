@@ -14,13 +14,20 @@ import {
   COLORS,
   graticule,
   gridLabel,
+  ICON,
+  ramp,
   rampCase,
   themedProperties,
+  WIDTH,
   ZOOM,
   type ChartLayer,
   type Theme,
 } from "@/lib/chartStyle";
-import { registeredImageIds } from "@/lib/chartIcons";
+import {
+  HOLD_ARROW,
+  holdArrowImage,
+  registeredImageIds,
+} from "@/lib/chartIcons";
 
 const layersOf = (theme: Theme) =>
   (buildStyle(theme) as unknown as { layers: ChartLayer[] }).layers;
@@ -131,6 +138,7 @@ describe("图层顺序", () => {
       "atc-area-line",
       "atc-range-line",
       "airways-low",
+      "airway-stubs",
       "airways",
       "route-casing",
       "route",
@@ -253,6 +261,22 @@ describe("按缩放挑要素", () => {
     expect(shows("airways", ZOOM.airwaysHigh, lowOnRoute)).toBe(true);
     // 同一段不在两层里各画一遍。
     expect(shows("airways-low", ZOOM.airwaysLow, lowOnRoute)).toBe(false);
+  });
+
+  test("航段两端那 1 NM 画虚线，计划走过的收回实线，代号牌不放在虚线上", () => {
+    const stub = { level: "high", onRoute: 0, part: "stub" };
+    const stubOnRoute = { level: "high", onRoute: 1, part: "stub" };
+    const lowStub = { level: "low", onRoute: 0, part: "stub" };
+    const line = { level: "high", onRoute: 0, part: "line", rnav: 0 };
+    expect(shows("airway-stubs", ZOOM.airwaysHigh, stub, 2)).toBe(true);
+    expect(shows("airways", ZOOM.airwaysHigh, stub, 2)).toBe(false);
+    expect(shows("airway-stubs", ZOOM.airwaysHigh, stubOnRoute, 2)).toBe(false);
+    expect(shows("airways", ZOOM.airwaysHigh, stubOnRoute, 2)).toBe(true);
+    expect(shows("airway-stubs", ZOOM.airwaysLow, lowStub, 2)).toBe(true);
+    expect(shows("airways-low", ZOOM.airwaysLow, lowStub, 2)).toBe(false);
+    expect(shows("airway-labels", ZOOM.airwayLabels, stub, 2)).toBe(false);
+    expect(shows("airway-labels", ZOOM.airwayLabels, line, 2)).toBe(true);
+    expect(layer("airway-stubs").paint?.["line-dasharray"]).toBeDefined();
   });
 
   /**
@@ -402,5 +426,68 @@ describe("计划航线是品红", () => {
     const h = hue(COLORS[theme].route);
     expect(h).toBeGreaterThanOrEqual(305);
     expect(h).toBeLessThanOrEqual(325);
+  });
+});
+
+/**
+ * 等待的方向箭头。第一版画了一个 16 像素的实心形状标成 SDF，地图上只剩三四个像素的一
+ * 点：尺寸和距离场的刻度都钉在这里。
+ */
+describe("等待箭头", () => {
+  const { width, height, data } = holdArrowImage();
+  const alpha = (x: number, y: number) => data[(y * width + x) * 4 + 3] / 255;
+  const xs = HOLD_ARROW.polygon.map(([x]) => x);
+  const ys = HOLD_ARROW.polygon.map(([, y]) => y);
+  const css = (px: number) => px / HOLD_ARROW.pixelRatio;
+  const at = (stops: readonly (readonly [number, number])[], z: number) =>
+    stops.find(([s]) => s === z)?.[1];
+
+  test("z11 上长 12–14 CSS 像素、宽约线宽的三倍，居中压在线上", () => {
+    expect(width).toBe(HOLD_ARROW.size);
+    expect(height).toBe(HOLD_ARROW.size);
+    const scale = at(ICON.holdArrow, 11) ?? 0;
+    const length = css(Math.max(...ys) - Math.min(...ys)) * scale;
+    const breadth = css(Math.max(...xs) - Math.min(...xs)) * scale;
+    expect(length).toBeGreaterThanOrEqual(12);
+    expect(length).toBeLessThanOrEqual(14);
+    // 等待线用 `routeMissed` 的线宽（`rampCase(isHold, …)`），最后一个锚点就是 z11 的值。
+    const line = WIDTH.routeMissed[WIDTH.routeMissed.length - 1][1];
+    expect(breadth / line).toBeGreaterThanOrEqual(2.5);
+    expect(breadth / line).toBeLessThanOrEqual(4);
+    // 图的中心就是三角形长宽的中心：锚点落在线上。
+    expect((Math.max(...ys) + Math.min(...ys)) / 2).toBe(width / 2);
+    expect((Math.max(...xs) + Math.min(...xs)) / 2).toBe(width / 2);
+    // 四周留够描边：最外的点离图边至少 3 CSS 像素。
+    expect(css(Math.min(...xs, ...ys))).toBeGreaterThanOrEqual(3);
+    expect(css(width - Math.max(...xs, ...ys))).toBeGreaterThanOrEqual(3);
+  });
+
+  test("是距离场：边上 0.75，往外每个 CSS 像素少 1/8", () => {
+    const mid = width / 2;
+    expect(alpha(mid, mid + 4)).toBeGreaterThan(0.85);
+    // 尖正上方 1 CSS 像素：在描边带里（< 0.75），没掉到零。
+    const tip = Math.min(...ys);
+    const above = alpha(mid, tip - 1 - HOLD_ARROW.pixelRatio);
+    expect(above).toBeGreaterThan(0.5);
+    expect(above).toBeLessThan(0.75);
+    expect(alpha(0, 0)).toBeLessThan(0.1);
+  });
+
+  test("样式里的尺寸、门槛和描边对得上", () => {
+    expect(HOLD_ARROW.pixelRatio).toBe(2);
+    const l = layer("hold-arrows");
+    expect(l.minzoom).toBe(ZOOM.holdArrows);
+    expect(JSON.stringify(l.layout?.["icon-size"])).toBe(
+      JSON.stringify(ramp(ICON.holdArrow)),
+    );
+    expect(l.paint?.["icon-halo-width"]).toBeLessThanOrEqual(1);
+  });
+
+  test("航向只有一个、写在正中、不随边转", () => {
+    const l = layer("hold-courses");
+    expect(l.layout?.["text-size"]).toBe(14);
+    expect(l.layout?.["text-rotate"]).toBeUndefined();
+    expect(l.layout?.["text-rotation-alignment"]).toBeUndefined();
+    expect(l.minzoom).toBe(ZOOM.holdCourses);
   });
 });

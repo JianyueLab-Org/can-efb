@@ -241,8 +241,8 @@ export const ZOOM = {
   mora: 5.5,
   routeAirwayLabels: 4,
   /**
-   * 等待航线的方向箭头、两条边的航向。一个标准等待约 4 × 2.4 NM：z9 上三十来个像素长，
-   * 放得下箭头；航向字要到 z10 边才比字长。
+   * 等待航线的方向箭头、正中的入航航向。一个标准等待约 4 × 2.4 NM：z9 上三十来个像素
+   * 长，两支箭头放得下；圈里要到 z10 才有三十像素宽，放得下 `263°`。
    */
   holdArrows: 9,
   holdCourses: 10,
@@ -288,6 +288,11 @@ export const WIDTH = {
     [6, 0.5],
     [12, 1.2],
   ],
+  /** 航段两端让给定位点的那 1 NM 虚线（`toAirwayLines` 的 `stub`），比实线细。 */
+  airwayStub: [
+    [6, 0.5],
+    [12, 0.9],
+  ],
   route: [
     [3, 2],
     [8, 3.4],
@@ -326,6 +331,11 @@ export const OPACITY = {
     [6, 0.75],
     [10, 0.95],
   ],
+  /** 那 1 NM 虚线淡一些：它只是把线接进点里，不该和实线抢眼。 */
+  airwayStub: [
+    [6, 0.45],
+    [10, 0.6],
+  ],
   ownTrack: 0.85,
 } as const;
 
@@ -356,7 +366,7 @@ export const TEXT = {
   traffic: 9,
   own: 11,
   route: 10,
-  holdCourse: 9,
+  holdCourse: 14,
   haloWidth: 1.4,
 } as const;
 
@@ -377,9 +387,10 @@ export const ICON = {
   ],
   navaid: 1,
   waypoint: 1,
+  /** 等待的方向箭头（`chartIcons.ts` 的 `HOLD_ARROW`：1 倍时长 13、宽 8 CSS 像素）。 */
   holdArrow: [
     [9, 0.8],
-    [12, 1.1],
+    [11, 1],
   ],
   /** 标注离符号中心多少 em。 */
   labelOffset: 0.8,
@@ -562,6 +573,12 @@ const specialUseVisible = [
   [">=", ["zoom"], ZOOM.specialUse],
 ];
 const notLow = ["!=", ["get", "level"], "low"];
+/**
+ * 航段两端让给定位点的那一截（`airways.ts` 的 `toAirwayLines`）。没有 `part` 的要素算实
+ * 线 —— 只有明确标了 `stub` 的才是虚线。
+ */
+const isStub = ["==", ["get", "part"], "stub"];
+const notStub = ["!", isStub];
 
 /** 管制席位色。**不跟主题**：席位色是和 can-radar 共用的身份编码。 */
 export function facilityColor(): unknown {
@@ -1152,11 +1169,42 @@ export function buildStyle(theme: Theme): StyleSpecification {
       type: "line",
       source: "airways",
       minzoom: ZOOM.airwaysLow,
-      filter: ["all", ["==", ["get", "level"], "low"], ["!", onRoute]],
+      filter: ["all", ["==", ["get", "level"], "low"], ["!", onRoute], notStub],
       paint: {
         "line-color": c.airwayLow,
         "line-width": ramp(WIDTH.airwayLow),
         "line-opacity": ramp(OPACITY.airwayLow),
+      },
+    },
+    {
+      /* 航段两端让给定位点的 1 NM：细、淡的虚线，把实线接进点里，点的符号和点名落在
+       * 空白里。和实线同一套分层门槛；计划走过的那几截归 `airways` 画实线。 */
+      id: "airway-stubs",
+      type: "line",
+      source: "airways",
+      minzoom: Math.min(ZOOM.airwaysHigh, ZOOM.airwaysLow),
+      filter: [
+        "all",
+        isStub,
+        ["!", onRoute],
+        [
+          "any",
+          ["all", notLow, [">=", ["zoom"], ZOOM.airwaysHigh]],
+          [">=", ["zoom"], ZOOM.airwaysLow],
+        ],
+      ],
+      layout: { "line-cap": "butt" },
+      paint: {
+        "line-color": [
+          "case",
+          ["==", ["get", "level"], "low"],
+          c.airwayLow,
+          c.airwayHigh,
+        ],
+        "line-width": ramp(WIDTH.airwayStub),
+        "line-opacity": ramp(OPACITY.airwayStub),
+        // 单位是线宽：约 2 像素实、2 像素空。
+        "line-dasharray": [2.5, 2.5],
       },
     },
     {
@@ -1167,7 +1215,8 @@ export function buildStyle(theme: Theme): StyleSpecification {
       type: "line",
       source: "airways",
       minzoom: ZOOM.airwaysHigh,
-      filter: ["any", notLow, onRoute],
+      // 计划走过的航段连两端那截一起画实线：计划航线在定位点上不断开。
+      filter: ["all", ["any", notLow, onRoute], ["any", notStub, onRoute]],
       paint: {
         "line-color": [
           "case",
@@ -1242,7 +1291,7 @@ export function buildStyle(theme: Theme): StyleSpecification {
       },
     },
     {
-      /* 等待航线上的方向箭头，入航、出航边各一个（`holds.ts` 的 `holdMarks`）。压在线
+      /* 等待航线上的方向箭头，两条边各一支（`holds.ts` 的 `holdMarks`）。压在线
        * 上，全画、不参与避让 —— 和航线是一体的。复飞段的等待同样取进近色。 */
       id: "hold-arrows",
       type: "symbol",
@@ -1259,7 +1308,8 @@ export function buildStyle(theme: Theme): StyleSpecification {
       paint: {
         "icon-color": routeSegmentColor(c),
         "icon-halo-color": c.routeCasing,
-        "icon-halo-width": 1,
+        // 细描边，和线的衬线同色：深色底上箭头的边才读得出来。
+        "icon-halo-width": 0.8,
       },
     },
 
@@ -1526,7 +1576,11 @@ export function buildStyle(theme: Theme): StyleSpecification {
       type: "symbol",
       source: "airways",
       minzoom: ZOOM.airwayLabels,
-      filter: ["any", notLow, onRoute, [">=", ["zoom"], ZOOM.airwaysLow]],
+      filter: [
+        "all",
+        notStub,
+        ["any", notLow, onRoute, [">=", ["zoom"], ZOOM.airwaysLow]],
+      ],
       layout: {
         "symbol-placement": "line-center",
         "icon-image": ["case", isRnav, img("shield-rnav"), img("shield-conv")],
@@ -1668,8 +1722,8 @@ export function buildStyle(theme: Theme): StyleSpecification {
       },
     },
     {
-      /* 等待两条边的航向：入航写数据给的磁航向，出航写反方向。顺着边写、落在跑道形外
-       * 侧（`side`）。参与避让：挤不下时让位，航线本身不受影响。 */
+      /* 等待的入航航向，写在跑道形正中（`holdMarks`），不随边转、不写出航的反方向。颜
+       * 色随段、压淡一点，和航图一样让线比字显眼。参与避让。 */
       id: "hold-courses",
       type: "symbol",
       source: "route",
@@ -1679,19 +1733,12 @@ export function buildStyle(theme: Theme): StyleSpecification {
         "text-field": ["get", "text"],
         "text-font": TEXT.font,
         "text-size": TEXT.holdCourse,
-        "text-rotation-alignment": "map",
-        "text-rotate": ["get", "rotate"],
-        "text-offset": [
-          "case",
-          ["<", ["get", "side"], 0],
-          ["literal", [0, -0.8]],
-          ["literal", [0, 0.8]],
-        ],
       },
       paint: {
         "text-color": routeSegmentColor(c),
+        "text-opacity": 0.85,
         "text-halo-color": c.routeCasing,
-        "text-halo-width": 1.6,
+        "text-halo-width": 1.2,
       },
     },
     {
