@@ -57,10 +57,11 @@ export const DEFAULT_PREFS: LayerPrefs = {
   // 好看，但要读航路的时候是噪音。需要它的人（雷达引导、绕飞、备降）自己开。
   mora: false,
   navaids: true,
-  // 三层都默认关：它们是大片填充，叠在航路上会把线糊掉。要看的人自己开。
+  // CTR / APP 默认关：大片填充，叠在航路上会把线糊掉。要看的人自己开。
   ctr: false,
   app: false,
-  restricted: false,
+  // 禁区、限制区、危险区默认开，从 z5 起画（`ZOOM.specialUse`）。
+  restricted: true,
   // **两层都默认开。** 它们回答的是"现在谁在线、我在哪"，而那正是打开飞行包的人第
   // 一眼想知道的；数据也很轻（整张网络一次几 KB，两层共用同一次取数）。
   //

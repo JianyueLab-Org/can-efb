@@ -244,7 +244,7 @@ describe("按缩放挑要素", () => {
     // 同一段不在两层里各画一遍。
     expect(shows("airways-low", ZOOM.airwaysLow, both)).toBe(false);
     expect(shows("airways", ZOOM.airwaysHigh, low)).toBe(false);
-    expect(shows("airways-low", ZOOM.airwaysHigh, low)).toBe(false);
+    expect(shows("airways-low", ZOOM.airwaysLow - 0.1, low)).toBe(false);
     expect(shows("airways-low", ZOOM.airwaysLow, low)).toBe(true);
     expect(shows("airways", ZOOM.airwaysHigh, lowOnRoute)).toBe(true);
     // 同一段不在两层里各画一遍。
@@ -272,41 +272,49 @@ describe("按缩放挑要素", () => {
     for (const z of used) expect(Number.isInteger(z)).toBe(true);
   });
 
-  test("比例尺 50 NM（z5.5）起有整张高空航路网，z6 加上低空", () => {
-    expect(ZOOM.airwaysHigh).toBe(5.5);
-    expect(ZOOM.airwaysLow).toBe(6);
-    expect(shows("airways", 5.5, { level: "high", onRoute: 0 })).toBe(true);
-    expect(shows("airways", 5.4, { level: "high", onRoute: 0 })).toBe(false);
-    expect(shows("airways-low", 6, { level: "low", onRoute: 0 })).toBe(true);
-    expect(shows("airway-labels", 5.5, { level: "high", onRoute: 0 })).toBe(
-      true,
-    );
-    expect(shows("airway-labels", 5.4, { level: "high", onRoute: 0 })).toBe(
-      false,
-    );
-    expect(shows("airway-labels", 5.5, { level: "low", onRoute: 0 })).toBe(
+  test("z5 起有整张航路网（高空和低空）和代号牌", () => {
+    expect(ZOOM.airwaysHigh).toBe(5);
+    expect(ZOOM.airwaysLow).toBe(5);
+    expect(shows("airways", 5, { level: "high", onRoute: 0 })).toBe(true);
+    expect(shows("airways", 4.9, { level: "high", onRoute: 0 })).toBe(false);
+    expect(shows("airways-low", 5, { level: "low", onRoute: 0 })).toBe(true);
+    expect(shows("airway-labels", 5, { level: "high", onRoute: 0 })).toBe(true);
+    expect(shows("airway-labels", 5, { level: "low", onRoute: 0 })).toBe(true);
+    expect(shows("airway-labels", 4.9, { level: "high", onRoute: 0 })).toBe(
       false,
     );
   });
 
-  test("航路点和点名 z5.5 出现，低空的等低空航路", () => {
+  test("航路点和点名 z5 出现", () => {
     const high = { level: "high", navaid: "" };
     const low = { level: "low", navaid: "" };
     for (const id of ["waypoint-symbols", "waypoint-labels"]) {
-      expect(shows(id, 5.4, high)).toBe(false);
-      expect(shows(id, 5.5, high)).toBe(true);
-      expect(shows(id, 5.5, low)).toBe(false);
-      expect(shows(id, 6, low)).toBe(true);
+      expect(shows(id, 4.9, high)).toBe(false);
+      expect(shows(id, 5, high)).toBe(true);
+      expect(shows(id, 5, low)).toBe(true);
     }
+  });
+
+  test("禁区、限制区、危险区 z5 起画，CTR 不受限", () => {
+    for (const cls of ["prohibited", "restricted"]) {
+      expect(shows("airspace-hatch", 4, { cls })).toBe(false);
+      expect(shows("airspace-hatch", 5, { cls })).toBe(true);
+      expect(shows("airspace-line", 5, { cls })).toBe(true);
+    }
+    expect(shows("airspace-line-danger", 4, { cls: "danger" })).toBe(false);
+    expect(shows("airspace-line-danger", 5, { cls: "danger" })).toBe(true);
+    expect(shows("airspace-fill", 4, { cls: "danger" })).toBe(false);
+    expect(shows("airspace-fill", 3, { cls: "ctr" })).toBe(true);
+    expect(shows("airspace-line", 3, { cls: "ctr" })).toBe(true);
   });
 
   /** 导航台赢：和 VOR 重合的航路点不画；和 NDB/DME 重合的，等那个台出来再让位。 */
   test("和导航台重合的航路点让位", () => {
     const onVor = { level: "high", navaid: "vor" };
     const onNdb = { level: "high", navaid: "minor" };
-    expect(shows("waypoint-symbols", 5.5, onVor)).toBe(false);
+    expect(shows("waypoint-symbols", 5, onVor)).toBe(false);
     expect(shows("waypoint-labels", 8, onVor)).toBe(false);
-    expect(shows("waypoint-symbols", 5.5, onNdb)).toBe(true);
+    expect(shows("waypoint-symbols", 5, onNdb)).toBe(true);
     expect(shows("waypoint-symbols", ZOOM.minorNavaids, onNdb)).toBe(false);
     expect(shows("navaid-symbols", ZOOM.minorNavaids, { tier: "minor" })).toBe(
       true,

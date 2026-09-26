@@ -379,11 +379,15 @@ datafeed 给的那个经纬度是**管制员自己的视野中心** —— 既�
 | 主要机场               | 4         | 5                                    |
 | 其余机场               | 6         | 6                                    |
 | 跑道线（接替机场符号） | 9         | 11                                   |
-| 高空航路（high、both） | 5.5       | 代号牌 5.5                           |
-| 低空航路（low）        | 6         | 6                                    |
+| 高空航路（high、both） | 5         | 代号牌 5                             |
+| 低空航路（low）        | 5         | 5                                    |
 | VOR 一族               | 5         | 5 识别码；7 起「台名 D 频率 识别码」 |
 | NDB、DME、未知台型     | 6         | 6                                    |
-| 航路点                 | 5.5       | 5.5                                  |
+| 航路点                 | 5         | 5                                    |
+| 禁区、限制区、危险区   | 5         | 5                                    |
+
+禁区、限制区、危险区图层默认开（`mapPrefs.ts`），门槛是 `ZOOM.specialUse`，写在
+`specialUseVisible` 里；CTR / APP 仍默认关，开了就画，不设门槛。
 
 **写进 `filter` 的门槛必须是整数**：filter 里的 `["zoom"]` 按瓦片整数级求值。小数只
 用在 `minzoom` 和 paint 里。测试钉着。
@@ -419,7 +423,7 @@ datafeed 给的那个经纬度是**管制员自己的视野中心** —— 既�
 区 / `R` 限制区 / `D` 危险区）。禁区、限制区画斜线；危险区画虚线边加淡平涂。
 
 **航路只有一个开关。** 高低空一起取（`fetchAirwayNetwork`）：can-db 的响应不带层
-级，按 `?level=high` 和 `?level=low` 各取一次，两边都有的记为 `both`。缩小时画 `high` 和 `both`；`low` 到 `ZOOM.airwaysLow` 才出现。航路点取连着它的航段里最高的一级。旧偏好
+级，按 `?level=high` 和 `?level=low` 各取一次，两边都有的记为 `both`。`high`、`both` 和 `low` 都从 z5 起画（`ZOOM.airwaysHigh` / `ZOOM.airwaysLow`）。航路点取连着它的航段里最高的一级。旧偏好
 `airway: "off" | "high" | "low"` 在 `readPrefs` 里折算成 `airways: boolean`。
 
 **机场地面**在 `lib/ground.ts`。z9 起按机场取 can-db 的
