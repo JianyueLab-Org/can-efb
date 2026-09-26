@@ -21,11 +21,14 @@ import {
   buildCoverage,
   indexBoundaries,
   indexTracons,
+  wantsAirportCoords,
   wantsTracons,
   type BoundaryIndex,
   type TraconIndex,
 } from "@/lib/atcCoverage";
 import { loadFirs } from "@/lib/firTable";
+import { loadAirportCodes } from "@/lib/airportCodes";
+import { airportAt, loadAirportCoords } from "@/lib/airportCoords";
 import BOUNDARIES_URL from "@/basemap/atc/boundaries.geojson?url";
 import TRACONS_URL from "@/basemap/atc/tracon.geojson?url";
 import { altitudeBand, flightLevel, isOnGround } from "@/lib/traffic";
@@ -223,17 +226,30 @@ export function useTrafficLayer(options: {
       const tracons = wantsTracons(controllers)
         ? await loadTraconIndex()
         : traconIndex;
+      // 机场坐标和三字码表只给场面席位的 Extending 用，没人写 Extending 就不取。
+      if (wantsAirportCoords(controllers)) {
+        await Promise.all([loadAirportCoords(), loadAirportCodes()]);
+      }
       /* 第一次要现下几何，这一段 await 里管制那层可能已经被关掉了 —— 那次关掉时已经
          清过，这里再写回去就是一个按钮灭着、图上却铺着管制区的状态。 */
       if (!showAtc.value) {
         clearAtc();
         return;
       }
-      const coverage = buildCoverage(controllers, boundaries, tracons);
+      const coverage = buildCoverage(
+        controllers,
+        boundaries,
+        tracons,
+        airportAt,
+      );
       atcAreas.value = coverage.areas;
       atcLabels.value = coverage.labels;
       // 点这一层留给场面席位，外加**没能对上任何范围的那些** —— 它们不该从图上消失。
-      atc.value = toControllerPoints(coverage.points);
+      const points = toControllerPoints(coverage.points);
+      atc.value = {
+        ...points,
+        features: [...points.features, ...coverage.extended.features],
+      };
       atcCount.value = controllers.length;
     } catch (error) {
       // **不关掉这一层，也不清空已画的东西。** 实时数据每 30 秒重试一次，一次抖动

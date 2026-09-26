@@ -207,15 +207,17 @@ can-ui 的 `--material-regular` / `--material-blur-regular`）。以前是**轨 
 下面这些和 can-web / can-dev / can-radar **逐字相同**。要改共有的行为，改在
 can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的那个毛病：
 
-| 文件                     | 说明                                                                                                                                                                         |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/lib/i18n.ts`        | 除了只加载一个 `efb` 命名空间，其余逐字相同                                                                                                                                  |
-| `src/styles/globals.css` | 设计系统来自 `@jianyuelab-org/can-ui/styles`（一行 import）；本站新增的在其后 `can-efb only` 一节                                                                            |
-| `src/lib/geo.ts`         | `distanceNm` / `greatCircle` / `arc` 逐字取自 can-radar 的 `radar.ts` 与 `RadarMap.vue`                                                                                      |
-| `src/lib/atc.ts`         | `FACILITY_COLORS` / `facilityRank` / `stationAirport` / `parseFeedTime` 逐字取自 can-radar 的 `radar.ts`；`groupControllers` 是它 `RadarMap.vue` 里 `groupStations` 的列表版 |
-| `src/lib/firTable.ts`    | can-radar 的 `lib/firs.ts`，对照表改成 `?url` 引入，多一个测试用的 `useFirTable`                                                                                             |
-| `src/lib/atisSectors.ts` | 逐字取自 can-radar，测试一起                                                                                                                                                 |
-| `src/lib/traffic.ts`     | 高度色带 / `altitudeBand` / `isOnGround` / `flightLevel` 逐字取自 can-radar 的 `radar.ts`（它又源自 vatsim-radar）                                                           |
+| 文件                       | 说明                                                                                                                                                                         |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/lib/i18n.ts`          | 除了只加载一个 `efb` 命名空间，其余逐字相同                                                                                                                                  |
+| `src/styles/globals.css`   | 设计系统来自 `@jianyuelab-org/can-ui/styles`（一行 import）；本站新增的在其后 `can-efb only` 一节                                                                            |
+| `src/lib/geo.ts`           | `distanceNm` / `greatCircle` / `arc` 逐字取自 can-radar 的 `radar.ts` 与 `RadarMap.vue`                                                                                      |
+| `src/lib/atc.ts`           | `FACILITY_COLORS` / `facilityRank` / `stationAirport` / `parseFeedTime` 逐字取自 can-radar 的 `radar.ts`；`groupControllers` 是它 `RadarMap.vue` 里 `groupStations` 的列表版 |
+| `src/lib/firTable.ts`      | can-radar 的 `lib/firs.ts`，对照表改成 `?url` 引入，多一个测试用的 `useFirTable`                                                                                             |
+| `src/lib/atisSectors.ts`   | 逐字取自 can-radar，测试一起                                                                                                                                                 |
+| `src/lib/airportCodes.ts`  | can-radar 的同名文件，对照表 `?url` 引入，多一个测试用的 `useAirportCodes`，没搬 `fieldCandidates`                                                                           |
+| `src/lib/airportCoords.ts` | can-radar 的 `lib/airports.ts`，改名避开本站的 `lib/airports.ts`                                                                                                             |
+| `src/lib/traffic.ts`       | 高度色带 / `altitudeBand` / `isOnGround` / `flightLevel` 逐字取自 can-radar 的 `radar.ts`（它又源自 vatsim-radar）                                                           |
 
 `Icon`、`ThemeLangControls`、`ThemeScript`、`useOverlay` 不在这张表里：本地那几份拷贝
 （`components/ui/Icon.vue`、`components/ui/ThemeLangControls.vue`、
@@ -254,9 +256,10 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 - ATC info 的 `Covering sector - T30` 只画那几个扇区；`Extending - ZGZU` 按同一席位后缀再对一次，FSS 不扩（`lib/atisSectors.ts`）。
 - 一个 id 有陆上、洋区两块时，`_FSS` 取洋区，其余取陆上。
 - 标注「呼号 频率」：区域在第一块边界外接框中心，进近在多边形最北顶点，扩出去的那块标扩出去的呼号（本人在线时不标）。
+- 放行 / 地面 / 塔台写了 `Extending - ZSSS`：在那个场再标一个同席位呼号的点（`ZSPD_TWR` → `ZSSS_TWR`），坐标取机场表。三字码经 `lib/airportCodes.ts` 落到 ICAO，标牌写 ICAO。那个场已有人登着同一席位时不标。
 - ATIS 不画在地图上。
 
-数据在 `src/basemap/atc/`：`boundaries.geojson`、`firs.json`（VATSpy，含扇区划分）、`tracon.geojson`（SimAware）。三份是 can-radar `public/` 下同名文件的拷贝，由它的 `scripts/build-vatspy.mjs` 生成，在那边刷新再拷过来。情报区图层用的 `src/basemap/firs.json` 是另一份，筛掉了扇区划分，不用于这一层。进近多边形 2.7 MB，只在有进近在线或 Covering 名字需要时取。
+数据在 `src/basemap/atc/`：`boundaries.geojson`、`firs.json`（VATSpy，含扇区划分）、`tracon.geojson`（SimAware）、`airports.json`（机场坐标）、`airport-codes.json`（三字码 → ICAO）。五份是 can-radar `public/` 下同名文件的拷贝，由它的 `scripts/build-vatspy.mjs` 生成，在那边刷新再拷过来。情报区图层用的 `src/basemap/firs.json` 是另一份，筛掉了扇区划分，不用于这一层。进近多边形 2.7 MB，只在有进近在线或 Covering 名字需要时取；两张机场表只在有场面席位写了 Extending 时取。
 
 这一层不依赖边界图层的开关。测试在 `lib/atcCoverage.test.ts`。
 

@@ -5,8 +5,10 @@ import {
   indexBoundaries,
   indexTracons,
   MAX_RANGE_NM,
+  wantsAirportCoords,
   wantsTracons,
 } from "./atcCoverage";
+import { useAirportCodes } from "./airportCodes";
 import type { DatafeedController } from "./datafeed";
 import { useFirTable } from "./firTable";
 
@@ -295,5 +297,123 @@ describe("wantsTracons", () => {
         station("RJTG_CTR", 6, { text_atis: ["Covering sector - T30"] }),
       ]),
     ).toBe(false);
+  });
+});
+
+describe("buildCoverage — 场面席位的 Extending", () => {
+  const coords: Record<string, [number, number]> = {
+    ZSSS: [31.198, 121.336],
+    ZSPD: [31.143, 121.805],
+    KMEM: [35.042, -89.977],
+  };
+  const airportAt = (icao: string) => coords[icao] ?? null;
+  const extendedOf = (list: DatafeedController[]) =>
+    buildCoverage(list, boundaries, null, airportAt).extended.features.map(
+      (f) => [f.properties?.callsign, f.geometry],
+    );
+
+  test("塔台扩到别的场：在那个场再标一个同席位呼号", () => {
+    expect(
+      extendedOf([station("ZSPD_TWR", 4, { text_atis: ["Extending - ZSSS"] })]),
+    ).toEqual([
+      ["ZSSS_TWR", { type: "Point", coordinates: [121.336, 31.198] }],
+    ]);
+  });
+
+  test("原席位照旧画点", () => {
+    const { points } = buildCoverage(
+      [station("ZSPD_TWR", 4, { text_atis: ["Extending - ZSSS"] })],
+      boundaries,
+      null,
+      airportAt,
+    );
+    expect(points.map((c) => c.callsign)).toEqual(["ZSPD_TWR"]);
+  });
+
+  test("那个场已经有人登着同一个席位，不标", () => {
+    expect(
+      extendedOf([
+        station("ZSPD_TWR", 4, { text_atis: ["Extending - ZSSS"] }),
+        station("ZSSS_TWR", 4),
+      ]),
+    ).toEqual([]);
+  });
+
+  test("另一个席位在线不算：ZSSS_GND 挡不住 ZSSS_TWR", () => {
+    expect(
+      extendedOf([
+        station("ZSPD_TWR", 4, { text_atis: ["Extending - ZSSS"] }),
+        station("ZSSS_GND", 3),
+      ]).map(([callsign]) => callsign),
+    ).toEqual(["ZSSS_TWR"]);
+  });
+
+  test("自己那一场、重复的、查不到坐标的都跳过", () => {
+    expect(
+      extendedOf([
+        station("ZSPD_TWR", 4, {
+          text_atis: ["Extending - ZSPD, ZSSS ZSSS", "Extending - ZXXX"],
+        }),
+      ]).map(([callsign]) => callsign),
+    ).toEqual(["ZSSS_TWR"]);
+  });
+
+  test("三字码按机场表落到 ICAO，标牌写 ICAO（和 can-radar 一样）", () => {
+    useAirportCodes({ version: "test", real: { MEM: "KMEM" }, pseudo: {} });
+    try {
+      expect(
+        extendedOf([
+          station("ZSPD_TWR", 4, { text_atis: ["Extending - MEM"] }),
+        ]).map(([callsign]) => callsign),
+      ).toEqual(["KMEM_TWR"]);
+    } finally {
+      useAirportCodes(null);
+    }
+  });
+
+  test("按呼号后缀认：facility 标错的 _TWR 也扩", () => {
+    expect(
+      extendedOf([
+        station("ZSPD_TWR", 5, { text_atis: ["Extending - ZSSS"] }),
+      ]).map(([callsign]) => callsign),
+    ).toEqual(["ZSSS_TWR"]);
+  });
+
+  test("区域、进近不走这一条", () => {
+    expect(
+      extendedOf([
+        station("ZSHA_CTR", 6, { text_atis: ["Extending - ZSSS"] }),
+        station("ZSPD_APP", 5, { text_atis: ["Extending - ZSSS"] }),
+      ]),
+    ).toEqual([]);
+  });
+
+  test("扩到有进近多边形的场：多边形画，塔台的点和标牌留在机场", () => {
+    const { areas, labels, points, extended } = buildCoverage(
+      [station("ZSPD_TWR", 4, { text_atis: ["Extending - ZBAA"] })],
+      boundaries,
+      tracons,
+      () => [40.08, 116.58],
+    );
+    expect(kinds(areas)).toEqual(["tracon:ZSPD_TWR"]);
+    expect(labels.features).toEqual([]);
+    expect(points.map((c) => c.callsign)).toEqual(["ZSPD_TWR"]);
+    expect(extended.features.map((f) => f.properties?.callsign)).toEqual([
+      "ZBAA_TWR",
+    ]);
+  });
+
+  test("有场面席位写了 Extending 才取机场表", () => {
+    expect(wantsAirportCoords([station("ZSPD_TWR", 4)])).toBe(false);
+    expect(
+      wantsAirportCoords([
+        station("ZSHA_CTR", 6, { text_atis: ["Extending - ZGZU"] }),
+      ]),
+    ).toBe(false);
+    expect(
+      wantsAirportCoords([
+        station("ZSPD_TWR", 4, { text_atis: ["Extending - ZSSS"] }),
+      ]),
+    ).toBe(true);
   });
 });
