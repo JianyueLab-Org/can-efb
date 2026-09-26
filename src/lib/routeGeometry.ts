@@ -109,11 +109,14 @@ export function routeLines(
   return { type: "FeatureCollection", features };
 }
 
-/** 一条腿属于哪一段：`sid` / `star` / `approach` / `route`（航路段）。 */
-export type RouteSegment = "sid" | "star" | "approach" | "route";
+/** 一条腿属于哪一段：`sid` / `star` / `approach` / `missed`（复飞）/ `route`（航路段）。 */
+export type RouteSegment = "sid" | "star" | "approach" | "missed" | "route";
 
 function segmentOf(p: RoutePoint): RouteSegment | null {
-  return p.kind === "sid" || p.kind === "star" || p.kind === "approach"
+  return p.kind === "sid" ||
+    p.kind === "star" ||
+    p.kind === "approach" ||
+    p.kind === "missed"
     ? p.kind
     : null;
 }

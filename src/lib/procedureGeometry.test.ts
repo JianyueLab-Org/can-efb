@@ -100,4 +100,20 @@ describe("smoothProcedureTurns", () => {
     expect(shapes[0].via).toBe("TEST1");
     expect(shapes[shapes.length - 1].via).toBe("Y71");
   });
+
+  test("skips label-only points when finding the legs around a turn", () => {
+    const out = smoothProcedureTurns([
+      pt("A", 0, 0, { kind: "approach" }),
+      pt("B", 10, 0, { kind: "approach" }),
+      pt("APT", 50, 50, { kind: "airport", offPath: true }),
+      pt("M", 10, 10, { kind: "missed" }),
+    ]);
+    // The arc at B turns toward M, not toward the airport.
+    const arc = out.filter((p) => p.shape).map(xy);
+    for (const [x, y] of arc) {
+      expect(x).toBeLessThanOrEqual(10 + 1e-6);
+      expect(y).toBeGreaterThanOrEqual(-1e-6);
+    }
+    expect(out.find((p) => p.ident === "APT")?.offPath).toBe(true);
+  });
 });

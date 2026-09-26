@@ -22,7 +22,10 @@ const MIN_TURN_RAD = (3 * Math.PI) / 180;
 type Vec = [number, number];
 
 const isProcedure = (p: MapPoint) =>
-  p.kind === "sid" || p.kind === "star" || p.kind === "approach";
+  p.kind === "sid" ||
+  p.kind === "star" ||
+  p.kind === "approach" ||
+  p.kind === "missed";
 
 /** 以 `origin` 为原点的局部平面，单位海里，x 向东、y 向北。 */
 function project(origin: MapPoint, p: { lat: number; lon: number }): Vec {
@@ -88,13 +91,18 @@ export function smoothProcedureTurns(
 
   for (let i = 1; i < points.length - 1; i++) {
     const b = points[i];
-    const c = points[i + 1];
-    if (!isProcedure(b) || b.shape) {
+    // 只留标注的点（offPath）不在线上：前后都越过它们。
+    const c = points.slice(i + 1).find((p) => !p.offPath);
+    if (!c || b.offPath || !isProcedure(b) || b.shape) {
       out.push(b);
       continue;
     }
     // 入向取**上一个已经画出的点**：前一个点若是飞越转弯，线是从它的切点来的。
-    const a = out[out.length - 1];
+    const a = out.findLast((p) => !p.offPath);
+    if (!a) {
+      out.push(b);
+      continue;
+    }
     const va = project(b, a);
     const vc = project(b, c);
     const lenAB = len(va);

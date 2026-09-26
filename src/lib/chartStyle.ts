@@ -282,6 +282,10 @@ export const WIDTH = {
     [3, 2],
     [8, 3.4],
   ],
+  routeMissed: [
+    [3, 1.5],
+    [8, 2.4],
+  ],
   routeCasing: [
     [3, 4],
     [8, 6.5],
@@ -506,6 +510,8 @@ export function routeSegmentColor(c: ColorRoles): unknown {
     "star",
     c.routeStar,
     "approach",
+    c.routeApproach,
+    "missed",
     c.routeApproach,
     c.route,
   ];
@@ -1107,6 +1113,8 @@ export function buildStyle(theme: Theme): StyleSpecification {
       id: "route-casing",
       type: "line",
       source: "route",
+      // 复飞段是虚线，衬线会把间隙填成一条实线。
+      filter: ["!=", ["get", "seg"], "missed"],
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
         "line-color": c.routeCasing,
@@ -1126,6 +1134,7 @@ export function buildStyle(theme: Theme): StyleSpecification {
       id: "route",
       type: "line",
       source: "route",
+      filter: ["!=", ["get", "seg"], "missed"],
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
         "line-color": routeSegmentColor(c),
@@ -1137,6 +1146,19 @@ export function buildStyle(theme: Theme): StyleSpecification {
           ZOOM.airwaysHigh,
           ["case", ["==", ["get", "onAirway"], 1], 0, 1],
         ],
+      },
+    },
+    {
+      // 复飞段：进近色、虚线、细一号。`line-dasharray` 不能按要素取值，所以单开一层。
+      id: "route-missed",
+      type: "line",
+      source: "route",
+      filter: ["==", ["get", "seg"], "missed"],
+      layout: { "line-cap": "butt", "line-join": "round" },
+      paint: {
+        "line-color": c.routeApproach,
+        "line-width": ramp(WIDTH.routeMissed),
+        "line-dasharray": [2, 1.5],
       },
     },
 
