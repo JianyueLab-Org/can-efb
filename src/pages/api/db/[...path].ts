@@ -80,6 +80,8 @@ const ALLOW_LIST: Record<string, Allowed> = {
   // （约 z9）就要画跑道，而那个视野三百公里宽、十几个机场 —— 按机场拉地面等于拉十
   // 几兆。而且它按**端**给权威入口坐标，跑道号因此不用从几何里推。
   "aip/runways": { methods: ["GET"], who: "lib/runways.ts，图上的跑道层" },
+  // 终端等待。挂在航线的定位点上画成跑道形。
+  "aip/holdings": { methods: ["GET"], who: "lib/holds.ts，航线上的等待航线" },
 };
 
 /**

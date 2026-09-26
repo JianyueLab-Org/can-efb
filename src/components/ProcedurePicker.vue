@@ -40,6 +40,8 @@ import { createTranslator } from "@/lib/i18n";
 import { publishToMap, type MapPoint } from "@/lib/mapBus";
 import { isForbiddenStatus } from "@/lib/requestState";
 import { smoothProcedureTurns } from "@/lib/procedureGeometry";
+import { loadHoldings, type Holding } from "@/lib/holds";
+import { variationOf, withTerminalHolds } from "@/lib/planProcedures";
 import {
   EMPTY_SELECTION,
   readSelection,
@@ -388,9 +390,16 @@ const starJoin = computed(() => joinsRoute(star.value, lastEnroute.value));
 
 // ---------------------------------------------------------------- 地图（航路生成页）
 
+/** 终端等待（航路生成页推地图时挂上）。 */
+const holdings = ref<Holding[]>([]);
+if (props.enroute) {
+  void loadHoldings().then((list) => (holdings.value = list));
+}
+
 watch(
   [
     sel,
+    holdings,
     sid,
     star,
     approach,
@@ -401,31 +410,34 @@ watch(
   () => {
     if (!props.enroute) return;
     if (!depData.value && !arrData.value) return;
+    const composed = composeRoutePoints({
+      departure: props.departurePoint ?? null,
+      departureRunway: findRunway(depData.value?.runways, sel.value.depRunway),
+      sid: sid.value,
+      // 跑道要传进去：一条 SID 常常把好几条跑道的转换塞在同一串腿里，不给跑道
+      // 就只画公共段。
+      sidRunway: sel.value.depRunway,
+      sidTransition: sel.value.sidTransition,
+      enroute: props.enroute,
+      star: star.value,
+      starRunway: sel.value.arrRunway,
+      starTransition: sel.value.starTransition,
+      approach: approach.value,
+      approachTransition: sel.value.approachTransition,
+      departureVariation: variationOf(depData.value) ?? 0,
+      arrivalVariation: variationOf(arrData.value) ?? 0,
+      arrivalRunway: findRunway(arrData.value?.runways, sel.value.arrRunway),
+      arrival: props.arrivalPoint ?? null,
+    });
     publishToMap({
       points: smoothProcedureTurns(
-        composeRoutePoints({
-          departure: props.departurePoint ?? null,
-          departureRunway: findRunway(
-            depData.value?.runways,
-            sel.value.depRunway,
-          ),
-          sid: sid.value,
-          // 跑道要传进去：一条 SID 常常把好几条跑道的转换塞在同一串腿里，不给跑道
-          // 就只画公共段。
-          sidRunway: sel.value.depRunway,
-          sidTransition: sel.value.sidTransition,
-          enroute: props.enroute,
-          star: star.value,
-          starRunway: sel.value.arrRunway,
-          starTransition: sel.value.starTransition,
-          approach: approach.value,
-          approachTransition: sel.value.approachTransition,
-          arrivalRunway: findRunway(
-            arrData.value?.runways,
-            sel.value.arrRunway,
-          ),
-          arrival: props.arrivalPoint ?? null,
-        }),
+        withTerminalHolds(
+          composed,
+          holdings.value,
+          sel.value,
+          depData.value,
+          arrData.value,
+        ),
       ),
       label: `${depCode.value} → ${arrCode.value}`,
     });

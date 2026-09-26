@@ -7,6 +7,7 @@
 import type { Feature, FeatureCollection } from "geojson";
 import { arc, type LatLon } from "@/lib/geo";
 import { legKey } from "@/lib/airways";
+import { racetrack, type HoldShape } from "@/lib/holds";
 
 export interface RoutePoint {
   ident: string;
@@ -17,6 +18,7 @@ export interface RoutePoint {
   /** 见 mapBus 的 MapPoint。 */
   shape?: boolean;
   offPath?: boolean;
+  hold?: HoldShape;
   /**
    * 这个点属于**当前这条航路**，而不是背景里那批彼此无关的点。
    *
@@ -105,6 +107,25 @@ export function routeLines(
     });
     prev = point;
     if (!point.shape) lastIdent = point.ident;
+  }
+
+  // 等待航线：挂在定位点上的跑道形，按那个点所在的段取色。
+  for (const point of points) {
+    if (!point.hold || point.shape) continue;
+    features.push({
+      type: "Feature",
+      properties: {
+        procedure: 1,
+        seg: segmentOf(point) ?? "route",
+        via: "",
+        onAirway: 0,
+        hold: 1,
+      },
+      geometry: {
+        type: "LineString",
+        coordinates: racetrack(point.lat, point.lon, point.hold),
+      },
+    });
   }
   return { type: "FeatureCollection", features };
 }

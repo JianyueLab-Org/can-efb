@@ -8,6 +8,12 @@
 import type { MapPoint } from "@/lib/mapBus";
 import { smoothProcedureTurns } from "@/lib/procedureGeometry";
 import {
+  attachTerminalHolds,
+  estimateVariation,
+  loadHoldings,
+  type Holding,
+} from "@/lib/holds";
+import {
   composeRoutePoints,
   findRunway,
   loadAirportProcedures,
@@ -36,15 +42,48 @@ function pick(
   );
 }
 
-/** 纯函数部分：机场数据已经在手。 */
+/** 机场磁差：can-db 给的，或由跑道估计。没有机场数据时为 null。 */
+export function variationOf(data: AirportProcedures | null): number | null {
+  return data ? estimateVariation(data.variation, data.runways) : null;
+}
+
+/**
+ * 把两端机场的终端等待挂到航线上。机场数据没取到的那一端不挂：没有磁差就画不对方向。
+ */
+export function withTerminalHolds(
+  points: MapPoint[],
+  holdings: Holding[],
+  selection: ProcedureSelection,
+  dep: AirportProcedures | null,
+  arr: AirportProcedures | null,
+): MapPoint[] {
+  const airports = [
+    [dep, selection.depRunway],
+    [arr, selection.arrRunway],
+  ]
+    .filter((row): row is [AirportProcedures, string] => Boolean(row[0]))
+    .map(([data, runway]) => ({
+      icao: data.icao,
+      runway,
+      variationWest: variationOf(data) ?? 0,
+    }));
+  return airports.length
+    ? attachTerminalHolds(points, holdings, airports)
+    : points;
+}
+
+/** 纯函数部分：机场数据和等待列表已经在手。 */
 export function applySelectionTo(
   resolved: MapPoint[],
   selection: ProcedureSelection,
   dep: AirportProcedures | null,
   arr: AirportProcedures | null,
+  holdings: Holding[] = [],
 ): MapPoint[] {
   if (resolved.length < 2 || isEmptySelection(selection)) {
-    return smoothProcedureTurns(resolved);
+    return smoothProcedureTurns(
+      withTerminalHolds(resolved, holdings, selection, dep, arr),
+    );
   }
   const first = resolved[0];
   const last = resolved[resolved.length - 1];
@@ -65,22 +104,25 @@ export function applySelectionTo(
     (p) => !(sid && p.kind === "sid") && !(star && p.kind === "star"),
   );
 
+  const composed = composeRoutePoints({
+    departure,
+    departureRunway: findRunway(dep?.runways, selection.depRunway),
+    sid,
+    sidRunway: selection.depRunway,
+    sidTransition: selection.sidTransition,
+    enroute,
+    star,
+    starRunway: selection.arrRunway,
+    starTransition: selection.starTransition,
+    approach,
+    approachTransition: selection.approachTransition,
+    departureVariation: variationOf(dep) ?? 0,
+    arrivalVariation: variationOf(arr) ?? 0,
+    arrivalRunway: findRunway(arr?.runways, selection.arrRunway),
+    arrival,
+  });
   return smoothProcedureTurns(
-    composeRoutePoints({
-      departure,
-      departureRunway: findRunway(dep?.runways, selection.depRunway),
-      sid,
-      sidRunway: selection.depRunway,
-      sidTransition: selection.sidTransition,
-      enroute,
-      star,
-      starRunway: selection.arrRunway,
-      starTransition: selection.starTransition,
-      approach,
-      approachTransition: selection.approachTransition,
-      arrivalRunway: findRunway(arr?.runways, selection.arrRunway),
-      arrival,
-    }),
+    withTerminalHolds(composed, holdings, selection, dep, arr),
   );
 }
 
@@ -90,14 +132,11 @@ export async function applySelection(
   arrival: string,
   selection: ProcedureSelection,
 ): Promise<MapPoint[]> {
-  if (isEmptySelection(selection)) return smoothProcedureTurns(resolved);
-  const wantDep = Boolean(selection.depRunway || selection.sid);
-  const wantArr = Boolean(
-    selection.arrRunway || selection.star || selection.approach,
-  );
-  const [dep, arr] = await Promise.all([
-    wantDep ? loadAirportProcedures(departure).catch(() => null) : null,
-    wantArr ? loadAirportProcedures(arrival).catch(() => null) : null,
+  // 机场详情两端都取：终端等待要磁差，不只是选了程序时才用得上。都有缓存。
+  const [dep, arr, holdings] = await Promise.all([
+    loadAirportProcedures(departure).catch(() => null),
+    loadAirportProcedures(arrival).catch(() => null),
+    loadHoldings(),
   ]);
-  return applySelectionTo(resolved, selection, dep, arr);
+  return applySelectionTo(resolved, selection, dep, arr, holdings);
 }
