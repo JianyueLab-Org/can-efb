@@ -434,6 +434,18 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 级，按 `?level=high` 和 `?level=low` 各取一次，两边都有的记为 `both`。`high`、`both` 和 `low` 都从 z5 起画（`ZOOM.airwaysHigh` / `ZOOM.airwaysLow`）。航路点取连着它的航段里最高的一级。旧偏好
 `airway: "off" | "high" | "low"` 在 `readPrefs` 里折算成 `airways: boolean`。
 
+**航路网按视野分块取**（`useChartLayers` 的 `loadAirwaysFor`）。全球约九万段，不整张
+拉。z5（`ZOOM.airwaysHigh`）以下不取；以上按 10° 的块带 `?bbox=` 取，每块高低空各
+一次，`moveend` 后停 250 ms 再取，取过的块留着，攒过 64 块时丢视野外最早的。块按经
+度折回 ±180 算，跨日界线的视野拆成两侧的块。失败时开关留着、提示带重试，和 MORA 一
+样。
+
+**航段端点是图键，不是代号。** can-db 的 `from` / `to` 是 `ident@region/kind`（没
+匹配上的 NAIP 点是裸代号），`fixes` 按图键索引。标注和比对计划用 `fromIdent` /
+`toIdent`（`segmentIdents`，旧版 can-db 退回 `from` / `to`）。同名的两个点是两个要
+素；计划高亮按代号比，同一航路同一对点名有两段时点亮离计划那条腿最近的一段
+（`markRouteOnAirways`）。
+
 **机场地面**在 `lib/ground.ts`。z9 起按机场取 can-db 的
 `/aip/airports/{ICAO}/ground`，视野里只取最近的 4 个场。数据只有一份：扇区包手工
 做的要素，源自 OSM，由 Ground 仓库维护。按 `kind` 分层画：道肩（`shoulder`，面，

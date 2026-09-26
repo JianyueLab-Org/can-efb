@@ -2,12 +2,15 @@ import { expect, test, describe } from "bun:test";
 import type { FeatureCollection } from "geojson";
 
 import {
+  airwayBlocksFor,
   isRnavDesignator,
   markNavaidFixes,
   legKey,
   routeLegKeys,
   markRouteOnAirways,
   mergeAirwayLevels,
+  routeLegs,
+  unionAirwayGraphs,
   toAirwayFixes,
   toAirwayLines,
   airwayGapNm,
@@ -360,5 +363,171 @@ describe("航段在定位点前让出 1 NM", () => {
   test("两端重合的航段不切，也不出零长的虚线", () => {
     const lines = toAirwayLines(graph([30, 120]));
     expect(lines.features.map((f) => f.properties?.part)).toEqual(["line"]);
+  });
+});
+
+/** 每段航段一条实线（part = "line"），两端的虚线另算。 */
+const mainLines = (fc: ReturnType<typeof toAirwayLines>) =>
+  fc.features.filter((f) => f.properties?.part === "line");
+
+describe("图键和代号", () => {
+  /**
+   * can-db 的 Navigraph 数据里 `from` / `to` 是图键（`ident@region/kind`），代号在
+   * `fromIdent` / `toIdent`。同一个航路代号加同一对点名在两个地区各有一段。
+   */
+  const graph: AirwayGraph = {
+    fixes: {
+      "AKAGI@RJ/waypoint": [36.5, 139.0],
+      "BUNGO@RJ/waypoint": [37.5, 140.0],
+      "AKAGI@RK/waypoint": [36.5, 128.0],
+      "BUNGO@RK/waypoint": [37.5, 129.0],
+      NAIPX: [30.0, 120.0],
+    },
+    airways: {},
+    segments: [
+      {
+        airway: "A1",
+        from: "AKAGI@RJ/waypoint",
+        to: "BUNGO@RJ/waypoint",
+        fromIdent: "AKAGI",
+        toIdent: "BUNGO",
+        dir: "both",
+        minAlt: null,
+        maxAlt: null,
+      },
+      {
+        airway: "A1",
+        from: "AKAGI@RK/waypoint",
+        to: "BUNGO@RK/waypoint",
+        fromIdent: "AKAGI",
+        toIdent: "BUNGO",
+        dir: "both",
+        minAlt: null,
+        maxAlt: null,
+      },
+      {
+        // 旧版 can-db / 没匹配上的 NAIP 点：裸代号，没有 fromIdent。
+        airway: "W1",
+        from: "NAIPX",
+        to: "AKAGI@RJ/waypoint",
+        toIdent: "AKAGI",
+        dir: "both",
+        minAlt: null,
+        maxAlt: null,
+      },
+    ],
+  };
+
+  test("航路点标注用代号，同名的两个点各是一个要素", () => {
+    const pts = toAirwayFixes(graph);
+    const akagi = pts.features.filter((f) => f.properties?.ident === "AKAGI");
+    expect(akagi.length).toBe(2);
+    expect(akagi.map((f) => f.properties?.key).sort()).toEqual([
+      "AKAGI@RJ/waypoint",
+      "AKAGI@RK/waypoint",
+    ]);
+    // 没有 fromIdent 时退回图键（那时图键就是代号）。
+    expect(pts.features.some((f) => f.properties?.ident === "NAIPX")).toBe(
+      true,
+    );
+    expect(pts.features.some((f) => f.properties?.ident?.includes("@"))).toBe(
+      false,
+    );
+  });
+
+  test("线要素带代号，图键留着认航段", () => {
+    const lines = mainLines(toAirwayLines(graph));
+    expect(lines.length).toBe(3);
+    const first = lines[0].properties;
+    expect(first?.from).toBe("AKAGI@RJ/waypoint");
+    expect(first?.fromIdent).toBe("AKAGI");
+    expect(lines[2].properties?.fromIdent).toBe("NAIPX");
+  });
+
+  test("计划按代号点亮，同名两段只亮离计划近的那一段", () => {
+    const fc = toAirwayLines(graph);
+    const marked = markRouteOnAirways(
+      fc,
+      routeLegs([
+        { ident: "BUNGO", lat: 37.5, lon: 129.0 },
+        { ident: "AKAGI", lat: 36.5, lon: 128.0, via: "A1" },
+      ]),
+    );
+    expect(marked.has(legKey("A1", "AKAGI", "BUNGO"))).toBe(true);
+    const on = mainLines(fc).map((f) => f.properties?.onRoute);
+    expect(on).toEqual([0, 1, 0]);
+  });
+
+  test("不带位置时同名的都点亮", () => {
+    const fc = toAirwayLines(graph);
+    markRouteOnAirways(
+      fc,
+      routeLegKeys([{ ident: "AKAGI" }, { ident: "BUNGO", via: "A1" }]),
+    );
+    expect(mainLines(fc).map((f) => f.properties?.onRoute)).toEqual([1, 1, 0]);
+  });
+
+  test("旧版航段（没有 fromIdent）照样按代号点亮", () => {
+    const fc = toAirwayLines(graph);
+    const marked = markRouteOnAirways(
+      fc,
+      routeLegs([
+        { ident: "NAIPX", lat: 30, lon: 120 },
+        { ident: "AKAGI", lat: 36.5, lon: 139, via: "W1" },
+      ]),
+    );
+    expect(marked.has(legKey("W1", "NAIPX", "AKAGI"))).toBe(true);
+    expect(mainLines(fc)[2].properties?.onRoute).toBe(1);
+  });
+
+  test("跨 180° 的航段走短的那一边", () => {
+    const lines = toAirwayLines({
+      fixes: { "E@X/w": [50, 179], "W@X/w": [50, -179] },
+      airways: {},
+      segments: [
+        {
+          airway: "R1",
+          from: "E@X/w",
+          to: "W@X/w",
+          dir: "both",
+          minAlt: null,
+          maxAlt: null,
+        },
+      ],
+    });
+    // 实线在点前让 1 NM；接到终点的那截虚线落在 181，不是 -179。
+    const all = lines.features.flatMap((f) =>
+      f.geometry.type === "LineString" ? f.geometry.coordinates : [],
+    );
+    expect(all.every(([lon]) => lon >= 179 && lon <= 181)).toBe(true);
+    expect(all.some(([lon]) => lon === 181)).toBe(true);
+  });
+
+  test("按块取回来的图按图键去重", () => {
+    const tagged = mergeAirwayLevels(graph, graph);
+    const union = unionAirwayGraphs([tagged, tagged]);
+    expect(union.segments.length).toBe(3);
+  });
+});
+
+describe("航路网按视野分块", () => {
+  test("普通视野", () => {
+    const blocks = airwayBlocksFor(25, 115, 42, 128);
+    // 纬度 20/30/40 × 经度 110/120。
+    expect(blocks.length).toBe(3 * 2);
+    expect(blocks).toContainEqual({ lat: 20, lon: 110 });
+    expect(blocks).toContainEqual({ lat: 40, lon: 120 });
+  });
+
+  test("跨 180° 的视野拆成两侧的块", () => {
+    const lons = new Set(airwayBlocksFor(40, 172, 45, 188).map((b) => b.lon));
+    expect([...lons].sort((a, b) => a - b)).toEqual([-180, 170]);
+  });
+
+  test("整圈只数一遍，纬度不出界", () => {
+    const blocks = airwayBlocksFor(-95, -400, 95, 400);
+    expect(blocks.length).toBe(36 * 18);
+    expect(Math.max(...blocks.map((b) => b.lat))).toBe(80);
+    expect(Math.min(...blocks.map((b) => b.lat))).toBe(-90);
   });
 });
