@@ -129,6 +129,7 @@ describe("图层顺序", () => {
       "fir-line",
       "airspace-line",
       "atc-area-line",
+      "atc-range-line",
       "airways-low",
       "airways",
       "route-casing",

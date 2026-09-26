@@ -261,6 +261,8 @@ export const WIDTH = {
   grid: 0.4,
   fir: 1.2,
   atcArea: 1.6,
+  /** 进近的范围圈（找不到进近多边形时的替身），can-radar 的 `rangeStyle`。 */
+  atcRange: 1,
   ctr: 0.9,
   /** 限制区、禁区、危险区的边线。 */
   sua: 1.5,
@@ -394,6 +396,8 @@ export const AIRSPACE = {
   fillOpacity: { ctr: 0.05, app: 0.06, danger: 0.1, other: 0.05 },
   /** 有人上席的区域（实时那层），按席位色平涂。 */
   atcAreaFillOpacity: 0.08,
+  /** 进近多边形，比区域再淡一点（can-radar 0.07 对 0.1）。 */
+  atcTraconFillOpacity: 0.06,
   hatch: {
     /** 图块边长（画布像素，必须是 2 的幂才能无缝平铺）。pixelRatio 2。 */
     tile: 16,
@@ -551,6 +555,22 @@ export function facilityColor(): unknown {
   // 兜底：没见过的 facility 画成 OBS 的灰，而不是让整条表达式失效。
   return ["match", ["get", "facility"], ...cases, FACILITY_COLORS[0]];
 }
+
+/**
+ * 管制范围的颜色。区域一律用区域那个青色（can-radar 的 `AREA_COLORS.active`），
+ * 不按 facility：`controllers` 里偶尔有 facility 7 的区域席位，按席位色会画成
+ * ATIS 的琥珀。进近多边形和范围圈按席位色。
+ */
+export function atcAreaColor(): unknown {
+  return [
+    "case",
+    ["==", ["get", "kind"], "fir"],
+    FACILITY_COLORS[6],
+    facilityColor(),
+  ];
+}
+
+const isRangeRing = ["==", ["get", "kind"], "ring"];
 
 /** 在线机组按高度档取色。**跟主题**：viridis 有深浅两条。 */
 export function altitudeBandColor(theme: Theme): unknown {
@@ -714,6 +734,7 @@ export const SOURCE_IDS = [
   "firs",
   "mora",
   "atcAreas",
+  "atcLabels",
   "atc",
   "route",
   "markers",
@@ -978,9 +999,17 @@ export function buildStyle(theme: Theme): StyleSpecification {
       id: "atc-area-fill",
       type: "fill",
       source: "atcAreas",
+      // 范围圈不填：它是"大概在这一带"，填上就成了一块像是真有边界的空域。
+      filter: ["!", isRangeRing],
       paint: {
-        "fill-color": facilityColor(),
-        "fill-opacity": AIRSPACE.atcAreaFillOpacity,
+        "fill-color": atcAreaColor(),
+        "fill-opacity": [
+          "match",
+          ["get", "kind"],
+          "tracon",
+          AIRSPACE.atcTraconFillOpacity,
+          AIRSPACE.atcAreaFillOpacity,
+        ],
       },
     },
     {
@@ -1079,10 +1108,24 @@ export function buildStyle(theme: Theme): StyleSpecification {
       id: "atc-area-line",
       type: "line",
       source: "atcAreas",
+      filter: ["!", isRangeRing],
       paint: {
-        "line-color": facilityColor(),
+        "line-color": atcAreaColor(),
         "line-width": WIDTH.atcArea,
         "line-opacity": 0.9,
+      },
+    },
+    {
+      // 进近的范围圈：细、虚、淡，一眼看得出不是真边界。
+      id: "atc-range-line",
+      type: "line",
+      source: "atcAreas",
+      filter: isRangeRing,
+      paint: {
+        "line-color": facilityColor(),
+        "line-width": WIDTH.atcRange,
+        "line-opacity": 0.3,
+        "line-dasharray": [4, 6],
       },
     },
 
@@ -1523,24 +1566,17 @@ export function buildStyle(theme: Theme): StyleSpecification {
       paint: { "text-color": c.groundRunway, ...halo },
     },
     {
-      // 有人上席的空域，沿边界标呼号和频率。
+      /* 有人上席的空域，一块标一次「呼号 频率」：区域标在边界外接框中心，进近标
+         在多边形最北的顶点（can-radar 的标牌位置，`lib/atcCoverage.ts`）。 */
       id: "atc-area-labels",
       type: "symbol",
-      source: "atcAreas",
+      source: "atcLabels",
       minzoom: ZOOM.atcAreaLabels,
       layout: {
-        "symbol-placement": "line",
-        "symbol-spacing": 500,
-        "text-field": [
-          "concat",
-          ["get", "callsign"],
-          "  ",
-          ["get", "frequency"],
-        ],
+        "text-field": ["get", "label"],
         "text-font": TEXT.font,
         "text-size": TEXT.atc,
         "text-letter-spacing": 0.08,
-        "text-max-angle": 30,
       },
       paint: { "text-color": facilityColor(), ...halo },
     },

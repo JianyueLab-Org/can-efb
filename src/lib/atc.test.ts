@@ -18,9 +18,9 @@
  */
 import { expect, test, describe } from "bun:test";
 import {
+  atisForAirport,
   atisLetter,
   atisText,
-  boundaryCodesFor,
   facilityColor,
   facilityRank,
   groupControllers,
@@ -239,9 +239,10 @@ describe("ownsAirspace", () => {
   test("区域 / FSS 管的是一片范围", () => {
     expect(ownsAirspace(6)).toBe(true); // CTR
     expect(ownsAirspace(1)).toBe(true); // FSS
+    expect(ownsAirspace(7)).toBe(true); // controllers 数组里的 facility 7
   });
 
-  test("进近画点：边界底图里同前缀的是区调扇区，不是进近范围", () => {
+  test("进近不按情报区边界画：它走 SimAware 的进近多边形", () => {
     expect(ownsAirspace(5)).toBe(false); // APP
   });
 
@@ -249,44 +250,6 @@ describe("ownsAirspace", () => {
     expect(ownsAirspace(2)).toBe(false); // DEL
     expect(ownsAirspace(3)).toBe(false); // GND
     expect(ownsAirspace(4)).toBe(false); // TWR
-  });
-});
-
-describe("boundaryCodesFor", () => {
-  test("默认按呼号前缀，区域和进近同一条规则", () => {
-    expect(boundaryCodesFor("ZSHA_CTR")).toEqual(["ZSHA"]);
-    expect(boundaryCodesFor("ZBAA_APP")).toEqual(["ZBAA"]);
-    // 中间段（席位编号）要被忽略，否则 ZSSS_1_APP 会取到 ZSSS_1
-    expect(boundaryCodesFor("ZSSS_1_APP")).toEqual(["ZSSS"]);
-  });
-
-  test("**习惯短码要翻译**，否则香港台北的区域会画成一个点", () => {
-    // 拿真 datafeed 跑过：HKG_W_CTR 当时在线，按前缀取到 HKG、边界表里没有，
-    // 于是退回画点 —— 而那正是这次要修的毛病。
-    expect(boundaryCodesFor("HKG_W_CTR")).toEqual(["VHHK"]);
-    expect(boundaryCodesFor("TPE_CTR")).toEqual(["RCAA"]);
-  });
-
-  test("**PRC_FSS 是一对多**，九个情报区一个都不能少", () => {
-    const codes = boundaryCodesFor("PRC_FSS");
-    expect(codes).toHaveLength(9);
-    // 排过序的，比对整份而不是抽查 —— 少一个就是有一片空域没被画出来。
-    expect([...codes].sort()).toEqual([
-      "ZBPE",
-      "ZGZU",
-      "ZHWH",
-      "ZJSA",
-      "ZLHW",
-      "ZPKM",
-      "ZSHA",
-      "ZWUQ",
-      "ZYSH",
-    ]);
-  });
-
-  test("认不出来的原样返回，让调用方去退回画点", () => {
-    // 返回空数组会让调用方以为"这个席位不用画"，而正确行为是退回画点。
-    expect(boundaryCodesFor("XXXX_CTR")).toEqual(["XXXX"]);
   });
 });
 
@@ -345,5 +308,33 @@ describe("flightLevel", () => {
   test("**一千以下写整数英尺**，FL003 不是任何人读高度的方式", () => {
     expect(flightLevel(300)).toBe("300");
     expect(flightLevel(0)).toBe("0");
+  });
+});
+
+describe("atisForAirport", () => {
+  const a = (callsign: string) => ({
+    callsign,
+    cid: "1",
+    facility: 7,
+    frequency: "127.850",
+    latitude: "0",
+    longitude: "0",
+    logon_time: "",
+    name: "",
+    rating: 5,
+    text_atis: [],
+  });
+
+  test("按呼号第一段对机场，离场进场两条都给", () => {
+    const list = [a("ZSPD_A_ATIS"), a("ZSSS_ATIS"), a("ZSPD_D_ATIS")];
+    expect(atisForAirport(list, "zspd").map((x) => x.callsign)).toEqual([
+      "ZSPD_A_ATIS",
+      "ZSPD_D_ATIS",
+    ]);
+  });
+
+  test("没有就是空，不拿别的场凑", () => {
+    expect(atisForAirport([a("ZSSS_ATIS")], "ZSPD")).toEqual([]);
+    expect(atisForAirport([a("ZSSS_ATIS")], "")).toEqual([]);
   });
 });

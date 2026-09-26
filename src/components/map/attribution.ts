@@ -16,6 +16,9 @@ export function createAttribution(
       `${escapeHtml(firsLabel)} ` +
       '<a href="https://github.com/vatsimnetwork/vatspy-data-project" ' +
       'target="_blank" rel="noreferrer">VATSpy</a> (CC BY-SA 4.0) · ' +
+      // 在线进近的范围来自 SimAware（`lib/atcCoverage.ts`），can-radar 同样署名。
+      '<a href="https://github.com/vatsimnetwork/simaware-tracon-project" ' +
+      'target="_blank" rel="noreferrer">SimAware</a> · ' +
       "Natural Earth"
     );
   }

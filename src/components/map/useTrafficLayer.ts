@@ -13,15 +13,60 @@ import {
   hasPosition,
   onlineControllers,
   ownPilot,
-  toControllerAreas,
   toControllerPoints,
   toOwnPoint,
   toTrafficPoints,
 } from "@/lib/datafeed";
-import { boundaryCodesFor, ownsAirspace } from "@/lib/atc";
+import {
+  buildCoverage,
+  indexBoundaries,
+  indexTracons,
+  wantsTracons,
+  type BoundaryIndex,
+  type TraconIndex,
+} from "@/lib/atcCoverage";
+import { loadFirs } from "@/lib/firTable";
+import BOUNDARIES_URL from "@/basemap/atc/boundaries.geojson?url";
+import TRACONS_URL from "@/basemap/atc/tracon.geojson?url";
 import { altitudeBand, flightLevel, isOnGround } from "@/lib/traffic";
 import { writePrefs, type LayerPrefs } from "@/lib/mapPrefs";
 import type { LayerNotice } from "@/components/map/useLayerNotice";
+
+/**
+ * 管制范围用的两份几何，各取一次。**不是情报区图层那份 `firs.json`**：那份筛掉了
+ * 扇区划分，而画管制范围正要它们（`RJDG_01_CTR` 是 F01 扇区，不是整个福冈）。这两
+ * 份和 can-radar 发的是同一批文件，见 `lib/atcCoverage.ts`。
+ *
+ * 失败记成 null 而不是抛：席位退回画点或画圈，下一轮再试。
+ */
+let boundaryIndex: BoundaryIndex | null = null;
+let traconIndex: TraconIndex | null = null;
+
+async function fetchCollection(url: string): Promise<FeatureCollection> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${url}: ${response.status}`);
+  return (await response.json()) as FeatureCollection;
+}
+
+async function loadBoundaryIndex(): Promise<BoundaryIndex | null> {
+  if (!boundaryIndex) {
+    const [collection] = await Promise.all([
+      fetchCollection(BOUNDARIES_URL).catch(() => null),
+      loadFirs(),
+    ]);
+    if (collection) boundaryIndex = indexBoundaries(collection);
+  }
+  return boundaryIndex;
+}
+
+/** 2.7 MB，只在有进近在线（或 Covering 名字要它）时才取。 */
+async function loadTraconIndex(): Promise<TraconIndex | null> {
+  if (!traconIndex) {
+    const collection = await fetchCollection(TRACONS_URL).catch(() => null);
+    if (collection) traconIndex = indexTracons(collection);
+  }
+  return traconIndex;
+}
 
 export function useTrafficLayer(options: {
   /**
@@ -33,10 +78,8 @@ export function useTrafficLayer(options: {
   cid: string | null;
   prefs: LayerPrefs;
   notice: LayerNotice;
-  /** 边界底图。管制那层要拿它圈出「这块空域有人管」，和边界图层开不开无关。 */
-  loadFirCache: () => Promise<FeatureCollection>;
 }) {
-  const { cid, prefs, notice, loadFirCache } = options;
+  const { cid, prefs, notice } = options;
 
   /**
    * 实时数据：在线机组、在线管制、自己那架飞机。
@@ -69,10 +112,12 @@ export function useTrafficLayer(options: {
   /** 两层里有任何一层开着，就该在轮询。 */
   const liveOn = computed(() => showTraffic.value || showAtc.value);
   const traffic = ref<FeatureCollection | null>(null);
-  /** 场面席位（放行/地面/塔台），外加没能对上边界的那些。画成点。 */
+  /** 场面席位（放行/地面/塔台），外加没能对上任何范围的那些。画成点。 */
   const atc = ref<FeatureCollection | null>(null);
-  /** 区域 / 进近 / FSS 管的那片空域。画成范围，不是点。 */
+  /** 区域 / FSS / 进近管的那片空域，和进近的范围圈。`lib/atcCoverage.ts`。 */
   const atcAreas = ref<FeatureCollection | null>(null);
+  /** 范围的标注点，「呼号 频率」。 */
+  const atcLabels = ref<FeatureCollection | null>(null);
   const own = ref<FeatureCollection | null>(null);
   /**
    * 自己的航迹，从每一轮轮询里攒（`lib/ownTrack.ts`）。只活在这次会话；关掉机组那层
@@ -169,32 +214,26 @@ export function useTrafficLayer(options: {
 
       const controllers = onlineControllers(feed);
 
-      /* 区域和进近画**范围**，场面席位画点。
+      /* 区域、FSS、进近画**范围**，场面席位画点。判据整个照 can-radar，见
+         `lib/atcCoverage.ts`。
 
-         以前所有席位一律画成一个点，而那个点是管制员自己的视野中心 —— 既不是他管的
-         空域，也不在它中间。`ZBPE_CTR` 在河北上空一个小圆点，读不出「华北这一整片归
-         他」，而那正是飞行员要知道的。
-
-         边界底图**按需现取**：这一层默认是开的，而边界那一层不一定（`showFirs` 可以
-         关掉）。所以这里不看 `firs.value`，直接要 `loadFirCache()` —— 两层的开关互不影响。 */
-      const boundaries = await loadFirCache().catch(() => null);
-      /* 第一次要现下边界底图，这一段 await 里管制那层可能已经被关掉了 —— 那次关掉时
-         已经清过，这里再写回去就是一个按钮灭着、图上却铺着管制区的状态。 */
+         几何**按需现取**，和边界图层开不开无关：这一层默认是开的，而边界那一层可以
+         关掉。进近多边形只在用得上时才取。 */
+      const boundaries = await loadBoundaryIndex();
+      const tracons = wantsTracons(controllers)
+        ? await loadTraconIndex()
+        : traconIndex;
+      /* 第一次要现下几何，这一段 await 里管制那层可能已经被关掉了 —— 那次关掉时已经
+         清过，这里再写回去就是一个按钮灭着、图上却铺着管制区的状态。 */
       if (!showAtc.value) {
         clearAtc();
         return;
       }
-      const { areas, unmatched } = toControllerAreas(
-        controllers,
-        boundaries,
-        ownsAirspace,
-        boundaryCodesFor,
-      );
-      atcAreas.value = areas;
-      // 点这一层留给场面席位，外加**没能对上边界的那些** —— 它们不该从图上消失。
-      atc.value = toControllerPoints(
-        controllers.filter((c) => !ownsAirspace(c.facility)).concat(unmatched),
-      );
+      const coverage = buildCoverage(controllers, boundaries, tracons);
+      atcAreas.value = coverage.areas;
+      atcLabels.value = coverage.labels;
+      // 点这一层留给场面席位，外加**没能对上任何范围的那些** —— 它们不该从图上消失。
+      atc.value = toControllerPoints(coverage.points);
       atcCount.value = controllers.length;
     } catch (error) {
       // **不关掉这一层，也不清空已画的东西。** 实时数据每 30 秒重试一次，一次抖动
@@ -209,6 +248,7 @@ export function useTrafficLayer(options: {
   function clearAtc() {
     atc.value = null;
     atcAreas.value = null;
+    atcLabels.value = null;
     atcCount.value = 0;
   }
 
@@ -313,6 +353,7 @@ export function useTrafficLayer(options: {
     traffic,
     atc,
     atcAreas,
+    atcLabels,
     own,
     ownTrack,
     atcCount,

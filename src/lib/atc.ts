@@ -107,66 +107,19 @@ export function isLocalPosition(facility: number): boolean {
 }
 
 /**
- * 这个席位管的是**一片空域**，还是场面上的一个点。
+ * 这个席位管的是**一片空域**（按边界画范围），还是另作处理。
  *
- * 区域（CTR）、飞行情报服务（FSS）管的是一块范围 —— 把它们画成地图上
- * 的一个点是错的：那个点是管制员自己的视野中心，既不是他管的空域，也不在它中间。
- * 一个飞行员看到 `ZBPE_CTR` 在河北上空的一个小圆点，读不出「华北这一整片归他」。
+ * 逐字取自 can-radar 的 `lib/facilities.ts`：区域（CTR）、飞行情报服务（FSS），以
+ * 及混在 `controllers` 数组里的 facility 7。datafeed 给的经纬度是管制员自己的视野
+ * 中心，画成一个点读不出「这一片归他」。
  *
- * 放行 / 地面 / 塔台管的确实是这一个机场，点是对的，不动。
+ * **进近不在这里，但也不画点**：它的范围来自 SimAware 的进近多边形，见
+ * `lib/atcCoverage.ts`。放行 / 地面 / 塔台管的是这一个机场，画点。
  *
- * **进近（APP）不在里面**，虽然它也管一片范围。随站发的边界（`firs.json`）里**没
- * 有进近范围**：`ZBAA` 那块是北京区调的扇区（东经 105–120°、北纬 32–45°），不是
- * 北京进近。按前缀去对，`ZBAA_APP` 上线就会把整个区调涂成它的，和 `ZBPE_CTR` 分不
- * 开。进近范围在 can-radar 的 `tracon.geojson` 里，这个站没有带；带上之前进近画点。
+ * 只对 `controllers` 数组用，不对 `atis` 数组用 —— ATIS 在地图上不画。
  */
 export function ownsAirspace(facility: number): boolean {
-  return facility === 1 || facility === 6;
-}
-
-/**
- * 呼号前缀不等于边界代号的那几个。
- *
- * 大多数席位按前缀就对得上（`ZSHA_CTR` → `ZSHA`），因为随站发的那份边界（VATSpy，
- * `src/basemap/firs.json`）里情报区和区调扇区用的就是 ICAO 四字码。**但有几个席位
- * 用的是习惯短码**，它们和边界代号对不上：
- *
- *   HKG_W_CTR  →  VHHK   香港
- *   TPE_CTR    →  RCAA   台北
- *
- * 这张表逐字取自 can-radar 的 `matchControllerToBoundary`（它那份还有
- * `lax → kzla`，不在本区域，没搬）。**这不是可选的润色**：拿真 datafeed 跑过，
- * `HKG_W_CTR` 当时正在线，按前缀取到 `HKG`、边界表里没有，于是退回画成一个点 ——
- * 而那正是这次要修的毛病。
- */
-const SHORT_CODES: Record<string, string[]> = {
-  HKG: ["VHHK"],
-  TPE: ["RCAA"],
-  /**
-   * **`PRC_FSS` 一个人覆盖九个情报区**，所以它是一对多。
-   *
-   * 同样取自 can-radar（那边叫 `prcFssAreas`）。按前缀取会得到 `PRC`，边界表里没
-   * 有这个代号 —— 而把全中国的飞行情报服务画成一个点，比画错位置还离谱。
-   */
-  PRC: ["ZBPE", "ZGZU", "ZHWH", "ZJSA", "ZLHW", "ZPKM", "ZSHA", "ZWUQ", "ZYSH"],
-};
-
-/**
- * 这个席位对应哪几块边界。
- *
- * **返回数组，不是单个值** —— `PRC_FSS` 覆盖九个情报区，一对一的形状表达不了它。
- *
- * 默认规则是呼号第一个下划线之前那一段（和 `stationAirport` 同一条）：
- * `ZBPE_CTR` → `ZBPE`、`ZSHA_CTR` → `ZSHA`。对不上默认规
- * 则的走上面 `SHORT_CODES`。
- *
- * **没有搬 can-radar 的拆分扇区那一套。** 那边要处理 `boundaries.geojson` 里 665
- * 个扇区划分（`ADR-E`、`BIRD-N` 之类），而这个站发的边界文件里没有那些 —— 搬过来
- * 就得连同它的映射表一起维护，而且没有对应的数据可匹配。
- */
-export function boundaryCodesFor(callsign: string): string[] {
-  const prefix = stationAirport(callsign);
-  return SHORT_CODES[prefix] ?? [prefix];
+  return facility === 1 || facility === 6 || facility === 7;
 }
 
 /**
@@ -297,4 +250,24 @@ export function atisLetter(station: DatafeedController): string | null {
   const text = atisText(station).toUpperCase();
   const match = /\b(?:INFORMATION|INFO|ATIS)\s+([A-Z])\b/.exec(text);
   return match ? match[1] : null;
+}
+
+/**
+ * 某个机场自己的 ATIS。
+ *
+ * 按呼号第一段对机场（`ZSSS_ATIS`、`ZSPD_D_ATIS` 都归到各自的场），和
+ * `stationAirport` 同一条规矩。一个场可能有两条（离场、进场各一），全给，按呼号排。
+ *
+ * 概览页的起降天气用它：**本网自己的 ATIS 在线，就先给它**，METAR 只在没有时才去
+ * 取。ATIS 是管制员此刻在用的那一份（跑道、通播代号都在里面），METAR 只是天气。
+ */
+export function atisForAirport(
+  atis: DatafeedController[],
+  icao: string,
+): DatafeedController[] {
+  const code = icao.trim().toUpperCase();
+  if (!code) return [];
+  return atis
+    .filter((a) => stationAirport(a.callsign) === code)
+    .sort((a, b) => a.callsign.localeCompare(b.callsign));
 }

@@ -181,10 +181,12 @@ const props = defineProps<{
    * 在线管制里**画成范围**的那些：区域 / 进近 / FSS 管的那片空域。
    *
    * 它们管的是一块地方，不是一个点 —— datafeed 给的经纬度是管制员自己的视野中心，
-   * 既不是他管的空域也不在它中间，画成点读不出归属。几何来自随站发的边界底图，按
-   * 呼号前缀对上（见 `lib/atc.ts` 的 `boundaryCodesFor`）。
+   * 既不是他管的空域也不在它中间，画成点读不出归属。几何和判据照 can-radar，见
+   * `lib/atcCoverage.ts`。`kind` 是 `fir` / `tracon` / `ring`。
    */
   atcAreas?: FeatureCollection | null;
+  /** 上面那些范围的标注点，`label` 是「呼号 频率」。 */
+  atcLabels?: FeatureCollection | null;
   /** 自己那架飞机，至多一个要素。 */
   own?: FeatureCollection | null;
   /** 自己这次会话的航迹，一条线（`lib/ownTrack.ts`）。 */
@@ -428,6 +430,7 @@ function render() {
   setSource("mora", props.mora);
   setSource("traffic", props.traffic);
   setSource("atcAreas", props.atcAreas);
+  setSource("atcLabels", props.atcLabels);
   setSource("atc", props.atc);
   setSource("ownTrack", props.ownTrack);
   setSource("own", props.own);
@@ -584,6 +587,7 @@ watch(
     props.traffic,
     props.atc,
     props.atcAreas,
+    props.atcLabels,
     props.ownTrack,
     props.own,
   ],

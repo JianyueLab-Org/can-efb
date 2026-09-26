@@ -213,6 +213,8 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 | `src/styles/globals.css` | 设计系统来自 `@jianyuelab-org/can-ui/styles`（一行 import）；本站新增的在其后 `can-efb only` 一节                                                                            |
 | `src/lib/geo.ts`         | `distanceNm` / `greatCircle` / `arc` 逐字取自 can-radar 的 `radar.ts` 与 `RadarMap.vue`                                                                                      |
 | `src/lib/atc.ts`         | `FACILITY_COLORS` / `facilityRank` / `stationAirport` / `parseFeedTime` 逐字取自 can-radar 的 `radar.ts`；`groupControllers` 是它 `RadarMap.vue` 里 `groupStations` 的列表版 |
+| `src/lib/firTable.ts`    | can-radar 的 `lib/firs.ts`，对照表改成 `?url` 引入，多一个测试用的 `useFirTable`                                                                                             |
+| `src/lib/atisSectors.ts` | 逐字取自 can-radar，测试一起                                                                                                                                                 |
 | `src/lib/traffic.ts`     | 高度色带 / `altitudeBand` / `isOnGround` / `flightLevel` 逐字取自 can-radar 的 `radar.ts`（它又源自 vatsim-radar）                                                           |
 
 `Icon`、`ThemeLangControls`、`ThemeScript`、`useOverlay` 不在这张表里：本地那几份拷贝
@@ -237,37 +239,30 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 `groupStations` 里那一半地图专属的活（标牌锚点、重叠堆叠、把进近挪到它管的空域边
 界上）。
 
-### 区域和 FSS 画的是**范围**，不是一个点
+### 管制范围照 can-radar 画（`lib/atcCoverage.ts`）
 
-datafeed 给的那个经纬度是**管制员自己的视野中心** —— 既不是他管的空域，也不在它中
-间。区域、FSS 管的都是一片范围，画成一个点读不出归属：`ZBPE_CTR` 在河北上空
-一个小圆点，说不出「华北这一整片归他」。放行 / 地面 / 塔台管的确实是这一个机场，
-点是对的，没动。
+判据和 can-radar 的 `RadarMap.vue` 一致，改先改那边再同步。
 
-几何来自**随站发的那份边界底图**（VATSpy，`src/basemap/firs.json`），规则是呼号第
-一个下划线之前那一段。
+| 席位                                     | 画法                                                           |
+| ---------------------------------------- | -------------------------------------------------------------- |
+| 区域 / FSS / controllers 里的 facility 7 | VATSpy 边界，呼号按 `lib/firTable.ts` 最长前缀对上；UIR 一对多 |
+| 进近                                     | SimAware 进近多边形，`ZBAA_S_APP` 先找 `ZBAA_S` 再找 `ZBAA`    |
+| 没有进近多边形的进近                     | 点 + 视野半径虚线圈，封顶 400 NM                               |
+| 放行 / 地面 / 塔台                       | 点                                                             |
+| 对不上任何范围的                         | 点，不吞掉                                                     |
 
-**进近仍然画点。** 那份底图里**没有进近范围**：`ZBAA`、`ZSSS` 在，但它们是区调扇区
-（`ZBAA` 横跨东经 105–120°）。按前缀去对，`ZBAA_APP` 一上线就把整个北京区调涂成它
-的。进近范围在 can-radar 的 `tracon.geojson` 里，要画进近得先把它带过来。
+- ATC info 的 `Covering sector - T30` 只画那几个扇区；`Extending - ZGZU` 按同一席位后缀再对一次，FSS 不扩（`lib/atisSectors.ts`）。
+- 一个 id 有陆上、洋区两块时，`_FSS` 取洋区，其余取陆上。
+- 标注「呼号 频率」：区域在第一块边界外接框中心，进近在多边形最北顶点，扩出去的那块标扩出去的呼号（本人在线时不标）。
+- ATIS 不画在地图上。
 
-**这一层不依赖边界图层的开关。** `loadFirCache()` 独立于 `toggleFirs()` 取数，因为
-实时那层默认开着而边界那层可以被关掉。
+数据在 `src/basemap/atc/`：`boundaries.geojson`、`firs.json`（VATSpy，含扇区划分）、`tracon.geojson`（SimAware）。三份是 can-radar `public/` 下同名文件的拷贝，由它的 `scripts/build-vatspy.mjs` 生成，在那边刷新再拷过来。情报区图层用的 `src/basemap/firs.json` 是另一份，筛掉了扇区划分，不用于这一层。进近多边形 2.7 MB，只在有进近在线或 Covering 名字需要时取。
 
-三条容易错的，都有测试钉着（`lib/atc.test.ts`）：
+这一层不依赖边界图层的开关。测试在 `lib/atcCoverage.test.ts`。
 
-- **习惯短码要翻译**：`HKG_W_CTR` → `VHHK`、`TPE_CTR` → `RCAA`。这不是润色 —— 拿真
-  datafeed 跑的时候 `HKG_W_CTR` 正在线，按前缀取到 `HKG`、边界表里没有，于是退回画
-  成一个点，正是要修的那个毛病。表取自 can-radar 的 `matchControllerToBoundary`。
-- **`PRC_FSS` 是一对多**，覆盖九个情报区。按前缀取到 `PRC` 什么也对不上，而把全中
-  国的飞行情报服务画成一个点比画错位置还离谱。所以 `boundaryCodesFor` 返回的是**数
-  组**。
-- **对不上边界的不能吞掉**：`toControllerAreas` 第二个返回值是「没对上」的那批，调
-  用方要把它们照旧画成点。少了这一步，一个前缀不在表里的区域席位会从图上**整个消
-  失** —— 而位置不准的点至少还说明"有人在"。
+### 概览的起降天气：本网 ATIS 优先
 
-**没搬 can-radar 的拆分扇区那一套**（`ADR-E`、`BIRD-N` 那 665 个）：这个站发的边界
-文件里根本没有那些要素，搬过来就是维护一张匹配不到东西的表。
+起降机场有本网 ATIS 在线（`feed.atis`，按呼号第一段对机场，`lib/atc.ts` 的 `atisForAirport`），天气卡显示 ATIS，不取 METAR。没有才取 `/api/v1/metar`。METAR 等 datafeed 回来再决定取不取；datafeed 失败时照常取。
 
 ### 在线机组按高度分色（`lib/traffic.ts`）
 

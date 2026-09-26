@@ -98,6 +98,11 @@ export interface DatafeedController {
   name: string;
   rating: number;
   text_atis: string[];
+  /**
+   * 视野半径，海里。can-radar 那份类型里有，这里原来没抄 —— 画进近的范围圈（找不到
+   * 进近多边形时的替身，`lib/atcCoverage.ts`）要用它。可选：老一点的 can-fsd 不给。
+   */
+  visual_range?: number;
 }
 
 export interface Datafeed {
@@ -197,63 +202,6 @@ export function onlineAtis(feed: Datafeed | null): DatafeedController[] {
 function parseCoord(value: string): number | null {
   const n = Number(value);
   return Number.isFinite(n) && n !== 0 ? n : null;
-}
-
-/**
- * 把「有人上席」的空域挑成一层要素。
- *
- * 区域和进近管的是一片范围，画成一个点读不出归属 —— 见 `lib/atc.ts` 的
- * `ownsAirspace`。这里拿边界底图（VATSpy 那份，情报区和区调扇区，没有进近范围）按呼号前
- * 缀去对，对上的那一块带着席位信息复制出来，交给地图单独画一层。
- *
- * **对不上的不吞掉。** 返回值第二项是「没能对上边界」的那批席位，调用方要把它们照
- * 旧画成点。少了这一步，一个呼号前缀不在边界表里的区域席位就会从图上**整个消失**
- * ——而那比画一个位置不准的点糟得多：位置不准至少还说明"有人在"。
- */
-export function toControllerAreas(
-  list: DatafeedController[],
-  boundaries: FeatureCollection | null,
-  ownsArea: (facility: number) => boolean,
-  codesOf: (callsign: string) => string[],
-): { areas: FeatureCollection; unmatched: DatafeedController[] } {
-  const features: Feature[] = [];
-  const unmatched: DatafeedController[] = [];
-
-  // 边界按 code 建索引。一个代号可能对应多块（VATSpy 里有拆开的），全都要。
-  const byCode = new Map<string, Feature[]>();
-  for (const f of boundaries?.features ?? []) {
-    const code = String(f.properties?.code ?? "").toUpperCase();
-    // `atc: false` 是只给情报区图层拼出来的整块（日本 RJJJ），不是哪个席位的范围。
-    if (!code || f.properties?.atc === false) continue;
-    const list = byCode.get(code) ?? [];
-    list.push(f);
-    byCode.set(code, list);
-  }
-
-  for (const c of list) {
-    if (!ownsArea(c.facility)) continue;
-    // 一个席位可能覆盖好几块（PRC_FSS 是九个情报区），全都要画。
-    const shapes = codesOf(c.callsign).flatMap(
-      (code) => byCode.get(code.toUpperCase()) ?? [],
-    );
-    if (!shapes.length) {
-      unmatched.push(c);
-      continue;
-    }
-    for (const shape of shapes) {
-      features.push({
-        type: "Feature",
-        properties: {
-          callsign: c.callsign,
-          frequency: c.frequency,
-          facility: c.facility,
-        },
-        geometry: shape.geometry,
-      });
-    }
-  }
-
-  return { areas: { type: "FeatureCollection", features }, unmatched };
 }
 
 export function toControllerPoints(

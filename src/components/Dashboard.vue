@@ -22,7 +22,7 @@
  * 的**键名本身** —— 删飞行日志那一页时词典里的 `logbook` 命名空间跟着没了，模板
  * 却还在调它。`scripts/check-i18n-keys.mjs` 现在盯着这一类。
  */
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { api, describeFailure } from "@/lib/canApi";
 import { createTranslator } from "@/lib/i18n";
 import { showPlanOnMap } from "@/lib/mapBus";
@@ -41,6 +41,7 @@ import {
   type DatafeedController,
 } from "@/lib/datafeed";
 import {
+  atisForAirport,
   atisLetter,
   atisText,
   facilityColor,
@@ -94,10 +95,6 @@ async function loadPlan() {
   plan.value = LOADING;
   const result = await api<Plan | null>("/api/v1/pilot/flightplan");
   plan.value = fromApiResult(result);
-  if (plan.value.kind === "data") {
-    void loadMetar(plan.value.data.departure);
-    void loadMetar(plan.value.data.arrival);
-  }
 }
 
 const metars = ref<Record<string, RequestState<string>>>({});
@@ -122,6 +119,17 @@ async function loadMetar(icao: string) {
 function metarText(icao: string): string | null {
   const state = metars.value[icao];
   return state?.kind === "data" ? state.data : null;
+}
+
+/**
+ * 起降机场的 ATIS。**本网自己的 ATIS 在线就先给它**，METAR 只在没有时才取。
+ *
+ * ATIS 是管制员此刻在用的那一份：使用跑道、通播代号、天气都在里面，而 METAR 只是天
+ * 气。先有 ATIS 的场不再去问 can-api 要 METAR —— 那条接口按 IP 限流，全站共用一个出
+ * 口 IP，省下的每一次都算数。
+ */
+function airportAtis(icao: string): DatafeedController[] {
+  return atisForAirport(atis.value, icao);
 }
 
 /** 两张天气卡。key 带角色：本场起落时两张卡的 ICAO 相同，只用 ICAO 做 key 会重复。 */
@@ -239,6 +247,23 @@ const arrivalSummary = computed(() =>
   ]
     .filter(Boolean)
     .join(" · "),
+);
+
+/**
+ * 等 datafeed 回来再决定取不取 METAR：先取了再被 ATIS 盖掉，是白花一次限流额度。
+ * datafeed 失败时 `atis` 是空的，于是照常取 METAR —— 天气卡不因为实时源挂了就空着。
+ * 之后 ATIS 上线了卡片就换成 ATIS；下线了、又还没取过 METAR，这里补取。
+ */
+watch(
+  () => [filed.value, atcLoading.value, atis.value] as const,
+  ([plan, loading]) => {
+    if (!plan || loading) return;
+    for (const icao of [plan.departure, plan.arrival]) {
+      if (icao && !metars.value[icao] && !airportAtis(icao).length) {
+        void loadMetar(icao);
+      }
+    }
+  },
 );
 
 onMounted(() => {
@@ -385,8 +410,40 @@ onBeforeUnmount(() => {
           <h3 class="font-mono text-sm font-semibold text-ink">
             {{ card.icao }}
           </h3>
+          <!-- 本网的 ATIS 在线就给它，不再摆 METAR。见 airportAtis。 -->
+          <template v-if="airportAtis(card.icao).length">
+            <div
+              v-for="a in airportAtis(card.icao)"
+              :key="a.callsign"
+              class="mt-2"
+            >
+              <div class="flex items-baseline justify-between gap-3">
+                <span class="flex min-w-0 items-baseline gap-2">
+                  <span class="truncate font-mono text-xs text-ink">{{
+                    a.callsign
+                  }}</span>
+                  <!-- 认不出来就不显示，不猜。 -->
+                  <span
+                    v-if="atisLetter(a)"
+                    class="rounded bg-overlay px-1.5 font-mono text-xs font-semibold text-ink"
+                    >{{ atisLetter(a) }}</span
+                  >
+                </span>
+                <span
+                  class="shrink-0 font-mono text-xs tabular-nums text-ink"
+                  >{{ a.frequency }}</span
+                >
+              </div>
+              <p
+                v-if="atisText(a)"
+                class="mt-1 break-words font-mono text-xs leading-relaxed text-muted"
+              >
+                {{ atisText(a) }}
+              </p>
+            </div>
+          </template>
           <p
-            v-if="metarText(card.icao) !== null"
+            v-else-if="metarText(card.icao) !== null"
             class="mt-2 break-words font-mono text-xs leading-relaxed text-muted"
           >
             {{ metarText(card.icao) }}

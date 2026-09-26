@@ -118,7 +118,6 @@ const live = useTrafficLayer({
   cid: props.cid,
   prefs,
   notice,
-  loadFirCache: chart.loadFirCache,
 });
 
 /* 模板里只有顶层的 ref 会自动解包，所以把要用的拆出来。 */
@@ -134,7 +133,8 @@ const {
   skippedTotal,
 } = chart;
 const { ground, groundAttribution } = groundLayer;
-const { traffic, atc, atcAreas, own, ownTrack, atcCount, ownAt } = live;
+const { traffic, atc, atcAreas, atcLabels, own, ownTrack, atcCount, ownAt } =
+  live;
 const noticeLine = notice.notice;
 const failedLayer = notice.failure;
 
@@ -284,6 +284,7 @@ onBeforeUnmount(() => {
       :traffic="traffic"
       :atc="atc"
       :atc-areas="atcAreas"
+      :atc-labels="atcLabels"
       :own="own"
       :own-track="ownTrack"
       :airspaces="airspaces"
