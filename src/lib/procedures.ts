@@ -613,6 +613,20 @@ export function rewriteRoute(
  * 收的是**相邻的**重复，不是全局去重：一条航路合法地两次经过同一个点（等待、折
  * 返），全局去重会把中间那一整段吃掉。
  */
+/** 进近的复飞段，画成 `kind: "missed"`。腿不带 `part` 的进近分不出复飞，返回空。 */
+export function missedApproachPoints(
+  approach: Procedure,
+  transition?: string | null,
+): MapPoint[] {
+  const legs = procedureTrack(approach, { transition, missed: true }).filter(
+    (l) => l.part === "missed",
+  );
+  return procedureToMapPoints({ ...approach, path: legs }).map((p) => ({
+    ...p,
+    kind: "missed",
+  }));
+}
+
 export function composeRoutePoints(parts: {
   departure?: MapPoint | null;
   /** 起飞跑道端。给了就从它的跑道头沿跑道画到另一头，再接 SID。 */
@@ -688,6 +702,10 @@ export function composeRoutePoints(parts: {
       }),
     );
   }
+  // 复飞段从复飞点接着画，自成一段（`kind: "missed"`）。
+  const missed = parts.approach
+    ? missedApproachPoints(parts.approach, parts.approachTransition)
+    : [];
   const arrRwy = parts.arrivalRunway;
   if (arrRwy) {
     chain.push({
@@ -697,8 +715,12 @@ export function composeRoutePoints(parts: {
       kind: parts.approach ? "approach" : parts.star ? "star" : "fix",
     });
   } else if (parts.arrival) {
-    chain.push(parts.arrival);
+    // 有复飞段时线不回到机场基准点：机场只留标注（offPath），线从复飞点接下去。
+    chain.push(
+      missed.length ? { ...parts.arrival, offPath: true } : parts.arrival,
+    );
   }
+  chain.push(...missed);
 
   const out: MapPoint[] = [];
   for (const p of chain) {

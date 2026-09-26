@@ -687,3 +687,70 @@ describe("runwayTrueBearing", () => {
     ).toBe(2);
   });
 });
+
+describe("复飞段", () => {
+  const tleg = (ident: string, part: string, lat: number) => ({
+    ...leg(ident, lat, 0),
+    transition: "",
+    part,
+  });
+  const app = proc({
+    kind: "approach",
+    name: "L22",
+    path: [
+      tleg("BONDO", "final", 1),
+      tleg("RW22", "final", 2),
+      tleg("MA1", "missed", 3),
+      tleg("MA2", "missed", 4),
+    ],
+  });
+
+  test("接在复飞点之后，自成一段", () => {
+    const points = composeRoutePoints({
+      approach: app,
+      arrivalRunway: {
+        id: "22",
+        opposite: null,
+        hdg: null,
+        lat: 2,
+        lon: 0,
+        endLat: 1.9,
+        endLon: 0,
+      },
+    });
+    expect(points.map((p) => [p.ident, p.kind])).toEqual([
+      ["BONDO", "approach"],
+      ["RW22", "approach"],
+      ["MA1", "missed"],
+      ["MA2", "missed"],
+    ]);
+  });
+
+  test("没选跑道时机场只留标注，线不回到基准点", () => {
+    const points = composeRoutePoints({
+      approach: app,
+      arrival: { ident: "RJTT", lat: 9, lon: 9, kind: "airport" },
+    });
+    const airport = points.find((p) => p.ident === "RJTT");
+    expect(airport?.offPath).toBe(true);
+    expect(points[points.length - 1].ident).toBe("MA2");
+  });
+
+  test("没有复飞段时照旧终止在机场", () => {
+    const plain = proc({
+      kind: "approach",
+      name: "L22",
+      path: [tleg("BONDO", "final", 1)],
+    });
+    const points = composeRoutePoints({
+      approach: plain,
+      arrival: { ident: "RJTT", lat: 9, lon: 9, kind: "airport" },
+    });
+    expect(points[points.length - 1]).toEqual({
+      ident: "RJTT",
+      lat: 9,
+      lon: 9,
+      kind: "airport",
+    });
+  });
+});
