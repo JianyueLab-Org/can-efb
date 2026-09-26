@@ -44,10 +44,7 @@
       "settings": "設定"
     },
     "links": {
-      "label": "ほかのサイト",
-      "web": "メインサイト",
-      "radar": "ライブレーダー",
-      "dev": "デベロッパーセンター"
+      "label": "ほかのサイト"
     },
     "pages": {
       "dashboard": {

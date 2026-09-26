@@ -11,8 +11,8 @@
  * 需要在折叠时把 aria-label 补上 —— 文字被 CSS 藏起来了，读屏软件不能跟着一起
  * 失明。
  */
-import { Icon } from "@jianyuelab-org/can-ui";
-import { isCurrentPath, type NavSection } from "@/lib/nav";
+import { Icon, isCurrentPath } from "@jianyuelab-org/can-ui";
+import type { NavSection } from "@/lib/nav";
 
 const props = defineProps<{
   sections: NavSection[];

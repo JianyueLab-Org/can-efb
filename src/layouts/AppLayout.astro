@@ -43,7 +43,11 @@ const t = useTranslations(locale, "efb");
 const user = toEfbUser(Astro.locals.user);
 
 const sections = buildNav(t);
-const crossLinks = buildCrossLinks(t);
+const crossLinks = buildCrossLinks(t, {
+  locale,
+  rating: Astro.locals.user?.rating,
+  signedIn: !!Astro.locals.user,
+});
 ---
 
 <BaseLayout title={title} description={description}>

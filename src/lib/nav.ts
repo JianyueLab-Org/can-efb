@@ -10,11 +10,14 @@
  * 事，那会让每个页面的 HTML 里多出十几 KB）。
  */
 import type { Translator } from "@/lib/i18n";
+// 深路径而不是包的入口：入口会顺带 import 一堆 .vue，`bun test` 读不了。
+import { visibleSites } from "@jianyuelab-org/can-ui/sites";
+import type { IconName } from "@jianyuelab-org/can-ui/icons";
 
 export interface NavLink {
   name: string;
   href: string;
-  icon: string;
+  icon: IconName;
   /** 外链在侧栏里画一个小箭头，也不参与「当前页」判断。 */
   external?: boolean;
 }
@@ -28,7 +31,7 @@ export interface NavSection {
 interface NavLinkSpec {
   key: string;
   href: string;
-  icon: string;
+  icon: IconName;
   external?: boolean;
 }
 interface NavSectionSpec {
@@ -71,33 +74,6 @@ const SECTIONS: NavSectionSpec[] = [
   },
 ];
 
-/**
- * 钉在轨底的跨站链接。
- *
- * 四个站是同一个网络的四张脸，而 EFB 没有站头也没有页脚 —— 不放在这里，从
- * EFB 回主站就只能靠改地址栏。
- */
-const CROSS_LINKS: NavLinkSpec[] = [
-  {
-    key: "web",
-    href: "https://ceruleanavi.net",
-    icon: "globeAlt",
-    external: true,
-  },
-  {
-    key: "radar",
-    href: "https://radar.ceruleanavi.net",
-    icon: "signal",
-    external: true,
-  },
-  {
-    key: "dev",
-    href: "https://platform.ceruleanavi.net",
-    icon: "commandLine",
-    external: true,
-  },
-];
-
 /** 把上面的键解析成当前语言的文案。在 Astro 侧调用，结果作为 props 进岛屿。 */
 export function buildNav(t: Translator): NavSection[] {
   return SECTIONS.map((section) => ({
@@ -111,31 +87,36 @@ export function buildNav(t: Translator): NavSection[] {
   }));
 }
 
-export function buildCrossLinks(t: Translator): NavSection {
+/**
+ * 钉在轨底的跨站链接。
+ *
+ * EFB 没有站头也没有页脚 —— 不放在这里，从 EFB 去别的站就只能靠改地址栏。
+ *
+ * 清单来自 can-ui 的 `visibleSites`。从前这里手抄着主站、雷达、开发者中心三
+ * 条，而全网另外几个仓库各自维护着一份不一样的清单；现在九个站一份，站名的四
+ * 种语言也在那边，门户和资料库按评级决定露不露 —— 那是画菜单的依据，不是权
+ * 限。
+ *
+ * 「当前页」判断用的是 can-ui 的 `isCurrentPath`，和 AppShell 的侧栏、页面站
+ * 的站头同一个函数。
+ */
+export function buildCrossLinks(
+  t: Translator,
+  opts: { locale: string; rating?: number; signedIn: boolean },
+): NavSection {
   return {
     label: t("links.label"),
-    items: CROSS_LINKS.map((item) => ({
-      name: t(`links.${item.key}`),
-      href: item.href,
-      icon: item.icon,
-      external: item.external,
+    items: visibleSites({
+      locale: opts.locale,
+      current: "efb",
+      rating: opts.rating,
+      signedIn: opts.signedIn,
+      excludeCurrent: true,
+    }).map((site) => ({
+      name: site.name,
+      href: site.href,
+      icon: site.icon,
+      external: true,
     })),
   };
-}
-
-/**
- * 这一项是不是当前页。侧栏和手机标签栏共用。
- *
- * 根路由必须精确匹配，否则「概览」在每一个子路由上都亮着；其余按路径段匹配，
- * `/route` 不该在 `/routes` 上亮。
- */
-export function isCurrentPath(href: string, pathname: string): boolean {
-  if (!href || href === "#" || href.startsWith("http")) return false;
-  if (href === "/") return pathname === "/";
-  if (pathname === href) return true;
-  if (pathname.startsWith(href)) {
-    const nextChar = pathname[href.length];
-    return !nextChar || nextChar === "/";
-  }
-  return false;
 }

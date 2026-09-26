@@ -44,10 +44,7 @@
       "settings": "設定"
     },
     "links": {
-      "label": "其他站台",
-      "web": "主站",
-      "radar": "線上雷達",
-      "dev": "開發者中心"
+      "label": "其他站台"
     },
     "pages": {
       "dashboard": {

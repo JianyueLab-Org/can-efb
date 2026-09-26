@@ -23,9 +23,15 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { signOut } from "@/lib/canApi";
 import { createTranslator } from "@/lib/i18n";
-import { Icon, ThemeLangControls, useOverlay } from "@jianyuelab-org/can-ui";
+import {
+  Icon,
+  ThemeLangControls,
+  isCurrentPath,
+  useOverlay,
+} from "@jianyuelab-org/can-ui";
+import type { IconName } from "@jianyuelab-org/can-ui/icons";
 import SidebarNav from "@/components/SidebarNav.vue";
-import { isCurrentPath, type NavSection } from "@/lib/nav";
+import type { NavSection } from "@/lib/nav";
 import { currentRail, setRail } from "@/lib/railState";
 import type { EfbUser } from "@/lib/session";
 
@@ -87,7 +93,7 @@ const searchPanel = useOverlay(searchOpen, { initialFocus: searchInput });
 interface FlatNavItem {
   name: string;
   href: string;
-  icon: string;
+  icon: IconName;
   section?: string;
 }
 

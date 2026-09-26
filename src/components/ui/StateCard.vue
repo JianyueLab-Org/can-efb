@@ -14,6 +14,7 @@
  * 和岛屿都能直接用。外观借 can-ui 的 EmptyState，不另起一套。
  */
 import { EmptyState, Spinner } from "@jianyuelab-org/can-ui";
+import type { IconName } from "@jianyuelab-org/can-ui/icons";
 import type { StateKind } from "@/lib/requestState";
 
 withDefaults(
@@ -30,7 +31,7 @@ withDefaults(
 
 const emit = defineEmits<{ retry: [] }>();
 
-const ICONS: Record<Exclude<StateKind, "loading">, string> = {
+const ICONS: Record<Exclude<StateKind, "loading">, IconName> = {
   empty: "inbox",
   error: "exclamationTriangle",
   forbidden: "key",

@@ -44,10 +44,7 @@
       "settings": "Settings"
     },
     "links": {
-      "label": "Elsewhere",
-      "web": "Main site",
-      "radar": "Live radar",
-      "dev": "Developer centre"
+      "label": "Elsewhere"
     },
     "pages": {
       "dashboard": {

@@ -23,7 +23,11 @@ const session = Astro.locals.user;
     email={session?.email ?? ""}
     rating={session?.rating ?? 0}
     aipAccess={session?.aipAccess ?? 0}
-    crossLinks={buildCrossLinks(t)}
+    crossLinks={buildCrossLinks(t, {
+      locale,
+      rating: session?.rating,
+      signedIn: !!session,
+    })}
     locale={locale}
     client:load
   />
