@@ -22,6 +22,7 @@
  *   一个 `ZSSS_TWR`；`ZSPD_APP` 同理标 `ZSSS_APP`，另外照上面那条画虹桥的进近多
  *   边形。坐标取机场表（can-radar 的 `extendingFieldsFor` / `addExtended`）。那个
  *   场已经有人登着同一个席位就不标。
+ * - **ATIS**：琥珀色的点，Extending 同上（`ZSPD_ATIS` → `ZSSS_ATIS`）。
  *
  * 标注照 can-radar：区域那块标在第一块边界的外接框中心，进近标在多边形最北的那个
  * 顶点，写「呼号 频率」。
@@ -198,8 +199,8 @@ export function wantsTracons(controllers: DatafeedController[]): boolean {
 // ---------------------------------------------------------------- 场面席位的 Extending
 
 /**
- * 放行 / 地面 / 塔台，按 facility 或呼号后缀认（can-radar 的 `isAirportPosition`）：
- * 标错 facility 的 `_TWR` 也算。ATIS 这个站不上图，不在这里。
+ * 放行 / 地面 / 塔台 / ATIS，按 facility 或呼号后缀认（can-radar 的
+ * `isAirportPosition`）：标错 facility 的 `_TWR` 也算。
  */
 function isAirportPosition(c: DatafeedController): boolean {
   const suffix = facilitySuffix(c.callsign);
@@ -207,7 +208,8 @@ function isAirportPosition(c: DatafeedController): boolean {
     isLocalPosition(c.facility) ||
     suffix === "DEL" ||
     suffix === "GND" ||
-    suffix === "TWR"
+    suffix === "TWR" ||
+    suffix === "ATIS"
   );
 }
 
@@ -249,12 +251,16 @@ function fieldHasSamePosition(
   );
 }
 
-/** 要不要去取机场坐标表：有区域 / FSS 以外的席位写了 Extending 才取。 */
-export function wantsAirportCoords(controllers: DatafeedController[]): boolean {
-  return controllers.some(
-    (c) =>
-      !ownsAirspace(c.facility) &&
-      parseAtisSectors(c.text_atis).extending.length > 0,
+/** 要不要去取机场坐标表：有区域 / FSS 以外的席位或 ATIS 写了 Extending 才取。 */
+export function wantsAirportCoords(
+  controllers: DatafeedController[],
+  atis: DatafeedController[] = [],
+): boolean {
+  const extending = (c: DatafeedController) =>
+    parseAtisSectors(c.text_atis).extending.length > 0;
+  return (
+    controllers.some((c) => !ownsAirspace(c.facility) && extending(c)) ||
+    atis.some(extending)
   );
 }
 
@@ -355,18 +361,42 @@ export interface Coverage {
  *
  * 两份索引都可以是 null（还没取到、取失败）：那时对应的范围画不出来，席位退回画点
  * 或画圈，不会消失。`airportAt` 同理，查不到坐标就不出 Extending 的标牌。
+ *
+ * `atis` 是 datafeed 的 `atis` 数组。**认 ATIS 看它来自哪个数组，不看 facility**
+ * （一条 ATIS 连接的 facility 不一定是 7），所以单独传进来，出来一律记成 7，画成
+ * 琥珀色的点，不画范围也不画圈 —— 和 can-radar 的 `groupStations` 一样。
  */
 export function buildCoverage(
   controllers: DatafeedController[],
   boundaries: BoundaryIndex | null,
   tracons: TraconIndex | null,
   airportAt: (icao: string) => LatLon | null = () => null,
+  atis: DatafeedController[] = [],
 ): Coverage {
   const areas: Feature[] = [];
   const labels: Feature[] = [];
   const points: DatafeedController[] = [];
   const extended: Feature[] = [];
   const online = new Set(controllers.map((c) => c.callsign.toUpperCase()));
+  const everyone = [...controllers, ...atis];
+
+  /** Extending 出去的标牌，落在扩到的那个机场上（can-radar 的 `addExtended`）。 */
+  const addExtended = (c: DatafeedController) => {
+    for (const field of extendingFieldsFor(c)) {
+      if (fieldHasSamePosition(field, c, everyone)) continue;
+      const at = airportAt(field);
+      if (!at) continue;
+      extended.push({
+        type: "Feature",
+        properties: {
+          callsign: extendedCallsign(c.callsign, field),
+          frequency: c.frequency,
+          facility: c.facility,
+        },
+        geometry: { type: "Point", coordinates: [at[1], at[0]] },
+      });
+    }
+  };
 
   const area = (c: DatafeedController, shape: Feature, kind: AreaKind) =>
     areas.push({
@@ -436,24 +466,8 @@ export function buildCoverage(
       }
     }
 
-    // Extending 出去的标牌：场面席位和进近都有，落在扩到的那个机场上（can-radar
-    // 的 `addExtended`）。区域 / FSS 走上面边界那条，不在这里。
-    if (!ownsAirspace(c.facility)) {
-      for (const field of extendingFieldsFor(c)) {
-        if (fieldHasSamePosition(field, c, controllers)) continue;
-        const at = airportAt(field);
-        if (!at) continue;
-        extended.push({
-          type: "Feature",
-          properties: {
-            callsign: extendedCallsign(c.callsign, field),
-            frequency: c.frequency,
-            facility: c.facility,
-          },
-          geometry: { type: "Point", coordinates: [at[1], at[0]] },
-        });
-      }
-    }
+    // 场面席位和进近的 Extending 标牌。区域 / FSS 走上面边界那条，不在这里。
+    if (!ownsAirspace(c.facility)) addExtended(c);
 
     if (drawn && !airport) continue;
     points.push(c);
@@ -474,6 +488,12 @@ export function buildCoverage(
       },
       "ring",
     );
+  }
+
+  for (const a of atis) {
+    const station = { ...a, facility: 7 };
+    points.push(station);
+    addExtended(station);
   }
 
   return {

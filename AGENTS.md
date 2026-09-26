@@ -257,9 +257,9 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 - 一个 id 有陆上、洋区两块时，`_FSS` 取洋区，其余取陆上。
 - 标注「呼号 频率」：区域在第一块边界外接框中心，进近在多边形最北顶点，扩出去的那块标扩出去的呼号（本人在线时不标）。
 - 放行 / 地面 / 塔台 / 进近写了 `Extending - ZSSS`：在那个场再标一个同席位呼号的点（`ZSPD_TWR` → `ZSSS_TWR`，`ZSPD_APP` → `ZSSS_APP`），坐标取机场表；进近另外画那个场的进近多边形。三字码经 `lib/airportCodes.ts` 落到 ICAO，标牌写 ICAO；备用写法（`IsPseudo=1`）只给场面席位认。那个场已有人登着同一席位时不标。
-- ATIS 不画在地图上。
+- ATIS（`feed.atis`，按数组认，不按 facility）画成琥珀色的点，不画范围不画圈；Extending 同上（`ZSPD_ATIS` → `ZSSS_ATIS`）。不算进管制按钮的角标数。
 
-数据在 `src/basemap/atc/`：`boundaries.geojson`、`firs.json`（VATSpy，含扇区划分）、`tracon.geojson`（SimAware）、`airports.json`（机场坐标）、`airport-codes.json`（三字码 → ICAO）。五份是 can-radar `public/` 下同名文件的拷贝，由它的 `scripts/build-vatspy.mjs` 生成，在那边刷新再拷过来。情报区图层用的 `src/basemap/firs.json` 是另一份，筛掉了扇区划分，不用于这一层。进近多边形 2.7 MB，只在有进近在线或 Covering 名字需要时取；两张机场表只在区域 / FSS 以外的席位写了 Extending 时取。
+数据在 `src/basemap/atc/`：`boundaries.geojson`、`firs.json`（VATSpy，含扇区划分）、`tracon.geojson`（SimAware）、`airports.json`（机场坐标）、`airport-codes.json`（三字码 → ICAO）。五份是 can-radar `public/` 下同名文件的拷贝，由它的 `scripts/build-vatspy.mjs` 生成，在那边刷新再拷过来。情报区图层用的 `src/basemap/firs.json` 是另一份，筛掉了扇区划分，不用于这一层。进近多边形 2.7 MB，只在有进近在线或 Covering 名字需要时取；两张机场表只在区域 / FSS 以外的席位或 ATIS 写了 Extending 时取。
 
 这一层不依赖边界图层的开关。测试在 `lib/atcCoverage.test.ts`。
 

@@ -116,7 +116,8 @@ export function isLocalPosition(facility: number): boolean {
  * **进近不在这里，但也不画点**：它的范围来自 SimAware 的进近多边形，见
  * `lib/atcCoverage.ts`。放行 / 地面 / 塔台管的是这一个机场，画点。
  *
- * 只对 `controllers` 数组用，不对 `atis` 数组用 —— ATIS 在地图上不画。
+ * 只对 `controllers` 数组用，不对 `atis` 数组用 —— ATIS 在地图上画成点，见
+ * `lib/atcCoverage.ts`。
  */
 export function ownsAirspace(facility: number): boolean {
   return facility === 1 || facility === 6 || facility === 7;

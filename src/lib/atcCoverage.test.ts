@@ -473,3 +473,67 @@ describe("buildCoverage — 场面席位的 Extending", () => {
     ).toBe(true);
   });
 });
+
+describe("buildCoverage — ATIS", () => {
+  const coords: Record<string, [number, number]> = {
+    ZSSS: [31.198, 121.336],
+  };
+  const airportAt = (icao: string) => coords[icao] ?? null;
+
+  test("画成点，facility 一律记成 7，不画范围也不画圈", () => {
+    const { areas, points } = buildCoverage(
+      [],
+      boundaries,
+      tracons,
+      airportAt,
+      [station("ZBAA_ATIS", 4, { visual_range: 50 })],
+    );
+    expect(areas.features).toEqual([]);
+    expect(points.map((c) => [c.callsign, c.facility])).toEqual([
+      ["ZBAA_ATIS", 7],
+    ]);
+  });
+
+  test("Extending 在那个场再标一个 ATIS", () => {
+    const { extended } = buildCoverage([], null, null, airportAt, [
+      station("ZSPD_ATIS", 7, { text_atis: ["Extending - ZSSS"] }),
+    ]);
+    expect(
+      extended.features.map((f) => [
+        f.properties?.callsign,
+        f.properties?.facility,
+      ]),
+    ).toEqual([["ZSSS_ATIS", 7]]);
+  });
+
+  test("那个场自己的 ATIS 在线时不标", () => {
+    const { extended } = buildCoverage([], null, null, airportAt, [
+      station("ZSPD_ATIS", 7, { text_atis: ["Extending - ZSSS"] }),
+      station("ZSSS_ATIS", 7),
+    ]);
+    expect(extended.features).toEqual([]);
+  });
+
+  test("塔台扩到的场有同后缀的席位才挡：ATIS 挡不住塔台", () => {
+    const { extended } = buildCoverage(
+      [station("ZSPD_TWR", 4, { text_atis: ["Extending - ZSSS"] })],
+      null,
+      null,
+      airportAt,
+      [station("ZSSS_ATIS", 7)],
+    );
+    expect(extended.features.map((f) => f.properties?.callsign)).toEqual([
+      "ZSSS_TWR",
+    ]);
+  });
+
+  test("ATIS 写了 Extending 也要取机场表", () => {
+    expect(
+      wantsAirportCoords(
+        [],
+        [station("ZSPD_ATIS", 7, { text_atis: ["Extending - ZSSS"] })],
+      ),
+    ).toBe(true);
+    expect(wantsAirportCoords([], [station("ZSPD_ATIS", 7)])).toBe(false);
+  });
+});

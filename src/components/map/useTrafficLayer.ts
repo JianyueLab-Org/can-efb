@@ -11,6 +11,7 @@ import { appendTrack, toTrackLine, type OwnTrack } from "@/lib/ownTrack";
 import {
   fetchDatafeed,
   hasPosition,
+  onlineAtis,
   onlineControllers,
   ownPilot,
   toControllerPoints,
@@ -216,6 +217,8 @@ export function useTrafficLayer(options: {
       }
 
       const controllers = onlineControllers(feed);
+      // ATIS 也上图（琥珀色的点），但不算进角标的席位数：它不是能呼叫的席位。
+      const atis = onlineAtis(feed);
 
       /* 区域、FSS、进近画**范围**，场面席位画点。判据整个照 can-radar，见
          `lib/atcCoverage.ts`。
@@ -227,7 +230,7 @@ export function useTrafficLayer(options: {
         ? await loadTraconIndex()
         : traconIndex;
       // 机场坐标和三字码表只给场面席位的 Extending 用，没人写 Extending 就不取。
-      if (wantsAirportCoords(controllers)) {
+      if (wantsAirportCoords(controllers, atis)) {
         await Promise.all([loadAirportCoords(), loadAirportCodes()]);
       }
       /* 第一次要现下几何，这一段 await 里管制那层可能已经被关掉了 —— 那次关掉时已经
@@ -241,6 +244,7 @@ export function useTrafficLayer(options: {
         boundaries,
         tracons,
         airportAt,
+        atis,
       );
       atcAreas.value = coverage.areas;
       atcLabels.value = coverage.labels;
