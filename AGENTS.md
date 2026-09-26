@@ -663,6 +663,9 @@ cookie 名是 **`NEXT_LOCALE`**，Next.js 时代留下来的；四个站共用�
 个字都没有，看起来像**地图坏了**而不是**这一层没有数据**。（现在高低空一起取，见
 〈航图样式〉。）
 
+**航路网例外。** 它按视野分块取，一片视野里没有航段（比如海上）不说明库里没有，所
+以航路这一层取回来是空的时候什么都不提示。失败和权限照常说话。
+
 现在四种都会说话，走 `components/map/useLayerNotice.ts` 里的 `notice`（文案在
 `map.emptyLayer.*` 和 `map.denied`），由 `MapControls.vue` 渲染。两条规矩：
 

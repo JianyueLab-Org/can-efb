@@ -349,7 +349,6 @@
     },
     "map": {
       "emptyLayer": {
-        "airways": "The aeronautical database has no airway segments.",
         "navaids": "The aeronautical database has no navaid data.",
         "generic": "The aeronautical database has no data for this layer."
       },

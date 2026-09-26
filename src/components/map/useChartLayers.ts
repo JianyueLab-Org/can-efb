@@ -76,7 +76,7 @@ export interface ChartLayerOptions {
   prefs: LayerPrefs;
   /** 见 `AipGeneration`。 */
   aip: AipGeneration;
-  text: { emptyAirways: string; emptyNavaids: string; emptyGeneric: string };
+  text: { emptyNavaids: string; emptyGeneric: string };
   /** 航路网换了 —— 开、关、取回来、失败。计划高亮要跟着重算。 */
   onAirwaysChange: () => void;
 }
@@ -124,9 +124,9 @@ export function useChartLayers(options: ChartLayerOptions) {
     // 航路点和线一起来一起走：它们是同一份图的两个面。
     airwayFixes.value = toAirwayFixes(graph);
     onAirwaysChange();
-    // 取回来是空的，不是失败。开关留在打开状态，用一句话说明它为什么空。
-    if (lines.features.length) notice.clearNotice("airways");
-    else notice.setNotice("airways", text.emptyAirways);
+    /* 按视野取的块是空的，只说明这一片没有航路（比如海上），不说明库里没有 ——
+     * 所以不提示「没有航段」，什么都不说。 */
+    notice.clearNotice("airways");
   }
 
   /** 攒得太多时丢掉视野外最早取的块。 */

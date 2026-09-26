@@ -72,7 +72,6 @@ const props = defineProps<{
   /** 图层相关的几句话，已翻译。`planOnMap` 带 `{from}` / `{to}`，`layerFailed` 带 `{layer}`。 */
   t: {
     denied: string;
-    emptyAirways: string;
     emptyNavaids: string;
     emptyGeneric: string;
     planOnMap: string;
@@ -119,7 +118,6 @@ const chart = useChartLayers({
   prefs,
   aip,
   text: {
-    emptyAirways: props.t.emptyAirways,
     emptyNavaids: props.t.emptyNavaids,
     emptyGeneric: props.t.emptyGeneric,
   },
