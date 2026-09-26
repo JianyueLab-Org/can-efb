@@ -497,8 +497,7 @@ export function toAirwayLines(
      * 经度挪到起点那一侧（可以超出 ±180）：跨 180° 的航段走短的那一边，不横穿整张图。 */
     const xy = (p: LatLon): [number, number] => {
       const d = p[1] - from[1];
-      const w = wrapLon(d);
-      return [w === d ? p[1] : from[1] + w, p[0]];
+      return [Math.abs(d) > 180 ? from[1] + wrapLon(d) : p[1], p[0]];
     };
     const properties = {
       airway: seg.airway,
