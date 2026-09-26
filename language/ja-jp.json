@@ -298,7 +298,10 @@
         "alternate": "代替",
         "aircraft": "機材",
         "off": "出発時刻",
-        "level": "巡航高度"
+        "level": "巡航高度",
+        "departureProcedures": "出発滑走路と方式",
+        "arrivalProcedures": "到着滑走路と方式",
+        "proceduresLocal": "滑走路と方式はこの端末での選択で、提出した計画には含まれません。"
       },
       "weather": {
         "title": "出発地と目的地の天気",
