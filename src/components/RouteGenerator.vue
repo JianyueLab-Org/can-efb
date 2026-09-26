@@ -65,10 +65,8 @@ const outcome = ref<
 /**
  * 可以填的那串航路。
  *
- * **和 `plan.route` 分开一个 ref**，不是直接改 `plan.route`：选择器换一条 SID
- * 时要拿「规划器原本挑的那条」去判断首尾那个记号是不是程序名（见
- * lib/procedures.ts 的 rewriteRoute）。就地改掉的话第二次改写就没有底了 —— 它会
- * 拿上一次改写的结果当原始值，于是换第二次 SID 时删不掉第一次插进去的那条。
+ * **和 `plan.route` 分开一个 ref**，`plan` 保持规划器给的原样。空串表示还没改过。
+ * 选择器以当前这串为底改写，首尾记号是不是程序名按机场真有的程序名判断。
  */
 const route = ref("");
 const enroute = computed(() =>
@@ -270,9 +268,7 @@ function toFlightPlan() {
         :departure="plan.from"
         :arrival="plan.to"
         :enroute="enroute"
-        :route="plan.route"
-        :plan-sid="plan.sid"
-        :plan-star="plan.star"
+        :route="route || plan.route"
         :departure-point="departurePoint"
         :arrival-point="arrivalPoint"
         @update:route="route = $event"

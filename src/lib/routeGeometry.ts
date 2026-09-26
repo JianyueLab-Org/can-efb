@@ -14,6 +14,9 @@ export interface RoutePoint {
   lon: number;
   kind: number | string;
   via?: string;
+  /** 见 mapBus 的 MapPoint。 */
+  shape?: boolean;
+  offPath?: boolean;
   /**
    * 这个点属于**当前这条航路**，而不是背景里那批彼此无关的点。
    *
@@ -59,29 +62,39 @@ export function routeLines(
   onAirway?: Set<string> | null,
 ): FeatureCollection {
   const features: Feature[] = [];
-  // 进近和 SID/STAR 一样画虚线：它们都是「按图走」的部分，和航路段不是一回事。
-  // 加进来而不是另开一类，是因为图上要表达的区别只有「按图走 vs 沿航路飞」这一
-  // 条 —— 三种程序各给一种线型，读的人得先学会一套图例。
-  const isProcedure = (p: RoutePoint) =>
-    p.kind === "sid" || p.kind === "star" || p.kind === "approach";
+  // 线只穿过真正飞经的点：旁切掉的角点（offPath）只留给标注。判「这条腿在不在航
+  // 路网上」时比的是航路点代号，弯里插的几何点（shape）要越过，角点要算上。
+  let prev: RoutePoint | null = null;
+  let lastIdent = "";
 
-  for (let i = 1; i < points.length; i++) {
-    const via = points[i].via;
+  for (const point of points) {
+    if (point.offPath) {
+      lastIdent = point.ident;
+      continue;
+    }
+    if (!prev) {
+      prev = point;
+      if (!point.shape) lastIdent = point.ident;
+      continue;
+    }
+    const via = point.via;
     const handedOff = Boolean(
-      via && onAirway?.has(legKey(via, points[i - 1].ident, points[i].ident)),
+      via && onAirway?.has(legKey(via, lastIdent, point.ident)),
     );
-    const from: LatLon = [points[i - 1].lat, points[i - 1].lon];
-    const to: LatLon = [points[i].lat, points[i].lon];
+    const from: LatLon = [prev.lat, prev.lon];
+    const to: LatLon = [point.lat, point.lon];
+    const seg = legSegment(prev, point);
     features.push({
       type: "Feature",
       // 一条腿的样式取自**它到达的那个点**：SID 的第一条腿属于 SID。这条规则和
-      // can-radar 一致，改之前先看那边。
+      // can-radar 一致，改之前先看那边。到达机场的那一条例外，取出发点的。
       //
       // `via` 是走这条腿用的航路代号（不在航路上时是 `DCT`），拿来沿线标注 ——
       // 航图上就是这么读一条计划的：点、航路、点。
       properties: {
-        procedure: isProcedure(points[i]) ? 1 : 0,
-        via: points[i].via ?? "",
+        procedure: seg === "route" ? 0 : 1,
+        seg,
+        via: point.via ?? "",
         // 这条腿在航路网上被点亮了 —— 高缩放交给那一层画，见上面那段。
         onAirway: handedOff ? 1 : 0,
       },
@@ -90,24 +103,42 @@ export function routeLines(
         coordinates: arc(from, to).map(([lat, lon]) => [lon, lat]),
       },
     });
+    prev = point;
+    if (!point.shape) lastIdent = point.ident;
   }
   return { type: "FeatureCollection", features };
+}
+
+/** 一条腿属于哪一段：`sid` / `star` / `approach` / `route`（航路段）。 */
+export type RouteSegment = "sid" | "star" | "approach" | "route";
+
+function segmentOf(p: RoutePoint): RouteSegment | null {
+  return p.kind === "sid" || p.kind === "star" || p.kind === "approach"
+    ? p.kind
+    : null;
+}
+
+export function legSegment(from: RoutePoint, to: RoutePoint): RouteSegment {
+  if (to.kind === "airport") return segmentOf(from) ?? "route";
+  return segmentOf(to) ?? "route";
 }
 
 export function pointFeatures(points: RoutePoint[]): FeatureCollection {
   return {
     type: "FeatureCollection",
-    features: points.map((p) => ({
-      type: "Feature",
-      properties: {
-        ident: p.ident,
-        airport: p.kind === "airport" ? 1 : 0,
-        // 是不是**这条航路上**的点。markers 这个 source 里同时装着航路的点和
-        // 一批彼此无关的点（比如全国机场），只有前者该被标名字 —— 给几百个机场
-        // 都标上名字就是一团糊。
-        onRoute: p.onRoute ? 1 : 0,
-      },
-      geometry: { type: "Point", coordinates: [p.lon, p.lat] },
-    })),
+    features: points
+      .filter((p) => !p.shape)
+      .map((p) => ({
+        type: "Feature",
+        properties: {
+          ident: p.ident,
+          airport: p.kind === "airport" ? 1 : 0,
+          // 是不是**这条航路上**的点。markers 这个 source 里同时装着航路的点和
+          // 一批彼此无关的点（比如全国机场），只有前者该被标名字 —— 给几百个机场
+          // 都标上名字就是一团糊。
+          onRoute: p.onRoute ? 1 : 0,
+        },
+        geometry: { type: "Point", coordinates: [p.lon, p.lat] },
+      })),
   };
 }

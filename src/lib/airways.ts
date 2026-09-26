@@ -156,9 +156,11 @@ export function legKey(airway: string, a: string, b: string): string {
  * 就说明这条腿不在任何航路上 —— 那种腿没有可点亮的东西，得自己画线。
  */
 export function routeLegKeys(
-  points: { ident: string; via?: string }[],
+  all: { ident: string; via?: string; shape?: boolean }[],
 ): Set<string> {
   const out = new Set<string>();
+  // 画弯插进来的几何点不是航路点，比键时越过它们。
+  const points = all.filter((p) => !p.shape);
   for (let i = 1; i < points.length; i++) {
     const via = points[i].via;
     if (!via || via === "DCT") continue;

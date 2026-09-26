@@ -19,6 +19,11 @@ import { unwrapList } from "@/lib/aip";
 import { api } from "@/lib/canApi";
 import { dbFetch } from "@/lib/naip";
 import { viewForPlanRequest } from "@/components/map/planRequest";
+import { applySelection } from "@/lib/planProcedures";
+import {
+  PROCEDURES_CHANGED_EVENT,
+  readSelection,
+} from "@/lib/procedureSelection";
 
 export function useRouteLayer(options: {
   airways: Ref<FeatureCollection | null>;
@@ -105,7 +110,9 @@ export function useRouteLayer(options: {
       if (planShown) clearPlanRoute();
       return;
     }
-    const key = `${departure}|${arrival}|${route ?? ""}`;
+    // 本机选的跑道和程序也是这份画法的一部分，变了要重画。
+    const selection = readSelection(departure, arrival);
+    const key = `${departure}|${arrival}|${route ?? ""}|${JSON.stringify(selection)}`;
     // 还是同一份计划，就别每换一页都重新展开一遍。
     if (planShown && key === planKey) return;
 
@@ -141,9 +148,12 @@ export function useRouteLayer(options: {
       return;
     }
 
+    const drawn = await applySelection(resolved, departure, arrival, selection);
+    if (seq !== planSeq || panelPublished) return;
+
     planShown = true;
     planKey = key;
-    points.value = resolved;
+    points.value = drawn;
     // 计划到了，把它在航路网上点亮。航路网可能还没加载好 —— 那边加载完也会再算一次。
     refreshHighlight();
     label.value = text.planOnMap
@@ -223,6 +233,7 @@ export function useRouteLayer(options: {
     void loadPlanRoute();
     document.addEventListener("astro:after-swap", onPageSwap);
     window.addEventListener(PLAN_CHANGED_EVENT, onPageSwap);
+    window.addEventListener(PROCEDURES_CHANGED_EVENT, reloadPlan);
     unsubscribe = subscribeToMap((payload) => {
       panelPublished = true;
       // 面板接管了这块地图，图上画的不再是计划 —— 之后导航时不要去撤它。
@@ -280,6 +291,7 @@ export function useRouteLayer(options: {
     unsubscribePlanRequest = null;
     document.removeEventListener("astro:after-swap", onPageSwap);
     window.removeEventListener(PLAN_CHANGED_EVENT, onPageSwap);
+    window.removeEventListener(PROCEDURES_CHANGED_EVENT, reloadPlan);
   }
 
   return {

@@ -4,7 +4,10 @@
  *
  * 规划器（can-db）已经替你挑了一条 SID 和一条 STAR —— 它挑的依据是「航路从哪个
  * 点接进网络」，而**它不知道今天用哪条跑道**：跑道由管制员按风向定，不在飞行计
- * 划里。所以这个组件补的正是那一半：先选跑道，再在这条跑道服务的程序里挑。
+ * 划里。所以这个组件补的正是那一半：先选跑道，再在这条跑道服务的程序里挑，再挑转换。
+ *
+ * 选择存在本机（`lib/procedureSelection.ts`），按起降机场对。地图上的已提交计划和
+ * 飞行计划页的预览都按它画。
  *
  * ## 三件事必须显示，不能省成好看
  *
@@ -20,30 +23,46 @@
  * 3. **高度限制的原文。** `05910B03940A` 这种 ARINC 424 编码**一个字都不解释**，
  *    理由写在 lib/procedures.ts 顶上：解错一个高度限制比没有更危险。
  *
+ * ## 航路串只在人改选择时改写
+ *
+ * 打开时以航路串里写着的 SID/STAR 为准（串里没有才用本机存的），所以打开这个组件
+ * 永远不会悄悄改掉表单里的航路。改写判断「首尾那个记号本来是不是程序名」，靠的是
+ * 这个机场**真有**这个名字的程序，不猜记号长得像不像。
+ *
  * ## 进近只画，不进航路串
  *
  * 进近不是填报航路的一部分（管制员给的），所以选了它只影响图上画什么和腿表里列
- * 什么，不动那串字符。这不是偷懒 —— 把进近写进航路串会得到一份管制员读起来莫名
- * 其妙的计划。
+ * 什么，不动那串字符。
  */
 import { computed, ref, watch } from "vue";
+import { api } from "@/lib/canApi";
 import { createTranslator } from "@/lib/i18n";
 import { publishToMap, type MapPoint } from "@/lib/mapBus";
-import { aipScope } from "@/lib/naip";
 import { isForbiddenStatus } from "@/lib/requestState";
+import { smoothProcedureTurns } from "@/lib/procedureGeometry";
+import {
+  EMPTY_SELECTION,
+  readSelection,
+  writeSelection,
+  type ProcedureSelection,
+} from "@/lib/procedureSelection";
+import { parseMetarWind, windComponents, type MetarWind } from "@/lib/wind";
 import StateCard from "@/components/ui/StateCard.vue";
 import {
   composeRoutePoints,
-  fetchAirportProcedures,
+  findRunway,
   joinIdent,
   joinsRoute,
+  loadAirportProcedures,
   pickProcedures,
   procedureLabel,
   procedureTrack,
+  procedureTransitions,
   ProcedureError,
   procedureRunways,
   rewriteRoute,
   runwayIdents,
+  runwayTrueBearing,
   servesAllRunways,
   type AirportProcedures,
   type Procedure,
@@ -54,27 +73,20 @@ const props = defineProps<{
   messages: Record<string, unknown>;
   departure: string;
   arrival: string;
-  /** 两端机场之间的航路点，**不含两端机场**。见 routePlan.ts 的 planEnroutePoints。 */
-  enroute: MapPoint[];
-  /** 规划器给的那串，改写以它为底。 */
+  /** 当前的航路串。改写以它为底。 */
   route: string;
-  /** 规划器挑的那两条，用来判断「首尾那个记号本来是不是程序名」。 */
-  planSid: string;
-  planStar: string;
-  departurePoint: MapPoint | null;
-  arrivalPoint: MapPoint | null;
+  disabled?: boolean;
+  /**
+   * 两端机场之间的航路点，**不含两端机场**。给了就由这个组件把合成的航线推给地图
+   * （航路生成页）；不给时地图由调用方负责（飞行计划页的预览、已提交的计划）。
+   */
+  enroute?: MapPoint[];
+  departurePoint?: MapPoint | null;
+  arrivalPoint?: MapPoint | null;
 }>();
 
 const emit = defineEmits<{ (e: "update:route", value: string): void }>();
 const t = createTranslator(props.messages);
-
-/**
- * 按 ICAO 缓存，**模块级而不是组件级**：换一次目的地再换回来是常见操作，而每个
- * 机场是一次几百 KB 的下载。组件级的缓存活不过一次卸载。
- *
- * 键带 `aipScope()`：隐藏 NAIP 的开关一变，旧那份就不能再被命中（lib/naip.ts）。
- */
-const cache = new Map<string, AirportProcedures>();
 
 const depData = ref<AirportProcedures | null>(null);
 const arrData = ref<AirportProcedures | null>(null);
@@ -83,22 +95,49 @@ const busy = ref(false);
 const denied = ref(false);
 const failed = ref(false);
 
-const depRunway = ref("");
-const arrRunway = ref("");
-const sidName = ref("");
-const starName = ref("");
-const approachName = ref("");
+const sel = ref<ProcedureSelection>({ ...EMPTY_SELECTION });
 
-async function load(icao: string): Promise<AirportProcedures | null> {
-  const code = icao.trim().toUpperCase();
-  if (code.length !== 4) return null;
-  const key = `${aipScope()}:${code}`;
-  const hit = cache.get(key);
-  if (hit) return hit;
-  const data = await fetchAirportProcedures(code);
-  cache.set(key, data);
-  return data;
+const depCode = computed(() => props.departure.trim().toUpperCase());
+const arrCode = computed(() => props.arrival.trim().toUpperCase());
+
+// ---------------------------------------------------------------- 航路串
+
+const tokens = computed(() =>
+  props.route.trim().toUpperCase().split(/\s+/).filter(Boolean),
+);
+
+function namesOf(data: AirportProcedures | null, kind: ProcedureKind) {
+  return new Set(
+    (data?.procedures ?? []).filter((p) => p.kind === kind).map((p) => p.name),
+  );
 }
+const sidNames = computed(() => namesOf(depData.value, "sid"));
+const starNames = computed(() => namesOf(arrData.value, "star"));
+
+/** 航路串首尾写着的程序名（这个机场真有的才算）。 */
+const routeSid = computed(() => {
+  const first = tokens.value[0];
+  return first && sidNames.value.has(first) ? first : "";
+});
+const routeStar = computed(() => {
+  const last = tokens.value[tokens.value.length - 1];
+  return last && starNames.value.has(last) ? last : "";
+});
+
+/** 航路的首尾两个定位点：去掉程序名和 DCT。 */
+const enrouteIdents = computed(() => {
+  if (props.enroute) return props.enroute.map((p) => p.ident).filter(Boolean);
+  const list = [...tokens.value];
+  if (routeSid.value) list.shift();
+  if (routeStar.value) list.pop();
+  return list.filter((x) => x !== "DCT");
+});
+const firstEnroute = computed(() => enrouteIdents.value[0] ?? "");
+const lastEnroute = computed(
+  () => enrouteIdents.value[enrouteIdents.value.length - 1] ?? "",
+);
+
+// ---------------------------------------------------------------- 取数
 
 async function loadBoth() {
   busy.value = true;
@@ -106,17 +145,12 @@ async function loadBoth() {
   failed.value = false;
   try {
     const [a, b] = await Promise.all([
-      load(props.departure),
-      load(props.arrival),
+      loadAirportProcedures(depCode.value),
+      loadAirportProcedures(arrCode.value),
     ]);
     depData.value = a;
     arrData.value = b;
-    // 规划器挑的那两条当默认值 —— 打开就看到它已经选好了什么，而不是一片空白。
-    sidName.value = props.planSid ?? "";
-    starName.value = props.planStar ?? "";
-    approachName.value = "";
-    depRunway.value = "";
-    arrRunway.value = "";
+    initSelection();
   } catch (e) {
     depData.value = null;
     arrData.value = null;
@@ -124,131 +158,309 @@ async function loadBoth() {
       denied.value = true;
     } else {
       failed.value = true;
-      console.error("[efb:procedures] 取程序失败:", e);
+      console.error("[efb:procedures] failed to load procedures:", e);
     }
   } finally {
     busy.value = false;
   }
 }
 
+/** 本机存的那份打底；航路串里写着的程序名压过它，见文件头。 */
+function initSelection() {
+  const stored = readSelection(depCode.value, arrCode.value);
+  const next = { ...stored };
+  if (routeSid.value && procedureName(stored.sid) !== routeSid.value) {
+    next.sid = routeSid.value;
+    next.sidTransition = "";
+  }
+  if (routeStar.value && procedureName(stored.star) !== routeStar.value) {
+    next.star = routeStar.value;
+    next.starTransition = "";
+  }
+  sel.value = next;
+}
+
 watch(
-  () => [props.departure, props.arrival] as const,
+  [depCode, arrCode],
   ([a, b]) => {
-    if (a?.length === 4 && b?.length === 4) void loadBoth();
+    if (a.length === 4 && b.length === 4) void loadBoth();
+    else {
+      depData.value = null;
+      arrData.value = null;
+    }
   },
   { immediate: true },
 );
 
-const depRunways = computed(() => runwayIdents(depData.value?.runways ?? []));
-const arrRunways = computed(() => runwayIdents(arrData.value?.runways ?? []));
-
-const sids = computed(() =>
-  pickProcedures(depData.value?.procedures ?? [], "sid", depRunway.value),
-);
-const stars = computed(() =>
-  pickProcedures(arrData.value?.procedures ?? [], "star", arrRunway.value),
-);
-const approaches = computed(() =>
-  pickProcedures(arrData.value?.procedures ?? [], "approach", arrRunway.value),
-);
-
-/** 选中的那条。按名字找，找不到就是没选 —— 换跑道之后原来那条可能已经不在列表里。 */
-function find(list: Procedure[], name: string): Procedure | null {
-  return list.find((p) => procedureLabel(p) === name) ?? null;
-}
-const sid = computed(() => find(sids.value, sidName.value));
-const star = computed(() => find(stars.value, starName.value));
-const approach = computed(() => find(approaches.value, approachName.value));
-
-/**
- * 换跑道之后，原来选的那条如果不再服务这条跑道，**清掉而不是留着**。
- *
- * 留着的后果最坏：下拉框显示着一条程序名，而它不在选项里 —— 浏览器会把 select
- * 显示成空，但 `sidName` 还是旧值，于是航路串里也还是旧的那条。人看到的是空，填
- * 出去的是旧值。
- */
-watch([sids, stars, approaches], () => {
-  if (sidName.value && !find(sids.value, sidName.value)) sidName.value = "";
-  if (starName.value && !find(stars.value, starName.value)) starName.value = "";
-  if (approachName.value && !find(approaches.value, approachName.value)) {
-    approachName.value = "";
+/** 有人在表单里直接改了航路串的首尾程序名：跟过去，不改写回去。 */
+watch([routeSid, routeStar], ([s, r], [prevS, prevR]) => {
+  if (!depData.value || !arrData.value) return;
+  const next = { ...sel.value };
+  if (s !== prevS && s && procedureName(next.sid) !== s) {
+    next.sid = s;
+    next.sidTransition = "";
   }
+  if (r !== prevR && r && procedureName(next.star) !== r) {
+    next.star = r;
+    next.starTransition = "";
+  }
+  sel.value = next;
 });
 
-// ---------------------------------------------------------------- 衔接
+// ---------------------------------------------------------------- 跑道与风
 
-const firstEnroute = computed(() => props.enroute[0]?.ident ?? "");
-const lastEnroute = computed(
-  () => props.enroute[props.enroute.length - 1]?.ident ?? "",
+const metar = ref<Record<string, MetarWind | null | "failed">>({});
+
+async function loadWind(icao: string) {
+  if (icao.length !== 4 || icao in metar.value) return;
+  metar.value = { ...metar.value, [icao]: null };
+  const result = await api<{ icao: string; metar: string | null }>(
+    `/api/v1/metar?icao=${encodeURIComponent(icao)}`,
+  );
+  metar.value = {
+    ...metar.value,
+    [icao]: result.ok ? parseMetarWind(result.data?.metar) : "failed",
+  };
+}
+watch(
+  [depCode, arrCode],
+  ([a, b]) => {
+    void loadWind(a);
+    void loadWind(b);
+  },
+  { immediate: true },
 );
+
+interface RunwayRow {
+  id: string;
+  lengthM: number | null;
+  widthM: number | null;
+  bearing: number | null;
+  head: number | null;
+  cross: number | null;
+  crossFrom: "left" | "right" | null;
+}
+
+function runwayRows(data: AirportProcedures | null, icao: string): RunwayRow[] {
+  if (!data) return [];
+  const wind = metar.value[icao];
+  return runwayIdents(data.runways).map((id) => {
+    const rwy = findRunway(data.runways, id);
+    const detail = data.runwayDetails.find(
+      (d) => (d.ident ?? "").toUpperCase() === id,
+    );
+    const bearing = rwy ? runwayTrueBearing(rwy, detail) : null;
+    const comp =
+      wind && wind !== "failed" && bearing != null
+        ? windComponents(wind, bearing)
+        : null;
+    return {
+      id,
+      lengthM: detail?.lengthM ?? null,
+      widthM: detail?.widthM ?? null,
+      bearing,
+      head: comp?.headKt ?? null,
+      cross: comp?.crossKt ?? null,
+      crossFrom: comp?.crossFrom ?? null,
+    };
+  });
+}
+
+const depRunways = computed(() => runwayRows(depData.value, depCode.value));
+const arrRunways = computed(() => runwayRows(arrData.value, arrCode.value));
+const windFailed = computed(
+  () =>
+    metar.value[depCode.value] === "failed" ||
+    metar.value[arrCode.value] === "failed",
+);
+
+// ---------------------------------------------------------------- 程序
+
+const sids = computed(() =>
+  pickProcedures(depData.value?.procedures ?? [], "sid", sel.value.depRunway),
+);
+const stars = computed(() =>
+  pickProcedures(arrData.value?.procedures ?? [], "star", sel.value.arrRunway),
+);
+const approaches = computed(() =>
+  pickProcedures(
+    arrData.value?.procedures ?? [],
+    "approach",
+    sel.value.arrRunway,
+  ),
+);
+
+/**
+ * 选中的那条。先按带变体的标签找，找不到再按名字找第一条 —— 航路串里只写名字，
+ * 同名的几种变体由跑道筛掉。
+ */
+function find(list: Procedure[], label: string): Procedure | null {
+  if (!label) return null;
+  return (
+    list.find((p) => procedureLabel(p) === label) ??
+    list.find((p) => p.name === label) ??
+    null
+  );
+}
+const sid = computed(() => find(sids.value, sel.value.sid));
+const star = computed(() => find(stars.value, sel.value.star));
+const approach = computed(() => find(approaches.value, sel.value.approach));
+
+function procedureName(label: string): string {
+  return label.replace(/-[A-Z0-9]+$/, "");
+}
+
+const sidTransitions = computed(() =>
+  sid.value ? procedureTransitions(sid.value) : [],
+);
+const starTransitions = computed(() =>
+  star.value ? procedureTransitions(star.value) : [],
+);
+const approachTransitions = computed(() =>
+  approach.value ? procedureTransitions(approach.value) : [],
+);
+
+// ---------------------------------------------------------------- 改选择
+
+/**
+ * 人改了一项。换跑道之后，原来选的那条如果不再服务这条跑道，**清掉而不是留着**
+ * —— 留着的话下拉框显示空，而航路串里还是旧的那条。
+ */
+function update(patch: Partial<ProcedureSelection>) {
+  const next = { ...sel.value, ...patch };
+  const depList = pickProcedures(
+    depData.value?.procedures ?? [],
+    "sid",
+    next.depRunway,
+  );
+  const arrStars = pickProcedures(
+    arrData.value?.procedures ?? [],
+    "star",
+    next.arrRunway,
+  );
+  const arrApps = pickProcedures(
+    arrData.value?.procedures ?? [],
+    "approach",
+    next.arrRunway,
+  );
+  if (next.sid && !find(depList, next.sid)) next.sid = "";
+  if (next.star && !find(arrStars, next.star)) next.star = "";
+  if (next.approach && !find(arrApps, next.approach)) next.approach = "";
+  if (next.sid !== sel.value.sid) next.sidTransition = "";
+  if (next.star !== sel.value.star) next.starTransition = "";
+  if (next.approach !== sel.value.approach) next.approachTransition = "";
+
+  const before = sel.value;
+  sel.value = next;
+  writeSelection(depCode.value, arrCode.value, next);
+
+  if (before.sid !== next.sid || before.star !== next.star) {
+    const rewritten = rewriteRoute(
+      props.route.trim().toUpperCase(),
+      { sid: routeSid.value, star: routeStar.value },
+      {
+        sid: next.sid
+          ? procedureName(find(depList, next.sid)?.name ?? next.sid)
+          : null,
+        star: next.star
+          ? procedureName(find(arrStars, next.star)?.name ?? next.star)
+          : null,
+      },
+    );
+    if (rewritten !== props.route.trim().toUpperCase()) {
+      emit("update:route", rewritten);
+    }
+  }
+}
+
+function onSelect(field: keyof ProcedureSelection, event: Event) {
+  update({ [field]: (event.target as HTMLSelectElement).value });
+}
+
+function toggleRunway(field: "depRunway" | "arrRunway", id: string) {
+  update({ [field]: sel.value[field] === id ? "" : id });
+}
+
+// ---------------------------------------------------------------- 衔接
 
 const sidJoin = computed(() => joinsRoute(sid.value, firstEnroute.value));
 const starJoin = computed(() => joinsRoute(star.value, lastEnroute.value));
 
-// ---------------------------------------------------------------- 输出
+// ---------------------------------------------------------------- 地图（航路生成页）
 
-/**
- * 选了什么就改写航路串、重画地图。
- *
- * 两件事一起做而不是分开 watch：它们读的是同一批状态，分开写迟早出现「图上是新
- * 的、串还是旧的」那半秒 —— 而人正好可能在那半秒里按下「填入飞行计划」。
- */
 watch(
-  [sid, star, approach, () => props.enroute, () => props.route],
+  [
+    sel,
+    sid,
+    star,
+    approach,
+    () => props.enroute,
+    () => props.departurePoint,
+    () => props.arrivalPoint,
+  ],
   () => {
+    if (!props.enroute) return;
     if (!depData.value && !arrData.value) return;
-
-    emit(
-      "update:route",
-      rewriteRoute(
-        props.route,
-        { sid: props.planSid, star: props.planStar },
-        {
-          sid: sid.value ? sid.value.name : null,
-          star: star.value ? star.value.name : null,
-        },
-      ),
-    );
-
     publishToMap({
-      points: composeRoutePoints({
-        departure: props.departurePoint,
-        sid: sid.value,
-        // 跑道要传进去：一条 SID 常常把好几条跑道的转换塞在同一串腿里，不给跑道就
-        // 只画公共段。不传的话画出来是一团来回穿插的线（ZBAD 的 ELKU4K 就是），而
-        // 每一段本身画得都很漂亮，看不出错。
-        sidRunway: depRunway.value,
-        enroute: props.enroute,
-        star: star.value,
-        starRunway: arrRunway.value,
-        approach: approach.value,
-        arrival: props.arrivalPoint,
-      }),
-      label: `${props.departure} → ${props.arrival}`,
+      points: smoothProcedureTurns(
+        composeRoutePoints({
+          departure: props.departurePoint ?? null,
+          departureRunway: findRunway(
+            depData.value?.runways,
+            sel.value.depRunway,
+          ),
+          sid: sid.value,
+          // 跑道要传进去：一条 SID 常常把好几条跑道的转换塞在同一串腿里，不给跑道
+          // 就只画公共段。
+          sidRunway: sel.value.depRunway,
+          sidTransition: sel.value.sidTransition,
+          enroute: props.enroute,
+          star: star.value,
+          starRunway: sel.value.arrRunway,
+          starTransition: sel.value.starTransition,
+          approach: approach.value,
+          approachTransition: sel.value.approachTransition,
+          arrivalRunway: findRunway(
+            arrData.value?.runways,
+            sel.value.arrRunway,
+          ),
+          arrival: props.arrivalPoint ?? null,
+        }),
+      ),
+      label: `${depCode.value} → ${arrCode.value}`,
     });
   },
-  { deep: false },
 );
 
+// ---------------------------------------------------------------- 腿表
+
 /**
- * 摆出来的腿表：选中的三条程序按飞行顺序接起来。
- *
- * 和地图一样只列**实际飞的那几段** —— 列全部转换的话，一条 SID 会摊出好几条跑道各自
- * 的腿，而表格里看不出哪几行属于哪条跑道。
+ * 选中的三条程序按飞行顺序接起来。和地图一样只列**实际飞的那几段**；进近连复飞一起
+ * 列（地图的主线不画复飞）。
  */
 const legs = computed(() =>
   (
     [
-      [sid.value, depRunway.value, firstEnroute.value],
-      [star.value, arrRunway.value, lastEnroute.value],
-      [approach.value, arrRunway.value, null],
+      [
+        sid.value,
+        sel.value.depRunway,
+        firstEnroute.value,
+        sel.value.sidTransition,
+      ],
+      [
+        star.value,
+        sel.value.arrRunway,
+        lastEnroute.value,
+        sel.value.starTransition,
+      ],
+      [approach.value, sel.value.arrRunway, null, sel.value.approachTransition],
     ] as const
   )
-    .filter((row): row is readonly [Procedure, string, string | null] =>
+    .filter((row): row is readonly [Procedure, string, string | null, string] =>
       Boolean(row[0]),
     )
-    .flatMap(([p, runway, enrouteFix]) =>
-      procedureTrack(p, { runway, enrouteFix }).map((leg) => ({
+    .flatMap(([p, runway, enrouteFix, transition]) =>
+      procedureTrack(p, { runway, enrouteFix, transition }).map((leg) => ({
         procedure: p,
         leg,
       })),
@@ -264,11 +476,21 @@ function runwayNote(p: Procedure): string {
 function kindLabel(kind: ProcedureKind): string {
   return t(`route.procedures.kind.${kind}`);
 }
+
+function crossText(row: RunwayRow): string {
+  if (!row.cross) return "";
+  return t(
+    row.crossFrom === "left"
+      ? "route.procedures.wind.crossLeft"
+      : "route.procedures.wind.crossRight",
+    { kt: String(row.cross) },
+  );
+}
 </script>
 
 <template>
   <section
-    v-if="denied || failed || depData || arrData"
+    v-if="denied || failed || busy || depData || arrData"
     class="flex flex-col gap-4"
   >
     <h3 class="text-sm font-semibold text-ink">
@@ -298,29 +520,69 @@ function kindLabel(kind: ProcedureKind): string {
     />
 
     <template v-else>
-      <div class="grid gap-3 @md:grid-cols-2">
+      <fieldset :disabled="disabled" class="grid min-w-0 gap-5 @md:grid-cols-2">
         <!-- 离场 -->
-        <div class="flex flex-col gap-2">
+        <div class="flex min-w-0 flex-col gap-3">
           <p class="text-xs font-medium text-ink">
             {{ t("route.procedures.departure") }}
-            <span class="font-mono text-muted">{{ departure }}</span>
+            <span class="font-mono text-muted">{{ depCode }}</span>
           </p>
-          <label class="flex flex-col gap-1">
-            <span class="text-xs text-muted">{{
-              t("route.procedures.runway")
-            }}</span>
-            <select v-model="depRunway" class="input font-mono">
-              <option value="">{{ t("route.procedures.anyRunway") }}</option>
-              <option v-for="r in depRunways" :key="r" :value="r">
-                {{ r }}
-              </option>
-            </select>
-          </label>
+
+          <div
+            role="radiogroup"
+            :aria-label="t('route.procedures.runway')"
+            class="flex flex-col gap-1.5"
+          >
+            <button
+              v-for="r in depRunways"
+              :key="r.id"
+              type="button"
+              role="radio"
+              :aria-checked="sel.depRunway === r.id"
+              class="runway-row"
+              :class="{ 'is-selected': sel.depRunway === r.id }"
+              @click="toggleRunway('depRunway', r.id)"
+            >
+              <span class="font-mono text-base font-semibold text-ink">{{
+                r.id
+              }}</span>
+              <span class="runway-meta">
+                <template v-if="r.lengthM"
+                  >{{ r.lengthM
+                  }}<template v-if="r.widthM">×{{ r.widthM }}</template>
+                  m</template
+                >
+                <template v-if="r.bearing != null">
+                  ·
+                  {{
+                    Math.round(r.bearing).toString().padStart(3, "0")
+                  }}°T</template
+                >
+              </span>
+              <span
+                v-if="r.head != null"
+                class="wind-chip"
+                :class="r.head < 0 ? 'is-tail' : 'is-head'"
+              >
+                {{
+                  r.head < 0
+                    ? t("route.procedures.wind.tail", { kt: String(-r.head) })
+                    : t("route.procedures.wind.head", { kt: String(r.head) })
+                }}
+                <template v-if="r.cross"> · {{ crossText(r) }}</template>
+              </span>
+            </button>
+          </div>
+
           <label class="flex flex-col gap-1">
             <span class="text-xs text-muted"
               >{{ kindLabel("sid") }} · {{ sids.length }}</span
             >
-            <select v-model="sidName" class="input font-mono">
+            <select
+              :value="sid ? procedureLabel(sid) : ''"
+              class="input font-mono"
+              @change="onSelect('sid', $event)"
+            >
               <option value="">{{ t("route.procedures.none") }}</option>
               <option
                 v-for="p in sids"
@@ -331,30 +593,87 @@ function kindLabel(kind: ProcedureKind): string {
               </option>
             </select>
           </label>
-        </div>
-
-        <!-- 进场 -->
-        <div class="flex flex-col gap-2">
-          <p class="text-xs font-medium text-ink">
-            {{ t("route.procedures.arrival") }}
-            <span class="font-mono text-muted">{{ arrival }}</span>
-          </p>
-          <label class="flex flex-col gap-1">
+          <label v-if="sidTransitions.length" class="flex flex-col gap-1">
             <span class="text-xs text-muted">{{
-              t("route.procedures.runway")
+              t("route.procedures.transition")
             }}</span>
-            <select v-model="arrRunway" class="input font-mono">
-              <option value="">{{ t("route.procedures.anyRunway") }}</option>
-              <option v-for="r in arrRunways" :key="r" :value="r">
-                {{ r }}
+            <select
+              :value="sel.sidTransition"
+              class="input font-mono"
+              @change="onSelect('sidTransition', $event)"
+            >
+              <option value="">
+                {{ t("route.procedures.autoTransition") }}
+              </option>
+              <option v-for="name in sidTransitions" :key="name" :value="name">
+                {{ name }}
               </option>
             </select>
           </label>
+        </div>
+
+        <!-- 进场 -->
+        <div class="flex min-w-0 flex-col gap-3">
+          <p class="text-xs font-medium text-ink">
+            {{ t("route.procedures.arrival") }}
+            <span class="font-mono text-muted">{{ arrCode }}</span>
+          </p>
+
+          <div
+            role="radiogroup"
+            :aria-label="t('route.procedures.runway')"
+            class="flex flex-col gap-1.5"
+          >
+            <button
+              v-for="r in arrRunways"
+              :key="r.id"
+              type="button"
+              role="radio"
+              :aria-checked="sel.arrRunway === r.id"
+              class="runway-row"
+              :class="{ 'is-selected': sel.arrRunway === r.id }"
+              @click="toggleRunway('arrRunway', r.id)"
+            >
+              <span class="font-mono text-base font-semibold text-ink">{{
+                r.id
+              }}</span>
+              <span class="runway-meta">
+                <template v-if="r.lengthM"
+                  >{{ r.lengthM
+                  }}<template v-if="r.widthM">×{{ r.widthM }}</template>
+                  m</template
+                >
+                <template v-if="r.bearing != null">
+                  ·
+                  {{
+                    Math.round(r.bearing).toString().padStart(3, "0")
+                  }}°T</template
+                >
+              </span>
+              <span
+                v-if="r.head != null"
+                class="wind-chip"
+                :class="r.head < 0 ? 'is-tail' : 'is-head'"
+              >
+                {{
+                  r.head < 0
+                    ? t("route.procedures.wind.tail", { kt: String(-r.head) })
+                    : t("route.procedures.wind.head", { kt: String(r.head) })
+                }}
+                <template v-if="r.cross"> · {{ crossText(r) }}</template>
+              </span>
+            </button>
+          </div>
+
           <label class="flex flex-col gap-1">
             <span class="text-xs text-muted"
               >{{ kindLabel("star") }} · {{ stars.length }}</span
             >
-            <select v-model="starName" class="input font-mono">
+            <select
+              :value="star ? procedureLabel(star) : ''"
+              class="input font-mono"
+              @change="onSelect('star', $event)"
+            >
               <option value="">{{ t("route.procedures.none") }}</option>
               <option
                 v-for="p in stars"
@@ -365,11 +684,33 @@ function kindLabel(kind: ProcedureKind): string {
               </option>
             </select>
           </label>
+          <label v-if="starTransitions.length" class="flex flex-col gap-1">
+            <span class="text-xs text-muted">{{
+              t("route.procedures.transition")
+            }}</span>
+            <select
+              :value="sel.starTransition"
+              class="input font-mono"
+              @change="onSelect('starTransition', $event)"
+            >
+              <option value="">
+                {{ t("route.procedures.autoTransition") }}
+              </option>
+              <option v-for="name in starTransitions" :key="name" :value="name">
+                {{ name }}
+              </option>
+            </select>
+          </label>
+
           <label class="flex flex-col gap-1">
             <span class="text-xs text-muted"
               >{{ kindLabel("approach") }} · {{ approaches.length }}</span
             >
-            <select v-model="approachName" class="input font-mono">
+            <select
+              :value="approach ? procedureLabel(approach) : ''"
+              class="input font-mono"
+              @change="onSelect('approach', $event)"
+            >
               <option value="">{{ t("route.procedures.none") }}</option>
               <option
                 v-for="p in approaches"
@@ -380,11 +721,37 @@ function kindLabel(kind: ProcedureKind): string {
               </option>
             </select>
           </label>
+          <label v-if="approachTransitions.length" class="flex flex-col gap-1">
+            <span class="text-xs text-muted">{{
+              t("route.procedures.transition")
+            }}</span>
+            <select
+              :value="sel.approachTransition"
+              class="input font-mono"
+              @change="onSelect('approachTransition', $event)"
+            >
+              <option value="">
+                {{ t("route.procedures.autoTransition") }}
+              </option>
+              <option
+                v-for="name in approachTransitions"
+                :key="name"
+                :value="name"
+              >
+                {{ name }}
+              </option>
+            </select>
+          </label>
           <p class="text-xs text-muted">
             {{ t("route.procedures.approachNote") }}
           </p>
         </div>
-      </div>
+      </fieldset>
+
+      <p v-if="windFailed" class="text-xs text-muted">
+        {{ t("route.procedures.wind.failed") }}
+      </p>
+      <p class="text-xs text-muted">{{ t("route.procedures.savedLocally") }}</p>
 
       <!-- 衔接判断，见组件顶上第 1 条。两头都摆出来，不然没法查。 -->
       <p
@@ -422,7 +789,10 @@ function kindLabel(kind: ProcedureKind): string {
               :key="i"
               class="border-t border-subtle"
             >
-              <td class="py-1 pr-3 text-muted">{{ row.procedure.name }}</td>
+              <td class="py-1 pr-3 text-muted">
+                {{ row.procedure.name
+                }}<template v-if="row.leg.part === 'missed'"> MA</template>
+              </td>
               <td class="py-1 pr-3">
                 {{ row.leg.ident || "—" }}
                 <span
@@ -450,3 +820,43 @@ function kindLabel(kind: ProcedureKind): string {
     </template>
   </section>
 </template>
+
+<style scoped>
+.runway-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.5rem;
+  text-align: left;
+}
+.runway-row.is-selected {
+  border-color: var(--color-brand-deep);
+  box-shadow: inset 0 0 0 1px var(--color-brand-deep);
+}
+.runway-row:disabled {
+  opacity: 0.6;
+}
+.runway-meta {
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+.wind-chip {
+  margin-left: auto;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+.wind-chip.is-head {
+  background: var(--color-success-bg);
+  color: var(--color-success-fg);
+}
+.wind-chip.is-tail {
+  background: var(--color-danger-bg);
+  color: var(--color-danger-fg);
+}
+</style>

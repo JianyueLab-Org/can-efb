@@ -270,6 +270,16 @@
           "path": "区間",
           "alt": "高度制限",
           "speed": "速度"
+        },
+        "transition": "トランジション",
+        "autoTransition": "経路から自動",
+        "savedLocally": "滑走路と方式の選択はこの端末に保存され、地図上の計画はそれに従って描かれます。",
+        "wind": {
+          "head": "向かい風 {kt} kt",
+          "tail": "追い風 {kt} kt",
+          "crossLeft": "左横風 {kt} kt",
+          "crossRight": "右横風 {kt} kt",
+          "failed": "METAR を取得できず、風成分を表示できません。"
         }
       },
       "planFailed": "フライトプランを読み込めませんでした。後でもう一度お試しください — プランがないという意味ではありません。"

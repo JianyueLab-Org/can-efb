@@ -270,6 +270,16 @@
           "path": "腿型",
           "alt": "高度限制",
           "speed": "速度"
+        },
+        "transition": "转换",
+        "autoTransition": "按航路自动",
+        "savedLocally": "跑道和程序的选择保存在本机，地图上的计划按它画。",
+        "wind": {
+          "head": "顶风 {kt} kt",
+          "tail": "顺风 {kt} kt",
+          "crossLeft": "左侧风 {kt} kt",
+          "crossRight": "右侧风 {kt} kt",
+          "failed": "没能读取 METAR，跑道不显示风分量。"
         }
       },
       "planFailed": "没能读取你的飞行计划，稍后再试 —— 这不代表你没有计划。"
