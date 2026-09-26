@@ -8,9 +8,11 @@ import {
   procedureRunways,
   procedureToMapPoints,
   procedureTrack,
+  procedureTransitions,
   rewriteRoute,
   runwayIdents,
   runwayMatches,
+  runwayTrueBearing,
   servesAllRunways,
   servesRunway,
   type Procedure,
@@ -572,5 +574,116 @@ describe("runwayMatches", () => {
     expect(servesRunway(p, "16L")).toBe(true);
     expect(servesRunway(p, "16R")).toBe(true);
     expect(servesRunway(p, "34L")).toBe(false);
+  });
+});
+
+describe("转换与进近分段", () => {
+  const tleg = (
+    ident: string,
+    transition: string | null,
+    part: string | null = null,
+  ) => ({ ...leg(ident, 1, 1), transition, part });
+
+  const sid = proc({
+    name: "ASUKA4",
+    path: [
+      tleg("RW32L", "RW32L"),
+      tleg("ITE", "RW32L"),
+      tleg("ASUKA", "ALL"),
+      tleg("SHTLE", "SHTLE"),
+      tleg("ASUKA", "ASUKA"),
+      tleg("KAMEO", "ASUKA"),
+    ],
+  });
+
+  test("可选的转换不含跑道转换和公共段", () => {
+    expect(procedureTransitions(sid)).toEqual(["ASUKA", "SHTLE"]);
+  });
+
+  test("选定的转换压过按接入点猜的那条", () => {
+    expect(
+      procedureTrack(sid, {
+        runway: "32L",
+        enrouteFix: "KAMEO",
+        transition: "SHTLE",
+      }).map((l) => l.ident),
+    ).toEqual(["RW32L", "ITE", "ASUKA", "SHTLE"]);
+  });
+
+  const lda = proc({
+    kind: "approach",
+    name: "L22",
+    path: [
+      tleg("BACON", "BACON", "transition"),
+      tleg("BEAST", "BACON", "transition"),
+      tleg("XAC", "XAC", "transition"),
+      tleg("BONDO", "", "final"),
+      tleg("RW22", "", "final"),
+      tleg("MISSD", "", "missed"),
+    ],
+  });
+
+  test("进近：转换按 part 取，复飞可去掉", () => {
+    expect(procedureTransitions(lda)).toEqual(["BACON", "XAC"]);
+    expect(
+      procedureTrack(lda, { transition: "BACON", missed: false }).map(
+        (l) => l.ident,
+      ),
+    ).toEqual(["BACON", "BEAST", "BONDO", "RW22"]);
+    // 没选时按 STAR 终点猜。
+    expect(
+      procedureTrack(lda, { enrouteFix: "XAC" }).map((l) => l.ident),
+    ).toEqual(["XAC", "BONDO", "RW22", "MISSD"]);
+  });
+
+  test("选了跑道就从跑道头起、到跑道头止", () => {
+    const rwy = (id: string, lat: number) => ({
+      id,
+      opposite: null,
+      hdg: null,
+      lat,
+      lon: 0,
+      endLat: lat + 0.1,
+      endLon: 0,
+    });
+    const points = composeRoutePoints({
+      departure: { ident: "RJOO", lat: 5, lon: 5, kind: "airport" },
+      departureRunway: rwy("32L", 0),
+      enroute: [{ ident: "ASUKA", lat: 3, lon: 3, kind: "fix" }],
+      arrivalRunway: rwy("22", 9),
+      arrival: { ident: "RJTT", lat: 9, lon: 9, kind: "airport" },
+    });
+    expect(points.map((p) => p.ident)).toEqual(["RW32L", "", "ASUKA", "RW22"]);
+    expect(points[1].shape).toBe(true);
+  });
+});
+
+describe("runwayTrueBearing", () => {
+  const r = {
+    id: "36",
+    opposite: "18",
+    hdg: 5,
+    lat: 0,
+    lon: 0,
+    endLat: 1,
+    endLon: 0,
+  };
+  test("由坐标算，不用磁航向", () => {
+    expect(runwayTrueBearing(r)).toBeCloseTo(0, 5);
+    expect(runwayTrueBearing({ ...r, endLat: 0, endLon: 1 })).toBeCloseTo(
+      90,
+      5,
+    );
+  });
+  test("详情里的真方位优先", () => {
+    expect(
+      runwayTrueBearing(r, {
+        ident: "36",
+        lengthM: null,
+        widthM: null,
+        trueBrg: 2,
+        surface: null,
+      }),
+    ).toBe(2);
   });
 });

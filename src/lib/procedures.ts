@@ -1,5 +1,5 @@
 import type { MapPoint } from "@/lib/mapBus";
-import { dbFetch } from "@/lib/naip";
+import { aipScope, dbFetch } from "@/lib/naip";
 
 /**
  * 进离场程序与跑道：取回来、筛出来、画出去。
@@ -88,10 +88,21 @@ export interface AirportRunway {
   endLon: number;
 }
 
-/** 详情接口里我们要的那两块。其余字段还在，只是这个模块不关心。 */
+/** 跑道的物理参数，按 `ident`（跑道端）和 `runways` 对上。没有坐标。 */
+export interface RunwayDetail {
+  ident: string;
+  lengthM: number | null;
+  widthM: number | null;
+  /** 真方位，度。 */
+  trueBrg: number | null;
+  surface: string | null;
+}
+
+/** 详情接口里我们要的那几块。其余字段还在，只是这个模块不关心。 */
 export interface AirportProcedures {
   icao: string;
   runways: AirportRunway[];
+  runwayDetails: RunwayDetail[];
   procedures: Procedure[];
 }
 
@@ -135,11 +146,66 @@ export async function fetchAirportProcedures(
   return {
     icao: data.icao ?? code,
     runways: data.runways ?? [],
+    runwayDetails: data.runwayDetails ?? [],
     procedures: data.procedures ?? [],
   };
 }
 
+/**
+ * 按 ICAO 缓存的 `fetchAirportProcedures`。键带 `aipScope()`，隐藏 NAIP 的开关一变就
+ * 不再命中旧的那份。并发的同一个请求共用一次。失败不进缓存。
+ */
+const cache = new Map<string, Promise<AirportProcedures>>();
+
+export function loadAirportProcedures(
+  icao: string,
+): Promise<AirportProcedures> {
+  const code = icao.trim().toUpperCase();
+  const key = `${aipScope()}:${code}`;
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const request = fetchAirportProcedures(code);
+  cache.set(key, request);
+  request.catch(() => cache.delete(key));
+  return request;
+}
+
 // ------------------------------------------------------------------ 跑道
+
+/**
+ * 跑道端的真方位：详情里有 `trueBrg` 就用它，否则由两端坐标算。不用 `hdg`，那是磁
+ * 航向，和 METAR 的真北风向差一个磁差。
+ */
+export function runwayTrueBearing(
+  runway: AirportRunway,
+  detail?: RunwayDetail | null,
+): number | null {
+  if (detail?.trueBrg != null && Number.isFinite(detail.trueBrg)) {
+    return detail.trueBrg;
+  }
+  const { lat, lon, endLat, endLon } = runway;
+  if (![lat, lon, endLat, endLon].every(Number.isFinite)) return null;
+  if (lat === endLat && lon === endLon) return null;
+  const rad = Math.PI / 180;
+  const dLon = (endLon - lon) * rad;
+  const y = Math.sin(dLon) * Math.cos(endLat * rad);
+  const x =
+    Math.cos(lat * rad) * Math.sin(endLat * rad) -
+    Math.sin(lat * rad) * Math.cos(endLat * rad) * Math.cos(dLon);
+  return (Math.atan2(y, x) / rad + 360) % 360;
+}
+
+/** 按代号找一个跑道端。 */
+export function findRunway(
+  runways: AirportRunway[] | null | undefined,
+  ident: string | null | undefined,
+): AirportRunway | null {
+  const want = (ident ?? "").trim().toUpperCase();
+  if (!want || !runways) return null;
+  return (
+    runways.find((r) => (r.id ?? "").trim().toUpperCase() === want) ?? null
+  );
+}
 
 /**
  * 一条程序服务哪些跑道。
@@ -291,10 +357,92 @@ const RUNWAY_TRANSITION = /^RW([0-9]{2}[LRCGB]?)$/;
  *
  * 一个转换都没有的程序（navigraph 那一份 33574 个点里 0 个带转换）原样返回。
  */
+export interface TrackOptions {
+  runway?: string | null;
+  enrouteFix?: string | null;
+  /**
+   * 明确选定的航路转换（进近是进近转换）。给了就只认这个名字，不再按 `enrouteFix`
+   * 去猜。
+   */
+  transition?: string | null;
+  /** 进近的复飞段。默认带上（腿表要列）；地图的主线传 false。 */
+  missed?: boolean;
+}
+
+/** 进近的腿带 `part` 时，按 part 分段取；不带时和 SID/STAR 一样按转换分组。 */
+function approachTrack(p: Procedure, opts: TrackOptions): ProcedureLeg[] {
+  const path = p.path ?? [];
+  const want = (opts.transition ?? "").toUpperCase();
+  const fix = (opts.enrouteFix ?? "").toUpperCase();
+  const transitionLegs = path.filter((l) => l.part === "transition");
+  let chosen: ProcedureLeg[] = [];
+  if (want) {
+    chosen = transitionLegs.filter(
+      (l) => (l.transition ?? "").toUpperCase() === want,
+    );
+  } else if (fix) {
+    // 没选时，取从 STAR 终点起始的那条转换。
+    const name = transitionLegs.find((l, i, all) => {
+      const first = i === 0 || all[i - 1].transition !== l.transition;
+      return (
+        first &&
+        (l.ident.toUpperCase() === fix ||
+          (l.transition ?? "").toUpperCase() === fix)
+      );
+    })?.transition;
+    if (name) chosen = transitionLegs.filter((l) => l.transition === name);
+  }
+  const final = path.filter(
+    (l) => l.part !== "transition" && l.part !== "missed",
+  );
+  const missed =
+    opts.missed === false ? [] : path.filter((l) => l.part === "missed");
+  return dedupeAdjacentLegs([...chosen, ...final, ...missed]);
+}
+
+function dedupeAdjacentLegs(legs: ProcedureLeg[]): ProcedureLeg[] {
+  const out: ProcedureLeg[] = [];
+  for (const leg of legs) {
+    const prev = out[out.length - 1];
+    const same = prev
+      ? leg.ident && prev.ident
+        ? leg.ident === prev.ident
+        : leg.lat === prev.lat && leg.lon === prev.lon
+      : false;
+    if (same) continue;
+    out.push(leg);
+  }
+  return out;
+}
+
+/**
+ * 一条程序可选的转换名：SID/STAR 是具名的航路转换，进近是进近转换。跑道转换和公共
+ * 段不在其中，它们由跑道决定。
+ */
+export function procedureTransitions(p: Procedure): string[] {
+  const path = p.path ?? [];
+  const names = new Set<string>();
+  const byPart = p.kind === "approach" && path.some((l) => l.part);
+  for (const leg of path) {
+    const name = (leg.transition ?? "").trim();
+    if (!name || name === "ALL") continue;
+    if (byPart) {
+      if (leg.part === "transition") names.add(name);
+      continue;
+    }
+    if (RUNWAY_TRANSITION.test(name)) continue;
+    names.add(name);
+  }
+  return [...names].sort((a, b) => a.localeCompare(b));
+}
+
 export function procedureTrack(
   p: Procedure,
-  opts: { runway?: string | null; enrouteFix?: string | null } = {},
+  opts: TrackOptions = {},
 ): ProcedureLeg[] {
+  if (p.kind === "approach" && (p.path ?? []).some((l) => l.part)) {
+    return approachTrack(p, opts);
+  }
   const groups = new Map<string, ProcedureLeg[]>();
   for (const leg of p.path ?? []) {
     const key = leg.transition ?? "";
@@ -323,7 +471,14 @@ export function procedureTrack(
       commonLegs.push(...legs);
       continue;
     }
-    // 具名的航路转换。名字就是接入点，但按**腿**判更稳：汇编偶尔用别名。
+    // 具名的航路转换。选定了就只认名字；没选时按接入点猜 —— 名字就是接入点，但按
+    // **腿**判更稳：汇编偶尔用别名。
+    if (opts.transition) {
+      if (name.toUpperCase() === opts.transition.toUpperCase()) {
+        enrouteLegs.push(...legs);
+      }
+      continue;
+    }
     if (!opts.enrouteFix) continue;
     const outer = p.kind === "star" ? legs[0] : legs[legs.length - 1];
     if (name === opts.enrouteFix || outer?.ident === opts.enrouteFix) {
@@ -345,33 +500,25 @@ export function procedureTrack(
   //
   // 只收**相邻**的重复，和 composeRoutePoints 同一条规矩：一条程序合法地两次经过同一个
   // 点（等待、折返），全局去重会把中间那一整段吃掉。代号为空的腿比坐标。
-  const out: ProcedureLeg[] = [];
-  for (const leg of ordered) {
-    const prev = out[out.length - 1];
-    const same = prev
-      ? leg.ident && prev.ident
-        ? leg.ident === prev.ident
-        : leg.lat === prev.lat && leg.lon === prev.lon
-      : false;
-    if (same) continue;
-    out.push(leg);
-  }
-  return out;
+  return dedupeAdjacentLegs(ordered);
 }
 
 export function procedureToMapPoints(
   p: Procedure,
-  opts: { runway?: string | null; enrouteFix?: string | null } = {},
+  opts: TrackOptions = {},
 ): MapPoint[] {
   const out: MapPoint[] = [];
   for (const leg of procedureTrack(p, opts)) {
     if (leg.lat == null || leg.lon == null) continue;
+    const turn = (leg.turn ?? "").toUpperCase();
     out.push({
       ident: leg.ident || "",
       lat: leg.lat,
       lon: leg.lon,
       kind: p.kind,
       via: p.name,
+      ...(turn === "L" || turn === "R" ? { turn } : {}),
+      ...(leg.flyover ? { flyover: true } : {}),
     });
   }
   return out;
@@ -468,14 +615,21 @@ export function rewriteRoute(
  */
 export function composeRoutePoints(parts: {
   departure?: MapPoint | null;
+  /** 起飞跑道端。给了就从它的跑道头沿跑道画到另一头，再接 SID。 */
+  departureRunway?: AirportRunway | null;
   sid?: Procedure | null;
   /** 起飞跑道。**不给就不画任何跑道转换** —— 见 procedureTrack。 */
   sidRunway?: string | null;
+  sidTransition?: string | null;
   enroute?: MapPoint[] | null;
   star?: Procedure | null;
   /** 落地跑道，同上。 */
   starRunway?: string | null;
+  starTransition?: string | null;
   approach?: Procedure | null;
+  approachTransition?: string | null;
+  /** 落地跑道端。给了就终止在它的跑道头，不画到机场基准点。 */
+  arrivalRunway?: AirportRunway | null;
   arrival?: MapPoint | null;
 }): MapPoint[] {
   // 衔接点从 `enroute` 自己推：SID 接航路的第一个点，STAR 接最后一个。调用方已经把
@@ -484,30 +638,67 @@ export function composeRoutePoints(parts: {
   const last = parts.enroute?.[parts.enroute.length - 1]?.ident || null;
 
   const chain: MapPoint[] = [];
-  if (parts.departure) chain.push(parts.departure);
+  const depRwy = parts.departureRunway;
+  if (depRwy) {
+    const ident = `RW${depRwy.id}`;
+    chain.push({
+      ident,
+      lat: depRwy.lat,
+      lon: depRwy.lon,
+      kind: "sid",
+      via: ident,
+    });
+    chain.push({
+      ident: "",
+      lat: depRwy.endLat,
+      lon: depRwy.endLon,
+      kind: "sid",
+      via: ident,
+      shape: true,
+    });
+  } else if (parts.departure) {
+    chain.push(parts.departure);
+  }
   if (parts.sid) {
     chain.push(
       ...procedureToMapPoints(parts.sid, {
         runway: parts.sidRunway,
         enrouteFix: first,
+        transition: parts.sidTransition,
       }),
     );
   }
   if (parts.enroute) chain.push(...parts.enroute);
-  if (parts.star) {
-    chain.push(
-      ...procedureToMapPoints(parts.star, {
+  const starPoints = parts.star
+    ? procedureToMapPoints(parts.star, {
         runway: parts.starRunway,
         enrouteFix: last,
+        transition: parts.starTransition,
+      })
+    : [];
+  chain.push(...starPoints);
+  if (parts.approach) {
+    const starEnd = starPoints[starPoints.length - 1]?.ident || last || null;
+    chain.push(
+      ...procedureToMapPoints(parts.approach, {
+        runway: parts.starRunway,
+        enrouteFix: starEnd,
+        transition: parts.approachTransition,
+        missed: false,
       }),
     );
   }
-  if (parts.approach) {
-    chain.push(
-      ...procedureToMapPoints(parts.approach, { runway: parts.starRunway }),
-    );
+  const arrRwy = parts.arrivalRunway;
+  if (arrRwy) {
+    chain.push({
+      ident: `RW${arrRwy.id}`,
+      lat: arrRwy.lat,
+      lon: arrRwy.lon,
+      kind: parts.approach ? "approach" : parts.star ? "star" : "fix",
+    });
+  } else if (parts.arrival) {
+    chain.push(parts.arrival);
   }
-  if (parts.arrival) chain.push(parts.arrival);
 
   const out: MapPoint[] = [];
   for (const p of chain) {

@@ -270,6 +270,16 @@
           "path": "Leg",
           "alt": "Altitude",
           "speed": "Speed"
+        },
+        "transition": "Transition",
+        "autoTransition": "Auto (from route)",
+        "savedLocally": "Runway and procedure choices are saved on this device; the plan on the map is drawn with them.",
+        "wind": {
+          "head": "Head {kt} kt",
+          "tail": "Tail {kt} kt",
+          "crossLeft": "Cross {kt} kt L",
+          "crossRight": "Cross {kt} kt R",
+          "failed": "Could not read the METAR; wind components are not shown."
         }
       },
       "planFailed": "Couldn't read your flight plan; try again later — this doesn't mean you have none."

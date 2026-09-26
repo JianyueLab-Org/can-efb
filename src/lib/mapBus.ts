@@ -24,6 +24,14 @@ export interface MapPoint {
   lon: number;
   kind: number | string;
   via?: string;
+  /** 程序腿规定的转弯方向。 */
+  turn?: "L" | "R";
+  /** 飞越点：过了点才开始转弯。 */
+  flyover?: boolean;
+  /** 只为画弯而插的几何点：不标名字，不算一个航路点。 */
+  shape?: boolean;
+  /** 旁切转弯切掉的那个角点：标名字，但线不经过它。 */
+  offPath?: boolean;
 }
 
 /** 事件名。带前缀是因为 window 是全局的，而这个站将来可能不止一个通道。 */

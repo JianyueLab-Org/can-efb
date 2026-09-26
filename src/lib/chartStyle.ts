@@ -59,8 +59,12 @@ export interface ColorRoles {
   shieldRnavText: string;
   shieldConv: string;
   shieldConvText: string;
-  /** 计划航线。品红一族，和空域的红分开。 */
+  /** 计划航线的航路段。品红一族，和空域的红分开。 */
   route: string;
+  /** 计划航线的离场、进场、进近段。 */
+  routeSid: string;
+  routeStar: string;
+  routeApproach: string;
   routeCasing: string;
   /** 计划航线上的点和点名。 */
   marker: string;
@@ -106,8 +110,12 @@ export const COLORS: Record<Theme, ColorRoles> = {
     shieldRnavText: "#ffffff",
     shieldConv: "#2b3035",
     shieldConvText: "#ffffff",
-    // 计划航线：航电品红。深浅两套同色相，只调明度，和这张表别的语义色一个规矩。
+    // 计划航线按段分色：航路段是航电品红，离场紫、进场绿、进近橙。深浅两套同色相，
+    // 只调明度。
     route: "#c8189f",
+    routeSid: "#7a3fc9",
+    routeStar: "#3f9a3a",
+    routeApproach: "#d9751c",
     routeCasing: "#ffffff",
     marker: "#5b1f6b",
     waypoint: "#3d4850",
@@ -146,6 +154,9 @@ export const COLORS: Record<Theme, ColorRoles> = {
     shieldConv: "#b9c1c8",
     shieldConvText: "#16191c",
     route: "#ff4fd8",
+    routeSid: "#b48cff",
+    routeStar: "#7fd47a",
+    routeApproach: "#ffa24d",
     routeCasing: "#16191c",
     marker: "#f0c9f7",
     waypoint: "#c3cbd1",
@@ -484,6 +495,22 @@ export function rampCase(
 }
 
 const onRoute = ["==", ["get", "onRoute"], 1];
+
+/** 计划航线按段取色：`seg` 是 sid / star / approach / route。 */
+export function routeSegmentColor(c: ColorRoles): unknown {
+  return [
+    "match",
+    ["get", "seg"],
+    "sid",
+    c.routeSid,
+    "star",
+    c.routeStar,
+    "approach",
+    c.routeApproach,
+    c.route,
+  ];
+}
+
 const notLow = ["!=", ["get", "level"], "low"];
 
 /** 管制席位色。**不跟主题**：席位色是和 can-radar 共用的身份编码。 */
@@ -1094,14 +1121,14 @@ export function buildStyle(theme: Theme): StyleSpecification {
       },
     },
     {
-      // 航路段实线、程序段虚线，分两层（`line-dasharray` 写不出可靠的"实线"）。
+      // 按段分色（`seg`，见 routeGeometry 的 legSegment）。颜色已经区分了程序段和航
+      // 路段，不再用虚线。
       id: "route",
       type: "line",
       source: "route",
-      filter: ["!=", ["get", "procedure"], 1],
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
-        "line-color": c.route,
+        "line-color": routeSegmentColor(c),
         "line-width": ramp(WIDTH.route),
         "line-opacity": [
           "step",
@@ -1110,18 +1137,6 @@ export function buildStyle(theme: Theme): StyleSpecification {
           ZOOM.airwaysHigh,
           ["case", ["==", ["get", "onAirway"], 1], 0, 1],
         ],
-      },
-    },
-    {
-      id: "route-procedure",
-      type: "line",
-      source: "route",
-      filter: ["==", ["get", "procedure"], 1],
-      layout: { "line-cap": "butt", "line-join": "round" },
-      paint: {
-        "line-color": c.route,
-        "line-width": ramp(WIDTH.route),
-        "line-dasharray": [2, 1.5],
       },
     },
 
@@ -1524,7 +1539,7 @@ export function buildStyle(theme: Theme): StyleSpecification {
         "text-offset": [0, -0.9],
       },
       paint: {
-        "text-color": c.route,
+        "text-color": routeSegmentColor(c),
         "text-halo-color": c.routeCasing,
         "text-halo-width": 1.6,
         "text-opacity": [

@@ -57,6 +57,12 @@ import PanelSection from "@/components/ui/PanelSection.vue";
 import SimbriefImport from "./SimbriefImport.vue";
 import PlanStatusBar from "./PlanStatusBar.vue";
 import PlanForm from "./PlanForm.vue";
+import ProcedurePicker from "@/components/ProcedurePicker.vue";
+import { applySelection } from "@/lib/planProcedures";
+import {
+  PROCEDURES_CHANGED_EVENT,
+  readSelection,
+} from "@/lib/procedureSelection";
 
 const props = defineProps<{ messages: Record<string, unknown> }>();
 const t = createTranslator(props.messages);
@@ -358,21 +364,30 @@ async function runPreview() {
     preview.value = null;
     return;
   }
-  const key = previewKey(departure, arrival, route);
+  const baseKey = previewKey(departure, arrival, route);
+  // 选的跑道和程序也决定画法，一起算进键里。
+  const selection = readSelection(departure, arrival);
+  const key = `${baseKey}|${JSON.stringify(selection)}`;
   if (key === previewedKey) return;
   // 刚打开页面、框里就是已提交的那份：地图本来就画着它（挂载时发过 showPlanOnMap），
-  // 不必再问一遍。
-  if (previewedKey === null && key === storedKey()) return;
+  // 不必再问一遍。选择变了地图自己会重画。
+  if (previewedKey === null && baseKey === storedKey()) return;
 
   const signal = previewRequest.next();
   const state = await resolveRoute(departure, arrival, route, signal);
   if (signal.aborted) return;
 
+  const points =
+    state.kind === "data"
+      ? await applySelection(state.data, departure, arrival, selection)
+      : [];
+  if (signal.aborted || disposed.value) return;
+
   previewedKey = key;
   preview.value = state;
   if (state.kind === "data") {
     publishToMap({
-      points: state.data,
+      points,
       label: t("flightplan.preview.label", {
         from: departure.trim().toUpperCase(),
         to: arrival.trim().toUpperCase(),
@@ -407,13 +422,22 @@ const previewNote = computed(() => {
   }
 });
 
+/** 选的跑道和程序变了：正在预览时按新的重画。没在预览时地图画的是已提交的计划，它自己会跟。 */
+function onProceduresChanged() {
+  if (!previewedKey) return;
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(() => void runPreview(), 0);
+}
+
 onMounted(() => {
+  window.addEventListener(PROCEDURES_CHANGED_EVENT, onProceduresChanged);
   // 别的页面（航路、机场）可能刚往地图上推过东西。不先把地图拉回已提交的计划，
   // 下面「框里就是已提交那份就不重画」的跳过就不成立：图上会是一条不相干的线。
   showPlanOnMap();
   void load();
 });
 onBeforeUnmount(() => {
+  window.removeEventListener(PROCEDURES_CHANGED_EVENT, onProceduresChanged);
   disposed.value = true;
   clearTimeout(previewTimer);
   previewRequest.cancel();
@@ -486,6 +510,16 @@ onBeforeUnmount(() => {
       :submit-label="submitLabel"
       :preview-note="previewNote"
       @submit="file"
+    />
+
+    <!-- 跑道与程序。改 SID/STAR 会改写上面的航路串；选择存在本机，地图按它画。 -->
+    <ProcedurePicker
+      :messages="messages"
+      :departure="form.departure"
+      :arrival="form.arrival"
+      :route="form.route"
+      :disabled="disabled"
+      @update:route="form.route = $event"
     />
   </div>
 </template>
