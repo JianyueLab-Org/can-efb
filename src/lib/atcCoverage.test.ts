@@ -379,11 +379,62 @@ describe("buildCoverage — 场面席位的 Extending", () => {
     ).toEqual(["ZSSS_TWR"]);
   });
 
-  test("区域、进近不走这一条", () => {
+  test("区域不走这一条：它的 Extending 画边界", () => {
+    expect(
+      extendedOf([station("ZSHA_CTR", 6, { text_atis: ["Extending - ZSSS"] })]),
+    ).toEqual([]);
+  });
+
+  test("进近也标：没有多边形时原席位照旧画点", () => {
+    const { points, extended } = buildCoverage(
+      [station("ZSPD_APP", 5, { text_atis: ["Extending - ZSSS"] })],
+      boundaries,
+      null,
+      airportAt,
+    );
+    expect(points.map((c) => c.callsign)).toEqual(["ZSPD_APP"]);
+    expect(
+      extended.features.map((f) => [f.properties?.callsign, f.geometry]),
+    ).toEqual([
+      ["ZSSS_APP", { type: "Point", coordinates: [121.336, 31.198] }],
+    ]);
+  });
+
+  test("进近扩到有多边形的场：多边形、机场上的标牌都有", () => {
+    const { areas, extended } = buildCoverage(
+      [station("ZSPD_APP", 5, { text_atis: ["Extending - ZBAA"] })],
+      boundaries,
+      tracons,
+      () => [40.08, 116.58],
+    );
+    expect(kinds(areas)).toEqual(["tracon:ZSPD_APP"]);
+    expect(extended.features.map((f) => f.properties?.callsign)).toEqual([
+      "ZBAA_APP",
+    ]);
+  });
+
+  test("进近不认三字码的备用写法：SCT 不落到 KLAX", () => {
+    useAirportCodes({ version: "test", real: {}, pseudo: { SCT: "KLAX" } });
+    try {
+      const fields = (callsign: string, facility: number) =>
+        buildCoverage(
+          [station(callsign, facility, { text_atis: ["Extending - SCT"] })],
+          null,
+          null,
+          (icao) => (icao === "KLAX" || icao === "SCT" ? [33.9, -118.4] : null),
+        ).extended.features.map((f) => f.properties?.callsign);
+      expect(fields("ZSPD_APP", 5)).toEqual(["SCT_APP"]);
+      expect(fields("ZSPD_TWR", 4)).toEqual(["KLAX_TWR"]);
+    } finally {
+      useAirportCodes(null);
+    }
+  });
+
+  test("那个场已经有同席位进近在线，不标", () => {
     expect(
       extendedOf([
-        station("ZSHA_CTR", 6, { text_atis: ["Extending - ZSSS"] }),
         station("ZSPD_APP", 5, { text_atis: ["Extending - ZSSS"] }),
+        station("ZSSS_APP", 5),
       ]),
     ).toEqual([]);
   });
@@ -403,7 +454,7 @@ describe("buildCoverage — 场面席位的 Extending", () => {
     ]);
   });
 
-  test("有场面席位写了 Extending 才取机场表", () => {
+  test("区域 / FSS 以外的席位写了 Extending 才取机场表", () => {
     expect(wantsAirportCoords([station("ZSPD_TWR", 4)])).toBe(false);
     expect(
       wantsAirportCoords([
@@ -413,6 +464,11 @@ describe("buildCoverage — 场面席位的 Extending", () => {
     expect(
       wantsAirportCoords([
         station("ZSPD_TWR", 4, { text_atis: ["Extending - ZSSS"] }),
+      ]),
+    ).toBe(true);
+    expect(
+      wantsAirportCoords([
+        station("ZSPD_APP", 5, { text_atis: ["Extending - ZSSS"] }),
       ]),
     ).toBe(true);
   });

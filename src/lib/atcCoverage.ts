@@ -18,9 +18,10 @@
  *   虚线圈，上限 400 海里。圈是替身，有真几何的就不画圈。
  * - **场面席位**（放行 / 地面 / 塔台）和**对不上任何范围的**：点。对不上的不吞掉 ——
  *   位置不准的点至少还说明"有人在"。
- * - **场面席位的 Extending**：`ZSPD_TWR` 写 `Extending - ZSSS`，在虹桥再标一个
- *   `ZSSS_TWR`，坐标取机场表（can-radar 的 `extendingFieldsFor` / `addExtended`）。
- *   那个场已经有人登着同一个席位就不标。
+ * - **场面席位和进近的 Extending**：`ZSPD_TWR` 写 `Extending - ZSSS`，在虹桥再标
+ *   一个 `ZSSS_TWR`；`ZSPD_APP` 同理标 `ZSSS_APP`，另外照上面那条画虹桥的进近多
+ *   边形。坐标取机场表（can-radar 的 `extendingFieldsFor` / `addExtended`）。那个
+ *   场已经有人登着同一个席位就不标。
  *
  * 标注照 can-radar：区域那块标在第一块边界的外接框中心，进近标在多边形最北的那个
  * 顶点，写「呼号 频率」。
@@ -210,16 +211,22 @@ function isAirportPosition(c: DatafeedController): boolean {
   );
 }
 
-/** Extending 名单落在哪几个机场，自己那一场跳过。 */
+/**
+ * Extending 名单落在哪几个机场，自己那一场跳过。
+ *
+ * 三字码的备用写法（`IsPseudo=1`）只给场面席位认，和 can-radar 一样：那批假行里
+ * 混着进近的代码（`SCT` 挂在 KLAX 上），进近只查真的那张表。
+ */
 function extendingFieldsFor(c: DatafeedController): string[] {
   if (!allowsExtending(c)) return [];
   if (!facilitySuffix(c.callsign)) return [];
-  const self = stationField(c.callsign, true);
+  const local = isAirportPosition(c);
+  const self = stationField(c.callsign, local);
   const fields: string[] = [];
   for (const name of parseAtisSectors(c.text_atis).extending) {
     const callsign = extendedCallsign(c.callsign, name);
     if (!callsign) continue;
-    const field = stationField(callsign, true);
+    const field = stationField(callsign, local);
     if (!field || field === self || fields.includes(field)) continue;
     fields.push(field);
   }
@@ -233,19 +240,20 @@ function fieldHasSamePosition(
   controllers: DatafeedController[],
 ): boolean {
   const suffix = facilitySuffix(c.callsign);
+  const local = isAirportPosition(c);
   return controllers.some(
     (other) =>
       other.callsign !== c.callsign &&
       facilitySuffix(other.callsign) === suffix &&
-      stationField(other.callsign, true) === field,
+      stationField(other.callsign, local) === field,
   );
 }
 
-/** 要不要去取机场坐标表：有场面席位写了 Extending 才取。 */
+/** 要不要去取机场坐标表：有区域 / FSS 以外的席位写了 Extending 才取。 */
 export function wantsAirportCoords(controllers: DatafeedController[]): boolean {
   return controllers.some(
     (c) =>
-      isAirportPosition(c) &&
+      !ownsAirspace(c.facility) &&
       parseAtisSectors(c.text_atis).extending.length > 0,
   );
 }
@@ -428,10 +436,9 @@ export function buildCoverage(
       }
     }
 
-    if (drawn && !airport) continue;
-    points.push(c);
-
-    if (airport) {
+    // Extending 出去的标牌：场面席位和进近都有，落在扩到的那个机场上（can-radar
+    // 的 `addExtended`）。区域 / FSS 走上面边界那条，不在这里。
+    if (!ownsAirspace(c.facility)) {
       for (const field of extendingFieldsFor(c)) {
         if (fieldHasSamePosition(field, c, controllers)) continue;
         const at = airportAt(field);
@@ -447,6 +454,9 @@ export function buildCoverage(
         });
       }
     }
+
+    if (drawn && !airport) continue;
+    points.push(c);
 
     // 圈是替身：场面席位不画（它们管的就是这个场），区域 / FSS 对不上边界时也不画
     // （can-radar 里它们根本不进画圈那一段）。
