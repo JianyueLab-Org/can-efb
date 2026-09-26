@@ -216,11 +216,11 @@ export const ZOOM = {
   runwayLabels: 11,
 
   /** 高空航路（高空和两层都有的）。计划航线在这一级把航路段交给航路网高亮。 */
-  airwaysHigh: 5.5,
+  airwaysHigh: 5,
   /** 只属于低空的航路。 */
-  airwaysLow: 6,
+  airwaysLow: 5,
   /** 航路代号牌。计划航线的沿线代号在这一级交棒。 */
-  airwayLabels: 5.5,
+  airwayLabels: 5,
 
   /** VOR、VOR/DME、VORTAC、TACAN，符号和识别码。 */
   vor: 5,
@@ -231,8 +231,10 @@ export const ZOOM = {
   minorNavaids: 6,
   minorNavaidLabels: 6,
   /** 航路点（空心三角）和点名。 */
-  waypoints: 5.5,
-  waypointLabels: 5.5,
+  waypoints: 5,
+  waypointLabels: 5,
+  /** 禁区、限制区、危险区。CTR / APP 不设门槛，开了就画。 */
+  specialUse: 5,
 
   airspaceLabels: 5,
   /** Grid MORA。一度格在 z5.5 是 64px，再小数字排不下，避让会丢掉一半格子。 */
@@ -523,6 +525,21 @@ export function routeSegmentColor(c: ColorRoles): unknown {
 
 /** 等待航线（routeGeometry 的 hold 要素）。 */
 const isHold = ["==", ["get", "hold"], 1];
+/** 禁区、限制区、危险区从 `ZOOM.specialUse` 起画；别的空域不受限。 */
+const specialUseVisible = [
+  "any",
+  [
+    "!",
+    [
+      "match",
+      ["get", "cls"],
+      ["restricted", "prohibited", "danger"],
+      true,
+      false,
+    ],
+  ],
+  [">=", ["zoom"], ZOOM.specialUse],
+];
 const notLow = ["!=", ["get", "level"], "low"];
 
 /** 管制席位色。**不跟主题**：席位色是和 can-radar 共用的身份编码。 */
@@ -971,11 +988,9 @@ export function buildStyle(theme: Theme): StyleSpecification {
       type: "fill",
       source: "airspaces",
       filter: [
-        "match",
-        ["get", "cls"],
-        ["restricted", "prohibited"],
-        false,
-        true,
+        "all",
+        ["match", ["get", "cls"], ["restricted", "prohibited"], false, true],
+        specialUseVisible,
       ],
       paint: {
         "fill-color": airspaceColor(c),
@@ -998,11 +1013,9 @@ export function buildStyle(theme: Theme): StyleSpecification {
       type: "fill",
       source: "airspaces",
       filter: [
-        "match",
-        ["get", "cls"],
-        ["restricted", "prohibited"],
-        true,
-        false,
+        "all",
+        ["match", ["get", "cls"], ["restricted", "prohibited"], true, false],
+        specialUseVisible,
       ],
       paint: {
         "fill-pattern": [
@@ -1034,7 +1047,7 @@ export function buildStyle(theme: Theme): StyleSpecification {
       id: "airspace-line",
       type: "line",
       source: "airspaces",
-      filter: ["!=", ["get", "cls"], "danger"],
+      filter: ["all", ["!=", ["get", "cls"], "danger"], specialUseVisible],
       paint: {
         "line-color": airspaceColor(c),
         "line-width": [
@@ -1052,6 +1065,7 @@ export function buildStyle(theme: Theme): StyleSpecification {
       id: "airspace-line-danger",
       type: "line",
       source: "airspaces",
+      minzoom: ZOOM.specialUse,
       filter: ["==", ["get", "cls"], "danger"],
       paint: {
         "line-color": c.danger,
