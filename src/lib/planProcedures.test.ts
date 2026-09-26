@@ -24,6 +24,7 @@ const leg = (ident: string, lat: number, lon: number): ProcedureLeg => ({
 
 const dep: AirportProcedures = {
   icao: "RJOO",
+  variation: null,
   runways: [],
   runwayDetails: [],
   procedures: [

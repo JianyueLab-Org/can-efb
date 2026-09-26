@@ -15,6 +15,7 @@
  * 在面板里有一个明确的入口，而不是让两个岛屿互相写对方的状态 —— 那种双向绑定
  * 在没有共同父组件的情况下，最后一定演变成谁先加载谁赢。
  */
+import type { HoldShape } from "@/lib/holds";
 import type { PanelLayout } from "@/lib/panelLayout";
 
 /** 地图能画的一个点。形状取自 `/api/v1/route` 展开后的航段，和 RouteMap 的 props 一致。 */
@@ -32,6 +33,8 @@ export interface MapPoint {
   shape?: boolean;
   /** 旁切转弯切掉的那个角点：标名字，但线不经过它。 */
   offPath?: boolean;
+  /** 在这个点上的等待航线（`lib/holds.ts`）。 */
+  hold?: HoldShape;
 }
 
 /** 事件名。带前缀是因为 window 是全局的，而这个站将来可能不止一个通道。 */

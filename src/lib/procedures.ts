@@ -1,4 +1,5 @@
 import type { MapPoint } from "@/lib/mapBus";
+import { holdShape, isHoldLeg } from "@/lib/holds";
 import { aipScope, dbFetch } from "@/lib/naip";
 
 /**
@@ -101,6 +102,8 @@ export interface RunwayDetail {
 /** 详情接口里我们要的那几块。其余字段还在，只是这个模块不关心。 */
 export interface AirportProcedures {
   icao: string;
+  /** 磁差，度，**西为正**（can-db 的约定）。可能为 null。 */
+  variation: number | null;
   runways: AirportRunway[];
   runwayDetails: RunwayDetail[];
   procedures: Procedure[];
@@ -145,6 +148,7 @@ export async function fetchAirportProcedures(
   if (!data) throw new ProcedureError(response.status);
   return {
     icao: data.icao ?? code,
+    variation: data.variation ?? null,
     runways: data.runways ?? [],
     runwayDetails: data.runwayDetails ?? [],
     procedures: data.procedures ?? [],
@@ -404,11 +408,13 @@ function dedupeAdjacentLegs(legs: ProcedureLeg[]): ProcedureLeg[] {
   const out: ProcedureLeg[] = [];
   for (const leg of legs) {
     const prev = out[out.length - 1];
-    const same = prev
-      ? leg.ident && prev.ident
-        ? leg.ident === prev.ident
-        : leg.lat === prev.lat && leg.lon === prev.lon
-      : false;
+    // 等待腿和它前一条同一个定位点，但它是另一件事（在这里等待），留着。
+    const same =
+      prev && !isHoldLeg(leg.path)
+        ? leg.ident && prev.ident
+          ? leg.ident === prev.ident
+          : leg.lat === prev.lat && leg.lon === prev.lon
+        : false;
     if (same) continue;
     out.push(leg);
   }
@@ -505,11 +511,40 @@ export function procedureTrack(
 
 export function procedureToMapPoints(
   p: Procedure,
-  opts: TrackOptions = {},
+  opts: TrackOptions & {
+    /** 机场磁差，西为正。等待腿的磁航向靠它换成真方位。 */
+    variation?: number;
+  } = {},
 ): MapPoint[] {
   const out: MapPoint[] = [];
   for (const leg of procedureTrack(p, opts)) {
     if (leg.lat == null || leg.lon == null) continue;
+    // 等待腿挂到它的定位点上，不另起一个点。定位点就是上一个点时挂到上一个点上。
+    if (isHoldLeg(leg.path) && leg.courseMag != null) {
+      const hold = holdShape({
+        inboundMag: leg.courseMag,
+        variationWest: opts.variation ?? 0,
+        turn: leg.turn,
+      });
+      const prev = out[out.length - 1];
+      if (
+        prev &&
+        (prev.ident === leg.ident ||
+          (prev.lat === leg.lat && prev.lon === leg.lon))
+      ) {
+        out[out.length - 1] = { ...prev, hold };
+        continue;
+      }
+      out.push({
+        ident: leg.ident || "",
+        lat: leg.lat,
+        lon: leg.lon,
+        kind: p.kind,
+        via: p.name,
+        hold,
+      });
+      continue;
+    }
     const turn = (leg.turn ?? "").toUpperCase();
     out.push({
       ident: leg.ident || "",
@@ -617,14 +652,17 @@ export function rewriteRoute(
 export function missedApproachPoints(
   approach: Procedure,
   transition?: string | null,
+  variation?: number,
 ): MapPoint[] {
   const legs = procedureTrack(approach, { transition, missed: true }).filter(
     (l) => l.part === "missed",
   );
-  return procedureToMapPoints({ ...approach, path: legs }).map((p) => ({
-    ...p,
-    kind: "missed",
-  }));
+  return procedureToMapPoints({ ...approach, path: legs }, { variation }).map(
+    (p) => ({
+      ...p,
+      kind: "missed",
+    }),
+  );
 }
 
 export function composeRoutePoints(parts: {
@@ -642,6 +680,9 @@ export function composeRoutePoints(parts: {
   starTransition?: string | null;
   approach?: Procedure | null;
   approachTransition?: string | null;
+  /** 两端机场的磁差，西为正。等待腿换算真方位用。 */
+  departureVariation?: number;
+  arrivalVariation?: number;
   /** 落地跑道端。给了就终止在它的跑道头，不画到机场基准点。 */
   arrivalRunway?: AirportRunway | null;
   arrival?: MapPoint | null;
@@ -679,6 +720,7 @@ export function composeRoutePoints(parts: {
         runway: parts.sidRunway,
         enrouteFix: first,
         transition: parts.sidTransition,
+        variation: parts.departureVariation,
       }),
     );
   }
@@ -688,6 +730,7 @@ export function composeRoutePoints(parts: {
         runway: parts.starRunway,
         enrouteFix: last,
         transition: parts.starTransition,
+        variation: parts.arrivalVariation,
       })
     : [];
   chain.push(...starPoints);
@@ -699,12 +742,17 @@ export function composeRoutePoints(parts: {
         enrouteFix: starEnd,
         transition: parts.approachTransition,
         missed: false,
+        variation: parts.arrivalVariation,
       }),
     );
   }
   // 复飞段从复飞点接着画，自成一段（`kind: "missed"`）。
   const missed = parts.approach
-    ? missedApproachPoints(parts.approach, parts.approachTransition)
+    ? missedApproachPoints(
+        parts.approach,
+        parts.approachTransition,
+        parts.arrivalVariation,
+      )
     : [];
   const arrRwy = parts.arrivalRunway;
   if (arrRwy) {
@@ -732,7 +780,11 @@ export function composeRoutePoints(parts: {
         ? p.ident === prev.ident
         : p.lat === prev.lat && p.lon === prev.lon
       : false;
-    if (same) continue;
+    if (same) {
+      // 收掉的那个点可能挂着等待（STAR 终点和进近起点是同一个点时常见），并过去。
+      if (p.hold && !prev.hold) out[out.length - 1] = { ...prev, hold: p.hold };
+      continue;
+    }
     out.push(p);
   }
   return out;

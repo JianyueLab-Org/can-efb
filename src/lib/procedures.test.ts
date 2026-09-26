@@ -754,3 +754,42 @@ describe("复飞段", () => {
     });
   });
 });
+
+describe("等待腿", () => {
+  test("挂到同一个定位点上，不另起一个点", () => {
+    const p = proc({
+      kind: "approach",
+      name: "I01",
+      path: [
+        { ...leg("MA1", 1, 1), part: "missed" },
+        {
+          ...leg("MA1", 1, 1),
+          part: "missed",
+          path: "HM",
+          courseMag: 10,
+          turn: "L",
+        },
+      ],
+    });
+    const points = procedureToMapPoints(p, { variation: 5 });
+    expect(points).toHaveLength(1);
+    expect(points[0].hold?.inboundTrue).toBe(5);
+    expect(points[0].hold?.turn).toBe("L");
+  });
+
+  test("合成时被收掉的重复点把等待并给留下的那个", () => {
+    const star = proc({
+      kind: "star",
+      name: "XAC1B",
+      path: [{ ...leg("BACON", 1, 1), path: "HM", courseMag: 0 }],
+    });
+    const app = proc({
+      kind: "approach",
+      name: "L22",
+      path: [leg("BACON", 1, 1)],
+    });
+    const points = composeRoutePoints({ star, approach: app });
+    expect(points).toHaveLength(1);
+    expect(points[0].hold).toBeDefined();
+  });
+});

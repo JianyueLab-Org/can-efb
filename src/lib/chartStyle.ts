@@ -286,6 +286,10 @@ export const WIDTH = {
     [3, 1.5],
     [8, 2.4],
   ],
+  holdCasing: [
+    [3, 3],
+    [8, 4.6],
+  ],
   routeCasing: [
     [3, 4],
     [8, 6.5],
@@ -517,6 +521,8 @@ export function routeSegmentColor(c: ColorRoles): unknown {
   ];
 }
 
+/** 等待航线（routeGeometry 的 hold 要素）。 */
+const isHold = ["==", ["get", "hold"], 1];
 const notLow = ["!=", ["get", "level"], "low"];
 
 /** 管制席位色。**不跟主题**：席位色是和 can-radar 共用的身份编码。 */
@@ -1118,7 +1124,7 @@ export function buildStyle(theme: Theme): StyleSpecification {
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
         "line-color": c.routeCasing,
-        "line-width": ramp(WIDTH.routeCasing),
+        "line-width": rampCase(isHold, WIDTH.holdCasing, WIDTH.routeCasing),
         "line-opacity": [
           "step",
           ["zoom"],
@@ -1138,7 +1144,7 @@ export function buildStyle(theme: Theme): StyleSpecification {
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
         "line-color": routeSegmentColor(c),
-        "line-width": ramp(WIDTH.route),
+        "line-width": rampCase(isHold, WIDTH.routeMissed, WIDTH.route),
         "line-opacity": [
           "step",
           ["zoom"],
