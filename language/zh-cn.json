@@ -298,7 +298,10 @@
         "alternate": "备降",
         "aircraft": "航空器",
         "off": "起飞时间",
-        "level": "巡航高度"
+        "level": "巡航高度",
+        "departureProcedures": "离场跑道与程序",
+        "arrivalProcedures": "进场跑道与程序",
+        "proceduresLocal": "跑道与程序是本机的选择，不在提交的计划里。"
       },
       "weather": {
         "title": "起降天气",

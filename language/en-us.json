@@ -298,7 +298,10 @@
         "alternate": "ALTN",
         "aircraft": "Aircraft",
         "off": "Off-block",
-        "level": "Level"
+        "level": "Level",
+        "departureProcedures": "Departure runway & procedures",
+        "arrivalProcedures": "Arrival runway & procedures",
+        "proceduresLocal": "Runways and procedures are chosen on this device and are not part of the filed plan."
       },
       "weather": {
         "title": "Departure and arrival weather",

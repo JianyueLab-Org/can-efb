@@ -22,10 +22,16 @@
  * 的**键名本身** —— 删飞行日志那一页时词典里的 `logbook` 命名空间跟着没了，模板
  * 却还在调它。`scripts/check-i18n-keys.mjs` 现在盯着这一类。
  */
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { api, describeFailure } from "@/lib/canApi";
 import { createTranslator } from "@/lib/i18n";
 import { showPlanOnMap } from "@/lib/mapBus";
+import {
+  EMPTY_SELECTION,
+  PROCEDURES_CHANGED_EVENT,
+  readSelection,
+  type ProcedureSelection,
+} from "@/lib/procedureSelection";
 import { fromApiResult, LOADING, type RequestState } from "@/lib/requestState";
 import {
   facilityLabel,
@@ -195,10 +201,56 @@ async function loadControllers() {
   }
 }
 
+/**
+ * 本机为这份计划选的跑道和程序（`lib/procedureSelection.ts`）。不是计划的一部分，
+ * 卡片上标明「本机」。另一个标签页改了选择时跟着变。
+ */
+const selectionVersion = ref(0);
+function onSelectionChanged() {
+  selectionVersion.value++;
+}
+const selection = computed<ProcedureSelection>(() => {
+  void selectionVersion.value;
+  const f = filed.value;
+  return f ? readSelection(f.departure, f.arrival) : { ...EMPTY_SELECTION };
+});
+
+/** 一端的摘要：`RWY 32L · ASUKA4 (ASUKA)`。什么都没选时为空串。 */
+function withTransition(name: string, transition: string): string {
+  if (!name) return "";
+  return transition ? `${name} (${transition})` : name;
+}
+const departureSummary = computed(() =>
+  [
+    selection.value.depRunway ? `RWY ${selection.value.depRunway}` : "",
+    withTransition(selection.value.sid, selection.value.sidTransition),
+  ]
+    .filter(Boolean)
+    .join(" · "),
+);
+const arrivalSummary = computed(() =>
+  [
+    selection.value.arrRunway ? `RWY ${selection.value.arrRunway}` : "",
+    withTransition(selection.value.star, selection.value.starTransition),
+    withTransition(
+      selection.value.approach,
+      selection.value.approachTransition,
+    ),
+  ]
+    .filter(Boolean)
+    .join(" · "),
+);
+
 onMounted(() => {
+  window.addEventListener(PROCEDURES_CHANGED_EVENT, onSelectionChanged);
+  window.addEventListener("storage", onSelectionChanged);
   showPlanOnMap();
   void loadPlan();
   void loadControllers();
+});
+onBeforeUnmount(() => {
+  window.removeEventListener(PROCEDURES_CHANGED_EVENT, onSelectionChanged);
+  window.removeEventListener("storage", onSelectionChanged);
 });
 </script>
 
@@ -300,6 +352,26 @@ onMounted(() => {
         >
           {{ filed.route }}
         </p>
+        <dl
+          v-if="departureSummary || arrivalSummary"
+          class="mt-3 grid gap-3 border-t border-subtle pt-3 text-sm @sm:grid-cols-2"
+        >
+          <div v-if="departureSummary">
+            <dt class="text-xs uppercase tracking-wide text-faint">
+              {{ t("dashboard.plan.departureProcedures") }}
+            </dt>
+            <dd class="font-mono text-ink">{{ departureSummary }}</dd>
+          </div>
+          <div v-if="arrivalSummary">
+            <dt class="text-xs uppercase tracking-wide text-faint">
+              {{ t("dashboard.plan.arrivalProcedures") }}
+            </dt>
+            <dd class="font-mono text-ink">{{ arrivalSummary }}</dd>
+          </div>
+          <p class="text-xs text-muted @sm:col-span-2">
+            {{ t("dashboard.plan.proceduresLocal") }}
+          </p>
+        </dl>
       </div>
     </PanelSection>
 

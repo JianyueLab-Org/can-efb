@@ -462,6 +462,7 @@ datafeed 给的那个经纬度是**管制员自己的视野中心** —— 既�
 
 选择器在两页：航路生成（`RouteGenerator`，它自己把合成的航线推给地图）和飞行计划
 （`FlightPlan`，改 SID/STAR 时改写表单里的航路串）。
+概览页的计划卡片只读，列出本机为这对起降机场存的选择，并标明它不在提交的计划里。
 
 选择按起降机场对存在 localStorage（`lib/procedureSelection.ts`）：起降跑道、SID、
 STAR、进近，各自的转换。can-api 的计划里没有这几项。换设备就没有了。
