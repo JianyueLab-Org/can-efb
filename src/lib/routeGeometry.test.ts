@@ -72,3 +72,42 @@ describe("pointFeatures", () => {
     ]);
   });
 });
+
+describe("等待的方向箭头和航向", () => {
+  const hold = {
+    inboundTrue: 0,
+    inboundMag: 347,
+    turn: "R" as const,
+    legNm: 4,
+    radiusNm: 1,
+  };
+
+  test("每个等待两支箭头、两条航向，按那个点所在的段取色", () => {
+    const features = routeLines([
+      { ident: "A", lat: 0, lon: 0, kind: "approach" },
+      { ident: "PD231", lat: 0, lon: 1, kind: "missed", hold },
+    ]).features;
+    const marks = features.filter((f) => f.properties?.holdMark);
+    expect(
+      marks.map((f) => [f.properties?.holdMark, f.properties?.seg]),
+    ).toEqual([
+      ["arrow", "missed"],
+      ["arrow", "missed"],
+      ["course", "missed"],
+      ["course", "missed"],
+    ]);
+    expect(marks.every((f) => f.geometry.type === "Point")).toBe(true);
+    expect(marks.map((f) => f.properties?.text).filter(Boolean)).toEqual([
+      "347°",
+      "167°",
+    ]);
+  });
+
+  test("几何点上的等待不画，标记也不出", () => {
+    const features = routeLines([
+      { ident: "A", lat: 0, lon: 0, kind: "sid" },
+      { ident: "", lat: 0, lon: 1, kind: "sid", shape: true, hold },
+    ]).features;
+    expect(features.some((f) => f.properties?.holdMark)).toBe(false);
+  });
+});

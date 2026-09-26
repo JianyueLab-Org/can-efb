@@ -22,8 +22,13 @@ import { aipScope, dbFetch } from "@/lib/naip";
 import { isForbiddenStatus } from "@/lib/requestState";
 
 export interface HoldShape {
-  /** 入航航迹，真方位，度。 */
+  /** 入航航迹，真方位，度。画形状用。 */
   inboundTrue: number;
+  /**
+   * 入航航向，磁，度 —— 数据给的原值（规整到 0–360），标注用。航图上写的是磁航向，
+   * 不从真方位倒算回来：那要再过一次磁差，而原值就在手上。
+   */
+  inboundMag: number;
   turn: "L" | "R";
   /** 直线段长度，海里。 */
   legNm: number;
@@ -76,6 +81,7 @@ export function holdShape(input: {
     (((input.inboundMag - input.variationWest) % 360) + 360) % 360;
   return {
     inboundTrue: inbound,
+    inboundMag: ((input.inboundMag % 360) + 360) % 360,
     turn: normalizeTurn(input.turn),
     legNm: (speed * minutes) / 60,
     // 标准转弯率 3°/s：半圈 60 秒，弧长 V/60 海里 = π·r。
@@ -129,6 +135,103 @@ export function racetrack(
   // 入航回到定位点。
   out.push([0, 0]);
   return out.map(toLonLat);
+}
+
+/**
+ * 航向写成航图的样子：三位数加 `°`，`0` 写 `360°`。按整度四舍五入。
+ */
+export function courseText(mag: number): string {
+  const deg = ((Math.round(mag) % 360) + 360) % 360 || 360;
+  return `${String(deg).padStart(3, "0")}°`;
+}
+
+/** 等待上的一个标记：一个方向箭头，或者一条边上的航向。坐标 `[lon, lat]`。 */
+export type HoldMark =
+  | {
+      kind: "arrow";
+      at: [number, number];
+      /** 飞行方向，真方位，度。箭头朝北画，`icon-rotate` 直接用它。 */
+      rotate: number;
+    }
+  | {
+      kind: "course";
+      at: [number, number];
+      /** 航图上的写法，`347°`。 */
+      text: string;
+      /** 字的旋转（度，顺时针），让字顺着边读、且永远不倒过来。 */
+      rotate: number;
+      /**
+       * 字往哪边挪：`-1` 往字的上方、`1` 往下方。按字的朝向算好，让它落在跑道形**外侧**
+       * —— 在里侧会压到另一条边的字和箭头上。
+       */
+      side: -1 | 1;
+    };
+
+/**
+ * 等待的方向箭头和航向标注：入航边、出航边的中点各一个箭头（顺着飞的方向），各一个
+ * 航向（入航写数据给的磁航向，出航写它的反方向）。几何和 `racetrack` 同一套：入航边
+ * 从 `-L·u` 到定位点，出航边在转弯一侧 `2r` 外，方向反过来。
+ */
+export function holdMarks(
+  lat: number,
+  lon: number,
+  shape: HoldShape,
+): HoldMark[] {
+  const k = Math.cos((lat * Math.PI) / 180) || 1e-9;
+  const toLonLat = ([x, y]: [number, number]): [number, number] => [
+    lon + x / 60 / k,
+    lat + y / 60,
+  ];
+  const th = (shape.inboundTrue * Math.PI) / 180;
+  const u: [number, number] = [Math.sin(th), Math.cos(th)];
+  const right = shape.turn === "R";
+  const n: [number, number] = right ? [u[1], -u[0]] : [-u[1], u[0]];
+  const r = shape.radiusNm;
+  const L = shape.legNm;
+  const inboundMid: [number, number] = [(-L / 2) * u[0], (-L / 2) * u[1]];
+  const outboundMid: [number, number] = [
+    2 * r * n[0] - (L / 2) * u[0],
+    2 * r * n[1] - (L / 2) * u[1],
+  ];
+
+  const norm = (deg: number) => ((deg % 360) + 360) % 360;
+  // 字顺着边读：旋转落在 (-90, 90]，两条边平行，所以是同一个角度。
+  let rotate = norm(shape.inboundTrue - 90);
+  if (rotate > 90 && rotate <= 270) rotate -= 180;
+  else if (rotate > 270) rotate -= 360;
+  // 字的「上方」指向真方位 `rotate`。外侧离它不到 90° 就往上挪，否则往下。
+  const turnSide = norm(shape.inboundTrue + (right ? 90 : -90));
+  const sideToward = (bearing: number): -1 | 1 => {
+    const diff = Math.abs(((bearing - rotate + 540) % 360) - 180);
+    return diff < 90 ? -1 : 1;
+  };
+
+  return [
+    {
+      kind: "arrow",
+      at: toLonLat(inboundMid),
+      rotate: norm(shape.inboundTrue),
+    },
+    {
+      kind: "arrow",
+      at: toLonLat(outboundMid),
+      rotate: norm(shape.inboundTrue + 180),
+    },
+    {
+      kind: "course",
+      at: toLonLat(inboundMid),
+      text: courseText(shape.inboundMag),
+      rotate,
+      side: sideToward(turnSide + 180),
+    },
+    {
+      kind: "course",
+      at: toLonLat(outboundMid),
+      text: courseText(shape.inboundMag + 180),
+      rotate,
+      side: sideToward(turnSide),
+    },
+  ];
 }
 
 /** 程序腿是不是等待腿。 */

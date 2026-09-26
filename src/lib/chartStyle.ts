@@ -240,6 +240,12 @@ export const ZOOM = {
   /** Grid MORA。一度格在 z5.5 是 64px，再小数字排不下，避让会丢掉一半格子。 */
   mora: 5.5,
   routeAirwayLabels: 4,
+  /**
+   * 等待航线的方向箭头、两条边的航向。一个标准等待约 4 × 2.4 NM：z9 上三十来个像素长，
+   * 放得下箭头；航向字要到 z10 边才比字长。
+   */
+  holdArrows: 9,
+  holdCourses: 10,
   atcAreaLabels: 4,
   trafficLabels: 7,
   /** 机场地面（`lib/ground.ts`）。 */
@@ -350,6 +356,7 @@ export const TEXT = {
   traffic: 9,
   own: 11,
   route: 10,
+  holdCourse: 9,
   haloWidth: 1.4,
 } as const;
 
@@ -370,6 +377,10 @@ export const ICON = {
   ],
   navaid: 1,
   waypoint: 1,
+  holdArrow: [
+    [9, 0.8],
+    [12, 1.1],
+  ],
   /** 标注离符号中心多少 em。 */
   labelOffset: 0.8,
 } as const;
@@ -443,6 +454,12 @@ export type Pattern = (typeof PATTERNS)[number];
 /** 飞机，SDF，靠 `icon-color` 着色（高度色带、自己那架）。不分主题。 */
 export const AIRCRAFT_ICON = "aircraft";
 
+/**
+ * 等待航线上的方向箭头，SDF，朝北画，颜色随所在的段（`icon-color`）。不用字形：本站
+ * 只带 Noto Sans 的 0–511 两片，箭头字符不在里面，请求别的片只会 404。
+ */
+export const HOLD_ARROW_ICON = "hold-arrow";
+
 /** 导航台类别 → 符号。 */
 export const NAVAID_ICON: Record<NavaidClass, ThemedIcon> = {
   vor: "vor",
@@ -463,7 +480,7 @@ export function themedImage(
 
 /** 样式里可能引用的全部图片名。`chartIcons.ts` 注册的必须正好是这些。 */
 export function allImageIds(): string[] {
-  const out: string[] = [AIRCRAFT_ICON];
+  const out: string[] = [AIRCRAFT_ICON, HOLD_ARROW_ICON];
   for (const theme of ["light", "dark"] as const) {
     for (const key of THEMED_ICONS) out.push(themedImage(key, theme));
     for (const key of PATTERNS) out.push(themedImage(key, theme));
@@ -1224,6 +1241,27 @@ export function buildStyle(theme: Theme): StyleSpecification {
         "line-dasharray": [2, 1.5],
       },
     },
+    {
+      /* 等待航线上的方向箭头，入航、出航边各一个（`holds.ts` 的 `holdMarks`）。压在线
+       * 上，全画、不参与避让 —— 和航线是一体的。复飞段的等待同样取进近色。 */
+      id: "hold-arrows",
+      type: "symbol",
+      source: "route",
+      minzoom: ZOOM.holdArrows,
+      filter: ["==", ["get", "holdMark"], "arrow"],
+      layout: {
+        "icon-image": HOLD_ARROW_ICON,
+        "icon-size": ramp(ICON.holdArrow),
+        "icon-rotate": ["get", "rotate"],
+        "icon-rotation-alignment": "map",
+        ...symbolOnly,
+      },
+      paint: {
+        "icon-color": routeSegmentColor(c),
+        "icon-halo-color": c.routeCasing,
+        "icon-halo-width": 1,
+      },
+    },
 
     // ------------------------------------------------ 符号
     {
@@ -1627,6 +1665,33 @@ export function buildStyle(theme: Theme): StyleSpecification {
           ZOOM.airwayLabels,
           ["case", ["==", ["get", "onAirway"], 1], 0, 1],
         ],
+      },
+    },
+    {
+      /* 等待两条边的航向：入航写数据给的磁航向，出航写反方向。顺着边写、落在跑道形外
+       * 侧（`side`）。参与避让：挤不下时让位，航线本身不受影响。 */
+      id: "hold-courses",
+      type: "symbol",
+      source: "route",
+      minzoom: ZOOM.holdCourses,
+      filter: ["==", ["get", "holdMark"], "course"],
+      layout: {
+        "text-field": ["get", "text"],
+        "text-font": TEXT.font,
+        "text-size": TEXT.holdCourse,
+        "text-rotation-alignment": "map",
+        "text-rotate": ["get", "rotate"],
+        "text-offset": [
+          "case",
+          ["<", ["get", "side"], 0],
+          ["literal", [0, -0.8]],
+          ["literal", [0, 0.8]],
+        ],
+      },
+      paint: {
+        "text-color": routeSegmentColor(c),
+        "text-halo-color": c.routeCasing,
+        "text-halo-width": 1.6,
       },
     },
     {

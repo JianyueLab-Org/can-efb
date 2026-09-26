@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   attachTerminalHolds,
+  courseText,
   estimateVariation,
+  holdMarks,
   holdShape,
   isHoldLeg,
   racetrack,
@@ -41,7 +43,13 @@ describe("holdShape", () => {
 
 describe("racetrack", () => {
   // Inbound due north at the equator: the outbound leg is south of the fix.
-  const shape = { inboundTrue: 0, turn: "R" as const, legNm: 4, radiusNm: 1 };
+  const shape = {
+    inboundTrue: 0,
+    inboundMag: 0,
+    turn: "R" as const,
+    legNm: 4,
+    radiusNm: 1,
+  };
 
   test("starts and ends at the fix", () => {
     const ring = racetrack(0, 0, shape);
@@ -140,4 +148,89 @@ describe("attachTerminalHolds", () => {
     );
     expect(out[1].hold?.inboundTrue).toBe(100);
   });
+});
+
+test("courseText writes three digits and a degree sign, 360 not 000", () => {
+  expect(courseText(347)).toBe("347°");
+  expect(courseText(5.4)).toBe("005°");
+  expect(courseText(0)).toBe("360°");
+  expect(courseText(359.6)).toBe("360°");
+  expect(courseText(527)).toBe("167°");
+});
+
+describe("holdMarks", () => {
+  // At the equator 1 NM = 1/60°, so lon/lat × 60 is a flat NM plane.
+  const nm = ([lon, lat]: [number, number]): [number, number] => [
+    lon * 60,
+    lat * 60,
+  ];
+  const base = { legNm: 4, radiusNm: 1 };
+
+  test("one arrow per leg, pointing the way the aircraft flies", () => {
+    const marks = holdMarks(0, 0, {
+      ...base,
+      inboundTrue: 0,
+      inboundMag: 7,
+      turn: "R",
+    });
+    const arrows = marks.filter((m) => m.kind === "arrow");
+    expect(arrows.map((m) => m.rotate)).toEqual([0, 180]);
+    // Inbound leg is the fix's own meridian, halfway back; outbound is 2 NM east.
+    const [inX, inY] = nm(arrows[0].at);
+    expect(inX).toBeCloseTo(0, 6);
+    expect(inY).toBeCloseTo(-2, 6);
+    const [outX, outY] = nm(arrows[1].at);
+    expect(outX).toBeCloseTo(2, 6);
+    expect(outY).toBeCloseTo(-2, 6);
+    // A left hold puts the outbound arrow on the west side.
+    const left = holdMarks(0, 0, {
+      ...base,
+      inboundTrue: 0,
+      inboundMag: 7,
+      turn: "L",
+    }).filter((m) => m.kind === "arrow");
+    expect(nm(left[1].at)[0]).toBeCloseTo(-2, 6);
+  });
+
+  test("courses are the published magnetic inbound and its reciprocal", () => {
+    const texts = holdMarks(0, 0, {
+      ...base,
+      inboundTrue: 340,
+      inboundMag: 347,
+      turn: "R",
+    }).flatMap((m) => (m.kind === "course" ? [m.text] : []));
+    expect(texts).toEqual(["347°", "167°"]);
+  });
+
+  // Every inbound course, both turn directions: the text never reads upside down
+  // and is pushed to the outside of the racetrack, not across the other leg.
+  test.each(["L", "R"] as const)(
+    "course labels read upright and sit outside (%s turns)",
+    (turn) => {
+      for (let inbound = 0; inbound < 360; inbound += 15) {
+        const shape = {
+          ...base,
+          inboundTrue: inbound,
+          inboundMag: inbound,
+          turn,
+        };
+        const th = (inbound * Math.PI) / 180;
+        const u = [Math.sin(th), Math.cos(th)];
+        const n = turn === "R" ? [u[1], -u[0]] : [-u[1], u[0]];
+        const centre = [n[0] - 2 * u[0], n[1] - 2 * u[1]];
+        for (const m of holdMarks(0, 0, shape)) {
+          if (m.kind !== "course") continue;
+          expect(m.rotate).toBeGreaterThan(-90);
+          expect(m.rotate).toBeLessThanOrEqual(90);
+          // Text "up" points at true bearing `rotate`; side -1 moves up.
+          const b =
+            (((m.side < 0 ? m.rotate : m.rotate + 180) % 360) * Math.PI) / 180;
+          const [x, y] = nm(m.at);
+          const outward =
+            Math.sin(b) * (x - centre[0]) + Math.cos(b) * (y - centre[1]);
+          expect(outward).toBeGreaterThan(0.5);
+        }
+      }
+    },
+  );
 });

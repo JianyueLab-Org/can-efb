@@ -7,7 +7,7 @@
 import type { Feature, FeatureCollection } from "geojson";
 import { arc, type LatLon } from "@/lib/geo";
 import { legKey } from "@/lib/airways";
-import { racetrack, type HoldShape } from "@/lib/holds";
+import { holdMarks, racetrack, type HoldShape } from "@/lib/holds";
 
 export interface RoutePoint {
   ident: string;
@@ -112,11 +112,12 @@ export function routeLines(
   // 等待航线：挂在定位点上的跑道形，按那个点所在的段取色。
   for (const point of points) {
     if (!point.hold || point.shape) continue;
+    const seg = segmentOf(point) ?? "route";
     features.push({
       type: "Feature",
       properties: {
         procedure: 1,
-        seg: segmentOf(point) ?? "route",
+        seg,
         via: "",
         onAirway: 0,
         hold: 1,
@@ -126,6 +127,21 @@ export function routeLines(
         coordinates: racetrack(point.lat, point.lon, point.hold),
       },
     });
+    // 方向箭头和两条边的航向（`holdMarks`）。点要素，线图层不画它们；`holdMark` 给
+    // `hold-arrows` / `hold-courses` 两层挑。
+    for (const mark of holdMarks(point.lat, point.lon, point.hold)) {
+      features.push({
+        type: "Feature",
+        properties: {
+          seg,
+          holdMark: mark.kind,
+          rotate: mark.rotate,
+          text: mark.kind === "course" ? mark.text : "",
+          side: mark.kind === "course" ? mark.side : 0,
+        },
+        geometry: { type: "Point", coordinates: mark.at },
+      });
+    }
   }
   return { type: "FeatureCollection", features };
 }

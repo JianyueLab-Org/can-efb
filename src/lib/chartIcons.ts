@@ -16,6 +16,7 @@ import {
   AIRSPACE,
   AIRCRAFT_ICON,
   COLORS,
+  HOLD_ARROW_ICON,
   PATTERNS,
   SHIELDS,
   themedImage,
@@ -308,6 +309,22 @@ function aircraft(): ImageData | null {
   return ctx.getImageData(0, 0, size, size);
 }
 
+/** 等待航线的方向箭头：朝北的实心箭头。SDF，所以画成白色实心，颜色和描边由样式给。 */
+function holdArrow(): ImageData | null {
+  const size = 16;
+  const ctx = canvas(size);
+  if (!ctx) return null;
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.moveTo(size / 2, 2);
+  ctx.lineTo(size - 3, size - 3);
+  ctx.lineTo(size / 2, size - 6);
+  ctx.lineTo(3, size - 3);
+  ctx.closePath();
+  ctx.fill();
+  return ctx.getImageData(0, 0, size, size);
+}
+
 /** 注册 `allImageIds()` 里的每一张图。重复调用无害。 */
 export function registerChartIcons(map: MapLibreMap): void {
   const add = (
@@ -320,6 +337,7 @@ export function registerChartIcons(map: MapLibreMap): void {
   };
 
   add(AIRCRAFT_ICON, aircraft(), { sdf: true });
+  add(HOLD_ARROW_ICON, holdArrow(), { sdf: true });
 
   for (const theme of ["light", "dark"] as Theme[]) {
     const c = COLORS[theme];
@@ -363,7 +381,7 @@ export function registerChartIcons(map: MapLibreMap): void {
 
 /** 这个模块会注册的全部图片名（给测试对照 `allImageIds()`）。 */
 export function registeredImageIds(): string[] {
-  const out: string[] = [AIRCRAFT_ICON];
+  const out: string[] = [AIRCRAFT_ICON, HOLD_ARROW_ICON];
   for (const theme of ["light", "dark"] as Theme[]) {
     for (const key of Object.keys(SHAPES) as ThemedIcon[]) {
       out.push(themedImage(key, theme));
