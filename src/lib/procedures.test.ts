@@ -3,6 +3,7 @@ import {
   composeRoutePoints,
   joinIdent,
   joinsRoute,
+  missedApproachPoints,
   pickProcedures,
   procedureLabel,
   procedureRunways,
@@ -23,6 +24,7 @@ import {
 } from "@/lib/procedures";
 import { smoothProcedureTurns } from "@/lib/procedureGeometry";
 import type { MapPoint } from "@/lib/mapBus";
+import { routeLines } from "@/lib/routeGeometry";
 
 /**
  * 这几条测的都是**错了不会被屏幕出卖**的判断 —— 这个站的判据（见 CLAUDE.md）。
@@ -1237,5 +1239,150 @@ describe("变体标签不重复", () => {
 
   test("名字里没有时照旧接上", () => {
     expect(procedureLabel(proc({ name: "R01", variant: "y" }))).toBe("R01-Y");
+  });
+});
+
+/**
+ * ZSPD R34L：NAIP 把复飞的头两条腿（`CA`、`DF PD231`）切进了 final，复飞段又从头走
+ * 一遍。照 `part` 画，PD040 → PD231 是进近色实线，线再回到跑道头，然后才是去 PD231 的
+ * 虚线 —— 一根实线的发卡弯。代号和结构照抄，坐标是合成的。
+ */
+describe("复飞的头几条腿被切进了 final", () => {
+  const pd040 = { lat: 0, lon: 0 }; // 就在 34L 的跑道头上
+  const pd041 = step(pd040, 160, 2.5);
+  const pd042 = step(pd041, 160, 3.5);
+  const pd043 = step(pd042, 165, 4.8);
+  const pd231 = step(pd040, 115, 8);
+  const f = (l: ProcedureLeg) => ({ ...l, part: "final" });
+  const m = (l: ProcedureLeg) => ({ ...l, part: "missed" });
+  const r34l = proc({
+    kind: "approach",
+    name: "R34L",
+    runway: "34L",
+    runways: "34L",
+    path: [
+      f(tleg("PD043", pd043, { path: "IF" })),
+      f(tleg("PD042", pd042)),
+      f(tleg("PD041", pd041)),
+      f(tleg("PD040", pd040, { flyover: true })),
+      f(tleg("", null, { path: "CA", courseMag: 348 })),
+      f(tleg("PD231", pd231, { path: "DF", turn: "R", isMap: true })),
+      m(tleg("", null, { path: "CA", courseMag: 348 })),
+      m(tleg("", null, { path: "CA", courseMag: 18, turn: "R" })),
+      m(tleg("PD231", pd231, { path: "DF", turn: "R" })),
+      m(tleg("PD231", pd231, { path: "HM", turn: "L", courseMag: 168 })),
+    ],
+  });
+  const rw34l: AirportRunway = {
+    id: "34L",
+    opposite: "16R",
+    hdg: 348,
+    lat: pd040.lat,
+    lon: pd040.lon,
+    ...(() => {
+      const end = step(pd040, 348, 2);
+      return { endLat: end.lat, endLon: end.lon };
+    })(),
+  };
+
+  test("final 止于 PD040，截断的那份副本不进复飞段", () => {
+    const legs = procedureTrack(r34l);
+    expect(legs.filter((l) => l.part === "final").map((l) => l.ident)).toEqual([
+      "PD043",
+      "PD042",
+      "PD041",
+      "PD040",
+    ]);
+    expect(
+      legs
+        .filter((l) => l.part === "missed")
+        .map((l) => l.ident || `(${l.path})`),
+    ).toEqual(["(CA)", "(CA)", "PD231", "PD231"]);
+  });
+
+  test("复飞从复飞点起头，不回跑道头，跑道头和 PD040 只出一个标注", () => {
+    const points = composeRoutePoints({ approach: r34l, arrivalRunway: rw34l });
+    expect(points.map((p) => [p.ident, p.kind])).toEqual([
+      ["PD043", "approach"],
+      ["PD042", "approach"],
+      ["PD041", "approach"],
+      ["PD040", "approach"],
+      ["PD231", "missed"],
+    ]);
+    // 转上复飞段的右转挂在复飞点上，等待挂在 PD231 上。
+    expect(points[3].turn).toBe("R");
+    expect(points[4].hold?.turn).toBe("L");
+  });
+
+  test("PD040 之后全是复飞段（虚线），没有进近色的线过去", () => {
+    const points = smoothProcedureTurns(
+      composeRoutePoints({ approach: r34l, arrivalRunway: rw34l }),
+    );
+    const legs = routeLines(points).features.filter((f) => !f.properties?.hold);
+    const segs = legs.map((f) => f.properties?.seg);
+    // 先是进近，然后全是复飞，不再回到进近色。
+    const firstMissed = segs.indexOf("missed");
+    expect(firstMissed).toBeGreaterThan(0);
+    expect(segs.slice(firstMissed).every((s) => s === "missed")).toBe(true);
+    // 最后一条进近色的线止于 PD040。
+    const lastApproach = legs[firstMissed - 1].geometry as {
+      coordinates: number[][];
+    };
+    const [lon, lat] = lastApproach.coordinates.at(-1) ?? [];
+    expect(lon).toBeCloseTo(pd040.lon, 9);
+    expect(lat).toBeCloseTo(pd040.lat, 9);
+  });
+
+  test("复飞段是空的时候，切进 final 的那几条就是复飞段", () => {
+    // ZBSN R28 的形状：final 以 `CA · DF SN810` 收尾，复飞段没有腿。
+    const r28 = proc({
+      kind: "approach",
+      name: "R28",
+      path: [
+        f(tleg("SN801", { lat: 0, lon: 1 }, { path: "IF" })),
+        f(tleg("SN800", { lat: 0, lon: 0 })),
+        f(tleg("", null, { path: "CA", courseMag: 280 })),
+        f(tleg("SN810", { lat: 1, lon: -1 }, { path: "DF", isMap: true })),
+      ],
+    });
+    expect(missedApproachPoints(r28).map((p) => [p.ident, p.kind])).toEqual([
+      ["SN810", "missed"],
+    ]);
+  });
+
+  test("复飞段以复飞点上的等待起头时，等待留在复飞点上", () => {
+    const app = proc({
+      kind: "approach",
+      name: "R22",
+      path: [
+        f(tleg("BONDO", { lat: 1, lon: 0 }, { path: "IF" })),
+        f(tleg("MA22", { lat: 2, lon: 0 })),
+        m(tleg("MA22", { lat: 2, lon: 0 }, { path: "HM", courseMag: 220 })),
+      ],
+    });
+    const points = composeRoutePoints({ approach: app });
+    expect(points.map((p) => p.ident)).toEqual(["BONDO", "MA22"]);
+    expect(points[1].hold).toBeDefined();
+  });
+});
+
+describe("坐标相同的两个点只出一个标注", () => {
+  test("STAR 终点和进近首点名字不同、位置相同", () => {
+    const star = proc({
+      kind: "star",
+      name: "XAC1B",
+      path: [tleg("BACON", { lat: 1, lon: 1 })],
+    });
+    const app = proc({
+      kind: "approach",
+      name: "L22",
+      path: [
+        tleg("BAC22", { lat: 1, lon: 1 }, { path: "IF" }),
+        tleg("CF22", { lat: 1, lon: 2 }),
+      ],
+    });
+    expect(
+      composeRoutePoints({ star, approach: app }).map((p) => p.ident),
+    ).toEqual(["BACON", "CF22"]);
   });
 });

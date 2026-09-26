@@ -433,12 +433,46 @@ function approachTrack(p: Procedure, opts: TrackOptions): ProcedureLeg[] {
     })?.transition;
     if (name) chosen = transitionLegs.filter((l) => l.transition === name);
   }
+  const parts = finalAndMissed(path);
+  const missed = opts.missed === false ? [] : parts.missed;
+  return dedupeAdjacentLegs([...chosen, ...parts.final, ...missed]);
+}
+
+/** 爬升、航向这类终止在高度或航向上的腿。最后进近里不会有它们，复飞段从它们起头。 */
+const CLIMB_LEG = /^(CA|VA|VI|VM|FA|CI)$/;
+
+/**
+ * 进近的最后进近段和复飞段。
+ *
+ * **NAIP 有 37 条进近把复飞的头几条腿切进了 `final`。** ZSPD `R34L` 的 final 是
+ * `… PD041 PD040 · CA · DF PD231`，复飞段又从 `CA · CA · DF PD231 · HM` 重来一遍。照
+ * `part` 画的话，PD040 → PD231 那一截是进近色实线，接着线回到跑道头，再从跑道头画虚线
+ * 去 PD231 —— 图上是一根实线的发卡弯，死胡同，复飞看起来从错的地方开始。
+ *
+ * 所以 final 里第一条爬升/航向腿起的那几条归复飞段。复飞段已经把它们的定位点都走过一
+ * 遍时（37 条里 31 条）它们只是一份截断的副本，丢掉；否则接在复飞段前面（复飞段是空
+ * 的，或者从它们之后接着走）。
+ */
+function finalAndMissed(path: ProcedureLeg[]): {
+  final: ProcedureLeg[];
+  missed: ProcedureLeg[];
+} {
   const final = path.filter(
     (l) => l.part !== "transition" && l.part !== "missed",
   );
-  const missed =
-    opts.missed === false ? [] : path.filter((l) => l.part === "missed");
-  return dedupeAdjacentLegs([...chosen, ...final, ...missed]);
+  const missed = path.filter((l) => l.part === "missed");
+  const cut = final.findIndex((l) =>
+    CLIMB_LEG.test((l.path ?? "").toUpperCase()),
+  );
+  if (cut <= 0) return { final, missed };
+  const tail = final.slice(cut).map((l) => ({ ...l, part: "missed" }));
+  const seen = new Set(missed.map((l) => l.ident).filter(Boolean));
+  const repeated =
+    missed.length > 0 && tail.every((l) => !l.ident || seen.has(l.ident));
+  return {
+    final: final.slice(0, cut),
+    missed: repeated ? missed : [...tail, ...missed],
+  };
 }
 
 function dedupeAdjacentLegs(legs: ProcedureLeg[]): ProcedureLeg[] {
@@ -446,11 +480,16 @@ function dedupeAdjacentLegs(legs: ProcedureLeg[]): ProcedureLeg[] {
   for (const leg of legs) {
     const prev = out[out.length - 1];
     // 等待腿和它前一条同一个定位点，但它是另一件事（在这里等待），留着。
+    // 没坐标又没代号的腿（`CA` 接 `CA`）是两条不同的腿，不是重复 —— 比 null === null 会把
+    // 第二条连同它的转弯方向一起收掉。
     const same =
       prev && !isHoldLeg(leg.path)
         ? leg.ident && prev.ident
           ? leg.ident === prev.ident
-          : leg.lat === prev.lat && leg.lon === prev.lon
+          : leg.lat != null &&
+            leg.lon != null &&
+            leg.lat === prev.lat &&
+            leg.lon === prev.lon
         : false;
     if (same) continue;
     out.push(leg);
@@ -804,15 +843,39 @@ export function missedApproachPoints(
   transition?: string | null,
   variation?: number,
 ): MapPoint[] {
-  const legs = procedureTrack(approach, { transition, missed: true }).filter(
-    (l) => l.part === "missed",
+  return missedApproach(approach, transition, variation).points;
+}
+
+/**
+ * 复飞段的点，外加**转上复飞段的那个弯**（`start`）。
+ *
+ * 转弯方向记在腿的起点上（见 `procedureToMapPoints`）。复飞段第一条画得出的腿的起点
+ * 是复飞点，而复飞点属于最后进近那一段 —— 单算复飞段时这个方向没地方挂，就丢了。所以
+ * 带上复飞点一起算，再把它拿到的方向交给调用方挂到复飞点上。
+ */
+function missedApproach(
+  approach: Procedure,
+  transition?: string | null,
+  variation?: number,
+): { points: MapPoint[]; start: Pick<MapPoint, "turn" | "hold"> } {
+  const track = procedureTrack(approach, { transition, missed: true });
+  const legs = track.filter((l) => l.part === "missed");
+  const anchor = track
+    .filter((l) => l.part !== "missed" && l.lat != null && l.lon != null)
+    .at(-1);
+  const withAnchor = anchor
+    ? [{ ...anchor, path: "TF", turn: null }, ...legs]
+    : legs;
+  const points = procedureToMapPoints(
+    { ...approach, path: withAnchor },
+    { variation },
   );
-  return procedureToMapPoints({ ...approach, path: legs }, { variation }).map(
-    (p) => ({
-      ...p,
-      kind: "missed",
-    }),
-  );
+  const head = anchor ? points.shift() : undefined;
+  return {
+    points: points.map((p) => ({ ...p, kind: "missed" })),
+    // 复飞段以复飞点上的等待起头时（`HM` 挂在复飞点上），等待也在它身上。
+    start: { turn: head?.turn, hold: head?.hold },
+  };
 }
 
 export function composeRoutePoints(parts: {
@@ -916,13 +979,29 @@ export function composeRoutePoints(parts: {
     );
   }
   // 复飞段从复飞点接着画，自成一段（`kind: "missed"`）。
-  const missed = parts.approach
-    ? missedApproachPoints(
+  const { points: missed, start: missedStart } = parts.approach
+    ? missedApproach(
         parts.approach,
         parts.approachTransition,
         parts.arrivalVariation,
       )
-    : [];
+    : { points: [], start: {} };
+  // 转上复飞段的那个弯（和复飞点上的等待）挂到复飞点上：此刻线上最后一个点。跑道头和
+  // 机场点还没接上 —— 挂到它们身上就错了。
+  if (missedStart.turn || missedStart.hold) {
+    const i = chain.findLastIndex((q) => !q.offPath);
+    if (i >= 0) {
+      chain[i] = {
+        ...chain[i],
+        ...(missedStart.turn && !chain[i].turn
+          ? { turn: missedStart.turn }
+          : {}),
+        ...(missedStart.hold && !chain[i].hold
+          ? { hold: missedStart.hold }
+          : {}),
+      };
+    }
+  }
   const arrRwy = parts.arrivalRunway;
   if (arrRwy) {
     chain.push({
@@ -942,12 +1021,13 @@ export function composeRoutePoints(parts: {
   const out: MapPoint[] = [];
   for (const p of chain) {
     const prev = out[out.length - 1];
-    // 代号为空的腿（`CA`/`VI` 那类）比不了代号，改比坐标 —— 否则连着两条无名腿
-    // 会被当成同一个点收掉，而它们是两个不同的位置。
+    // 代号相同，或者坐标完全相同，就是同一个点。只比代号不够：ZSPD 的复飞点 PD040 就
+    // 在 34L 的跑道头上，两个名字各出一个标注，叠在一起谁也读不出来，中间还夹一条零长
+    // 腿。留先到的那个（程序自己的定位点，和腿表一致）。无名的腿（`CA`/`VI` 那类）只能
+    // 比坐标。
     const same = prev
-      ? p.ident && prev.ident
-        ? p.ident === prev.ident
-        : p.lat === prev.lat && p.lon === prev.lon
+      ? (Boolean(p.ident) && p.ident === prev.ident) ||
+        (p.lat === prev.lat && p.lon === prev.lon)
       : false;
     if (same) {
       // 收掉的那个点可能挂着等待（STAR 终点和进近起点是同一个点时常见），并过去。转弯
