@@ -43,3 +43,18 @@ describe("blocksFor 纬度边界", () => {
     expect(blocksFor(-100, 0, -95, 5)).toEqual([]);
   });
 });
+
+describe("blocksFor 块边长", () => {
+  // 航路网按 20 度取（lib/airways.ts 的 AIRWAY_BLOCK）。中国一屏在 z5 落在三块里。
+  test("20 度的块对齐 20 的倍数", () => {
+    expect(blocksFor(23, 98, 39, 126, 20)).toEqual([
+      { lat: 20, lon: 80 },
+      { lat: 20, lon: 100 },
+      { lat: 20, lon: 120 },
+    ]);
+  });
+
+  test("20 度的块过日界线也折回", () => {
+    expect(lonsOf(blocksFor(50, 170, 55, 195, 20))).toEqual([-180, 160]);
+  });
+});

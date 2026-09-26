@@ -42,8 +42,10 @@ export interface Navaid {
   inAirway: boolean;
 }
 
-export async function fetchNavaids(): Promise<Navaid[]> {
-  const response = await dbFetch("aip/navaids");
+export async function fetchNavaids(bbox?: string): Promise<Navaid[]> {
+  const response = await dbFetch(
+    bbox ? `aip/navaids?bbox=${encodeURIComponent(bbox)}` : "aip/navaids",
+  );
   if (!response.ok) throw new Error(`navaids: ${response.status}`);
   return unwrapList<Navaid>(await response.json());
 }
@@ -57,6 +59,11 @@ export async function fetchNavaids(): Promise<Navaid[]> {
  * 频率不补零也不四舍五入：汇编上印的是 `113` 就是 `113`，印的是 `113.1` 就是
  * `113.1`。把 113 显示成 113.0 是在原文上添东西，而频率是要照着调的。
  */
+/** 同一个台在两块里各出现一次时认出来：代号、类别、位置都一样。 */
+export function navaidKey(n: Navaid): string {
+  return `${n.ident}|${n.kind ?? ""}|${n.lat}|${n.lon}`;
+}
+
 export function navaidLabel(n: Navaid): string {
   const name = n.name ?? n.ident;
   if (n.freqMhz != null) return `${name} D ${n.freqMhz} ${n.ident}`;
@@ -170,10 +177,32 @@ export interface Airspace {
 
 export async function fetchAirspaces(
   family: AirspaceFamily,
+  bbox?: string,
 ): Promise<Airspace[]> {
-  const response = await dbFetch(`aip/airspaces?family=${family}`);
+  const box = bbox ? `&bbox=${encodeURIComponent(bbox)}` : "";
+  const response = await dbFetch(`aip/airspaces?family=${family}${box}`);
   if (!response.ok) throw new Error(`airspaces ${family}: ${response.status}`);
   return unwrapList<Airspace>(await response.json());
+}
+
+/**
+ * 同一块空域在两块里各出现一次时认出来。can-db 的空域没有 id，按它自己的实体属性加
+ * 几何认：几何一样的同名空域就是同一块。
+ */
+export function airspaceKey(a: Airspace): string {
+  const first = a.vertices[0] ?? [a.centreLat, a.centreLon];
+  return [
+    a.family,
+    a.kind,
+    a.code,
+    a.name,
+    a.lowerM,
+    a.upperM,
+    a.shape,
+    a.radiusKm,
+    a.vertices.length,
+    first.join(","),
+  ].join("|");
 }
 
 /** 米 → 英尺。航图标的是英尺，库里存的是米。 */

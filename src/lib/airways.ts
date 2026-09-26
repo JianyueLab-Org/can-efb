@@ -248,7 +248,7 @@ export function routeLegKeys(all: RouteLegPoint[]): Set<string> {
   return new Set(routeLegs(all).map((l) => l.key));
 }
 
-/** 计划里的一个点。`lat` / `lon` 有的话，同名航段靠它挑（见 `markRouteOnAirways`）。 */
+/** 计划里的一个点。`lat` / `lon` 有的话，同名航段靠它挑（见 `routeLegsOnAirways`）。 */
 export interface RouteLegPoint {
   ident: string;
   via?: string;
@@ -312,22 +312,51 @@ function legDistance(
   );
 }
 
+/** 一份航段集合的索引：计划键 → 那些航段（`leg`）和它们实线段的要素。 */
+type LegIndex = Map<string, { leg: string; line: Feature }[]>;
+
+/** 按集合对象记一份：航路网一律整份换掉，不就地改。 */
+const legIndexOf = new WeakMap<FeatureCollection, LegIndex>();
+
+function legIndex(collection: FeatureCollection): LegIndex {
+  const cached = legIndexOf.get(collection);
+  if (cached) return cached;
+  const index: LegIndex = new Map();
+  const seen = new Set<string>();
+  for (const f of collection.features) {
+    const props = f.properties ?? {};
+    const leg = props.leg;
+    // 一段三截（实线加两截虚线）同一个 `leg`，按实线那截认。
+    if (typeof leg !== "string" || props.part === "stub" || seen.has(leg))
+      continue;
+    seen.add(leg);
+    const key = legKey(
+      String(props.airway ?? ""),
+      String(props.fromIdent ?? props.from ?? ""),
+      String(props.toIdent ?? props.to ?? ""),
+    );
+    const bucket = index.get(key);
+    if (bucket) bucket.push({ leg, line: f });
+    else index.set(key, [{ leg, line: f }]);
+  }
+  legIndexOf.set(collection, index);
+  return index;
+}
+
 /**
- * 在航路网上把计划走过的那几段**标出来**，返回真正标到的那些键。
+ * 计划走过的航段在航路网上对上了哪些。航段数据不动：样式按 `lit` 点亮（`chartStyle.ts`
+ * 的 `onRouteOf`，比的是每条航段的 `leg` 属性），高亮变了不重传航路网。
  *
- * ## 为什么要返回「真正标到的」
+ * - `planned`：对上了的**计划键**（`legKey`，代号）。
+ * - `lit`：要点亮的航段的 `leg`（图键）。
+ *
+ * ## 为什么要返回「对上了的」
  *
  * 不是每条腿都点得亮：航路图层可能关着，某个航段可能因为高低空过滤不在这份集合
- * 里，端点也可能解析不出坐标而被丢掉。调用方要拿这个结果去决定**哪几条腿仍然得自
- * 己画线** —— 假设「有 via 就一定被点亮了」的话，那些没点上的腿会从图上消失，而航
- * 路断在中间是看不出来的：剩下的线本身都对。
+ * 里，端点也可能解析不出坐标而被丢掉。调用方要拿 `planned` 去决定**哪几条腿仍然得
+ * 自己画线** —— 假设「有 via 就一定被点亮了」的话，那些没点上的腿会从图上消失，而
+ * 航路断在中间是看不出来的：剩下的线本身都对。
  *
- * ## 每次都重写 `onRoute`
- *
- * 航路集合是按 level 缓存的（`airwayCache`），同一份对象会被反复使用。只加不清的
- * 话，上一条计划的高亮会留在上面 —— 换一条航路，图上会同时亮着两条。
- */
-/**
  * ## 按代号比，不按图键比
  *
  * 计划里写的是代号，航段的 `from` / `to` 是图键。比的是要素上的 `fromIdent` /
@@ -335,50 +364,37 @@ function legDistance(
  * 位置（`routeLegs`）时只点亮离计划那条腿最近的一段；不带位置（传进来的是
  * `Set`）时同名的都点亮。
  */
-export function markRouteOnAirways(
+export function routeLegsOnAirways(
   collection: FeatureCollection,
   legs: Set<string> | RouteLeg[],
-): Set<string> {
+): { planned: Set<string>; lit: Set<string> } {
   const list: RouteLeg[] = Array.isArray(legs)
     ? legs
     : [...legs].map((key) => ({ key }));
-  const byKey = new Map<string, Feature[]>();
-  for (const f of collection.features) {
-    const props = f.properties ?? {};
-    props.onRoute = 0;
-    f.properties = props;
-    const key = legKey(
-      String(props.airway ?? ""),
-      String(props.fromIdent ?? props.from ?? ""),
-      String(props.toIdent ?? props.to ?? ""),
-    );
-    const bucket = byKey.get(key);
-    if (bucket) bucket.push(f);
-    else byKey.set(key, [f]);
-  }
-
-  const marked = new Set<string>();
+  const index = legIndex(collection);
+  const planned = new Set<string>();
+  const lit = new Set<string>();
   for (const leg of list) {
-    const candidates = byKey.get(leg.key);
+    const candidates = index.get(leg.key);
     if (!candidates) continue;
     let chosen = candidates;
     if (candidates.length > 1 && leg.ends) {
       const ends = leg.ends;
       let best = candidates[0];
-      let bestDist = legDistance(best, ends);
-      for (const f of candidates.slice(1)) {
-        const d = legDistance(f, ends);
+      let bestDist = legDistance(best.line, ends);
+      for (const c of candidates.slice(1)) {
+        const d = legDistance(c.line, ends);
         if (d < bestDist) {
-          best = f;
+          best = c;
           bestDist = d;
         }
       }
       chosen = [best];
     }
-    for (const f of chosen) f.properties!.onRoute = 1;
-    marked.add(leg.key);
+    for (const c of chosen) lit.add(c.leg);
+    planned.add(leg.key);
   }
-  return marked;
+  return { planned, lit };
 }
 
 /**
@@ -470,9 +486,9 @@ export function alongGreatCircle(
  * 空白里，不被实线穿过。在数据里切而不是用 `line-offset` 一类的样式技巧：缩放变了，
  * 让出的距离还是 1 NM。
  *
- * 三段都带同一组 `airway` / `from` / `to`，所以 `markRouteOnAirways` 照样点得亮整段；
- * 计划走过的那几段，虚线那两截也画成实线（样式里按 `onRoute` 收回实线层），计划航线
- * 在点上不断开。代号牌只放在实线那一段上（`part: "line"`）。
+ * 三段都带同一个 `leg`，所以高亮照样点得亮整段；计划走过的那几段，虚线那两截也画成
+ * 实线（样式里按 `onRouteOf` 收回实线层），计划航线在点上不断开。代号牌只放在实线
+ * 那一段上（`part: "line"`）。
  */
 export function toAirwayLines(
   graph: AirwayGraph | TaggedAirwayGraph,
@@ -506,13 +522,15 @@ export function toAirwayLines(
       locType: meta?.locType ?? "",
       rnav: isRnavDesignator(seg.airway) ? 1 : 0,
       minAlt: seg.minAlt ?? 0,
-      /* 两端代号带上，`markRouteOnAirways` 靠它算键。**属性里没有它就点不亮** ——
+      /* 两端代号带上，`routeLegsOnAirways` 靠它和计划比。**属性里没有它就点不亮** ——
        * 而那不会报错，只会让高亮一条都不出现。`from` / `to` 是图键，只认航段。 */
       from: seg.from,
       to: seg.to,
       fromIdent,
       toIdent,
-      onRoute: 0,
+      /* 样式按它点亮（`onRouteOf`）。用图键：同名的两段是两个 `leg`，只点亮挑中的那
+       * 一段。和方向无关。 */
+      leg: legKey(seg.airway, seg.from, seg.to),
     };
     features.push({
       type: "Feature",

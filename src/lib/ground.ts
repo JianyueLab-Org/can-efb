@@ -63,8 +63,22 @@ export const GROUND_MIN_ZOOM = 9;
  */
 export const GROUND_MAX_AIRPORTS = 4;
 
-/** 键带 `aipScope()`：隐藏 NAIP 的开关一变，旧那份就不能再被命中。 */
-const cache = new Map<string, Ground | null>();
+/**
+ * 最多留几个机场的地面几何。每个场是兆级的几何，一路平移过去不设上限就一直涨。
+ * 是 `GROUND_MAX_AIRPORTS` 的两倍：一屏的场加上刚平移出去的那一屏，来回不重下。
+ */
+export const GROUND_CACHE_AIRPORTS = 8;
+
+/**
+ * 键带 `aipScope()`：隐藏 NAIP 的开关一变，旧那份就不能再被命中。
+ *
+ * `cache` 按最近使用排（Map 的插入序，命中时删了重插），超出上限从最旧的扔。
+ * 「没有」单独记在 `missing`：一个键几个字节，不占上限。
+ */
+const cache = new Map<string, Ground>();
+const missing = new Set<string>();
+/** 正在路上的请求。同一个场并发要两次时共用一次。 */
+const inFlight = new Map<string, Promise<Ground | null>>();
 
 /**
  * 取一个机场的地面。**结果按 ICAO 缓存，包括「没有」。**
@@ -72,12 +86,30 @@ const cache = new Map<string, Ground | null>();
  * 缓存 null 是重点：没有地面数据的机场 can-db 回 404，而地图一直在动 —— 不记住
  * "这个场没有"，每次平移回来都会再问一次，问出同一个空答案。
  */
-export async function fetchGround(icao: string): Promise<Ground | null> {
+export function fetchGround(icao: string): Promise<Ground | null> {
   const key = icao.toUpperCase();
   const cacheKey = `${aipScope()}:${key}`;
   const hit = cache.get(cacheKey);
-  if (hit !== undefined) return hit;
+  if (hit) {
+    cache.delete(cacheKey);
+    cache.set(cacheKey, hit);
+    return Promise.resolve(hit);
+  }
+  if (missing.has(cacheKey)) return Promise.resolve(null);
+  const pending = inFlight.get(cacheKey);
+  if (pending) return pending;
 
+  const request = requestGround(key, cacheKey);
+  inFlight.set(cacheKey, request);
+  const done = () => inFlight.delete(cacheKey);
+  request.then(done, done);
+  return request;
+}
+
+async function requestGround(
+  key: string,
+  cacheKey: string,
+): Promise<Ground | null> {
   let out: Ground | null = null;
   try {
     const response = await dbFetch(`aip/airports/${key}/ground`);
@@ -104,7 +136,14 @@ export async function fetchGround(icao: string): Promise<Ground | null> {
     return null;
   }
 
+  if (!out) {
+    missing.add(cacheKey);
+    return null;
+  }
   cache.set(cacheKey, out);
+  while (cache.size > GROUND_CACHE_AIRPORTS) {
+    cache.delete(cache.keys().next().value!);
+  }
   return out;
 }
 

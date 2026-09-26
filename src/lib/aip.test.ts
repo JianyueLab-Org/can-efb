@@ -9,6 +9,9 @@ import {
   navaidTier,
   toNavaidPoints,
   type Navaid,
+  airspaceKey,
+  navaidKey,
+  type Airspace,
 } from "@/lib/aip";
 import { NAVAID_ICON } from "@/lib/chartStyle";
 
@@ -80,5 +83,63 @@ describe("空域类别", () => {
     expect(a("controlled", "CTA", null)).toBe("ctr");
     expect(a("controlled", "APP", null)).toBe("app");
     expect(a("special", "HAS", "等待空域")).toBe("other");
+  });
+});
+
+describe("按块取时认出同一条", () => {
+  /** 跨块边界的空域两块都会给。认不出来就画两遍，斜线叠成两倍深。 */
+  const area = (vertices: [number, number][]): Airspace => ({
+    family: "restricted",
+    code: "ZB(R)1",
+    kind: "R",
+    localType: null,
+    name: "Test",
+    reason: null,
+    activeTime: null,
+    note: null,
+    lowerM: 0,
+    upperM: 3000,
+    shape: "polygon",
+    centreLat: null,
+    centreLon: null,
+    radiusKm: null,
+    vertices,
+    airac: "2609",
+  });
+
+  test("同一块空域两次给出同一个键", () => {
+    const a = area([
+      [39, 119],
+      [41, 121],
+      [39, 121],
+    ]);
+    expect(airspaceKey(a)).toBe(
+      airspaceKey({ ...a, vertices: [...a.vertices] }),
+    );
+  });
+
+  test("同名但几何不同的是两块", () => {
+    expect(airspaceKey(area([[39, 119]]))).not.toBe(
+      airspaceKey(area([[45, 119]])),
+    );
+  });
+
+  test("同名导航台在两处是两个", () => {
+    const n = {
+      ident: "PA",
+      kind: "NDB",
+      name: null,
+      lat: 25.4,
+      lon: 110.06,
+      freqMhz: null,
+      freqKhz: 300,
+      channel: null,
+      magVar: null,
+      elevM: null,
+      servedAirport: null,
+      inAirway: true,
+    };
+    expect(navaidKey(n)).not.toBe(navaidKey({ ...n, lat: 30.55, lon: 116.98 }));
+    expect(navaidKey(n)).toBe(navaidKey({ ...n }));
   });
 });

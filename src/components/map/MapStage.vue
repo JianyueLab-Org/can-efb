@@ -12,9 +12,9 @@
  * - `useRouteLayer`   航路：面板推来的点、已提交的计划、航路网上点亮的那几段
  * - `MapControls.vue` 图层菜单、提示、重试、「定位到我」
  *
- * 横向依赖有两条。一条是航路网：登记处开关它，航路层要在它变了之后重算高亮、并写回
- * 一个新对象。所以这份 ref 由这里持有，两边都拿到它，登记处在原来调
- * `refreshHighlight()` 的地方调 `onAirwaysChange`。
+ * 横向依赖有两条。一条是航路网：登记处开关它，航路层要在它变了之后重算高亮。所以这
+ * 份 ref 由这里持有，两边都拿到它，登记处在原来调 `refreshHighlight()` 的地方调
+ * `onAirwaysChange`。
  *
  * 另一条是「不使用受限汇编」（`lib/naip.ts`）。它一变，图上每一层 can-db 数据都是
  * 按旧值取的，得一起作废、一起重取 —— 只重取一部分，图上就同时画着两个级别的资
@@ -33,6 +33,7 @@ import {
   onBeforeUnmount,
   onMounted,
   ref,
+  shallowRef,
   watch,
 } from "vue";
 import type { FeatureCollection } from "geojson";
@@ -102,7 +103,9 @@ const RouteMap = defineAsyncComponent({
 
 const prefs: LayerPrefs = { ...DEFAULT_PREFS };
 const notice = useLayerNotice(props.t.denied);
-const airways = ref<FeatureCollection | null>(null);
+/* `shallowRef`：航路网是几万条航段的要素集合，一律整份换掉（高亮不改它，改的是样式，
+   见 `useRouteLayer` 的 `refreshHighlight`），深层代理只是白白包一遍。 */
+const airways = shallowRef<FeatureCollection | null>(null);
 /** 见文件顶上：「不使用受限汇编」每变一次加一，各层取数回来时对号。 */
 const aip: AipGeneration = { gen: 0 };
 /** 最近一次视野。换级别时地面要按它重取，而地面层自己不记视野。 */
@@ -131,7 +134,7 @@ const live = useTrafficLayer({
 });
 
 /* 模板里只有顶层的 ref 会自动解包，所以把要用的拆出来。 */
-const { points, markers, focus, label, highlightedLegs } = route;
+const { points, markers, focus, label, highlightedLegs, litLegs } = route;
 const { shownFixes, airports, runways, navaids, firs, mora, airspaces } = chart;
 const { ground, groundAttribution } = groundLayer;
 const {
@@ -294,6 +297,7 @@ onBeforeUnmount(() => {
       :airports="airports"
       :runways="runways"
       :highlighted-legs="highlightedLegs"
+      :lit-legs="litLegs"
       :ground="ground"
       :extra-attribution="groundAttribution"
       :navaids="navaids"

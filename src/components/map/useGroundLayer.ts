@@ -4,7 +4,7 @@
  * 从 MapSurface.vue 搬来。它有自己的序号闸（groundSeq），和别的层不共享任何状态
  * （除了「不使用受限汇编」那一个代号），所以单独一个文件。
  */
-import { ref } from "vue";
+import { ref, shallowRef } from "vue";
 import type { FeatureCollection } from "geojson";
 import {
   fetchGround,
@@ -27,12 +27,12 @@ export function useGroundLayer(options: {
    *
    * 两个 ref 是一组：几何和署名。`groundAttribution` 是 ODbL 的署名，画了地面就显示。
    */
-  const ground = ref<FeatureCollection | null>(null);
+  const ground = shallowRef<FeatureCollection | null>(null);
   const groundAttribution = ref<string[]>([]);
 
-  /* 已经取回来的机场地面，按 ICAO。**留着不清**：平移出去再回来是最常见的动作，
-     而每个机场是兆级的几何 —— 清掉等于每次来回都重下一遍。 */
-  const groundCache = new Map<string, Ground>();
+  /* 已经取回来的机场地面由 `fetchGround` 缓存（按 ICAO 和 `aipScope()`，最近用过的
+     `GROUND_CACHE_AIRPORTS` 个）。**不在这里另留一份**：平移出去再回来是最常见的动
+     作，那份缓存已经管住了它，而每个机场是兆级的几何 —— 两份没有上限的缓存会一直涨。 */
   /** 这一轮画的是哪几个场，用来判断要不要重新拼 GeoJSON。 */
   let groundShown = "";
   /* 每次 `loadGroundFor` 进来就领一个号，await 回来时号不是最新的就什么都不写。
@@ -77,22 +77,12 @@ export function useGroundLayer(options: {
       return;
     }
 
-    await Promise.all(
-      wanted
-        .filter((p) => !groundCache.has(p.icao))
-        .map(async (p) => {
-          const g = await fetchGround(p.icao);
-          // null = 这个场没有地面数据。`fetchGround` 自己记住了，这里不必再记 ——
-          // 它不进 groundCache，所以下面拼装时自然跳过。
-          if (g && gen === aip.gen) groundCache.set(p.icao, g);
-        }),
-    );
-    // 过期的请求照样把取回来的场放进缓存（上面那行），只是不许再碰显示状态。
-    if (seq !== groundSeq) return;
+    // null = 这个场没有地面数据。`fetchGround` 自己记住了，下面拼装时跳过。
+    const fetched = await Promise.all(wanted.map((p) => fetchGround(p.icao)));
+    // 过期的请求照样把取回来的场放进缓存（`fetchGround` 里），只是不许再碰显示状态。
+    if (seq !== groundSeq || gen !== aip.gen) return;
 
-    const have = wanted
-      .map((p) => groundCache.get(p.icao))
-      .filter((g): g is Ground => !!g);
+    const have = fetched.filter((g): g is Ground => !!g);
 
     const key = have.map((g) => g.icao).join(",");
     if (key === groundShown) return;
@@ -112,11 +102,11 @@ export function useGroundLayer(options: {
   }
 
   /**
-   * 「不使用受限汇编」变了。已取回的地面是按旧值取的，全部作废；视野在门槛以上就按
-   * 新值重取。代号 `aip.gen` 已经由 MapStage 加过一，路上那几次回来不会再进缓存。
+   * 「不使用受限汇编」变了。已取回的地面是按旧值取的，`fetchGround` 的缓存键带
+   * `aipScope()`，旧的那份不会再被命中；视野在门槛以上就按新值重取。代号 `aip.gen`
+   * 已经由 MapStage 加过一，路上那几次回来不会再画上去。
    */
   function reloadAip(v: Viewport | null) {
-    groundCache.clear();
     groundShown = "";
     if (v) void loadGroundFor(v);
   }

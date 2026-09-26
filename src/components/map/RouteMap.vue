@@ -36,7 +36,7 @@
  * `map/attribution.ts`，镜头（对焦、框选、内边距）在 `map/camera.ts`。这个文件
  * 只剩构造地图、灌 source、切主题。
  */
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, toRaw, watch } from "vue";
 import {
   Map as MapLibreMap,
   NavigationControl,
@@ -173,6 +173,11 @@ const props = defineProps<{
    * 是「标到的」而不是「有 via 的」：同上。
    */
   highlightedLegs?: Set<string> | null;
+  /**
+   * 航路网上要点亮的航段（每条航段的 `leg`），排好序。写进航路那几层的样式
+   * （`applyStyle` / `onRouteOf`），不改航路网数据。
+   */
+  litLegs?: readonly string[] | null;
   /** 机场地面（滑行道、机位、等待位置、机坪），放大之后才有。见 `lib/ground.ts`。 */
   ground?: FeatureCollection | null;
   /**
@@ -296,7 +301,7 @@ const camera = createCamera(() => map);
  * MapLibre 6 的 `isStyleLoaded()` 走的是 `style.loaded()`：只要有一个 source 的
  * `setData` 还没处理完、或者还有瓦片在加载，它就是 false。而这张图的 source 几乎
  * 一直在忙 —— 实时那三层每 30 秒换一次数据，底图和细节是异步灌的。于是 render()
- * 和 applyTheme() 拿它当闸，恰好在忙的那一刻进来的 prop 变化（换航路、换焦点、
+ * 和 applyStyle() 拿它当闸，恰好在忙的那一刻进来的 prop 变化（换航路、换焦点、
  * 切主题）就**被整个丢掉**，直到下一次不相干的触发才补上，而之后没有任何东西会
  * 重试。
  *
@@ -304,7 +309,7 @@ const camera = createCamera(() => map);
  * style 里，没有一个是后来 addSource/addLayer 加的，所以 style 一解析完就全在；
  * `setData` / `setPaintProperty` 自己也只要求 style 的 `_loaded`，不管 source 忙不
  * 忙。`load` 事件之后这个前提就永远成立（这里没有 setStyle），而 `load` 回调本身会
- * 按当前 props 补一次 render 和 applyTheme —— 在那之前被挡掉的调用什么也不丢，
+ * 按当前 props 补一次 render 和 applyStyle —— 在那之前被挡掉的调用什么也不丢，
  * 也就不需要另外挂一个重试。 */
 let styleReady = false;
 
@@ -337,7 +342,7 @@ function updateCorners() {
 function emitViewport() {
   if (!map) return;
   // 视野一变就看看够不够格拉细节。它自己会挡住重复调用。
-  void basemap.loadDetail();
+  basemap.loadDetail();
   /* 这里**不折**经度：发出去的是 MapLibre 原样的展开值，west ≤ east 恒成立，按框
      取数的那几处（MORA 分块、视野内机场）拿到的是一个连续的区间。折回 ±180 由它们
      自己在库里处理 —— 在这里折，过日界线时 west 会大于 east，区间反而断成两截。 */
@@ -352,22 +357,29 @@ function emitViewport() {
 }
 
 /**
- * 切主题。**没有手写清单**：`themedProperties` 从 `buildStyle` 里把每个图层的每个
- * paint / layout 属性列出来，这里逐个比对当前值，变了才设。新加的图层自动跟着换，
- * 以前那份手写的 `setPaintProperty` 清单漏登记过两次。
+ * 切主题、换计划高亮。**没有手写清单**：`themedProperties` 从 `buildStyle` 里把每个
+ * 图层的 filter 和每个 paint / layout 属性列出来，这里逐个比对当前值，变了才设。新
+ * 加的图层自动跟着换，以前那份手写的 `setPaintProperty` 清单漏登记过两次。
  *
- * 不随主题变的（席位色、过滤、文字）比对后原样跳过，所以席位色不会被换成平色。
+ * 不随主题变的（席位色、文字）比对后原样跳过，所以席位色不会被换成平色。
+ *
+ * 计划高亮也走这里：点亮哪些航段写在航路那几层的 filter 和 paint 里（`onRouteOf`），
+ * 航路网的数据不动 —— 换一条计划只改样式，不重传几万条航段。
  */
-function applyTheme() {
+function applyStyle() {
   if (!map || !styleReady) return;
-  for (const p of themedProperties(theme())) {
+  for (const p of themedProperties(theme(), props.litLegs ?? [])) {
     if (!map.getLayer(p.layer)) continue;
     const current =
-      p.kind === "paint"
-        ? map.getPaintProperty(p.layer, p.name as never)
-        : map.getLayoutProperty(p.layer, p.name as never);
+      p.kind === "filter"
+        ? map.getFilter(p.layer)
+        : p.kind === "paint"
+          ? map.getPaintProperty(p.layer, p.name as never)
+          : map.getLayoutProperty(p.layer, p.name as never);
     if (JSON.stringify(current) === JSON.stringify(p.value)) continue;
-    if (p.kind === "paint") {
+    if (p.kind === "filter") {
+      map.setFilter(p.layer, p.value as never);
+    } else if (p.kind === "paint") {
       map.setPaintProperty(p.layer, p.name as never, p.value as never);
     } else {
       map.setLayoutProperty(p.layer, p.name as never, p.value as never);
@@ -396,11 +408,13 @@ const lastData = new Map<string, unknown>();
  * 那一层的瓦片，几十万个点的重建是看得见的一顿。
  *
  * 判据用**引用相等**而不是深比较：上游那些集合是算好之后整个换掉的（`airways.value
- * = lines`），没有原地改的写法 —— 唯一一处原地改属性的是航段高亮，而它改完会显式
- * 换一个新对象，正是为了让这道闸放行。深比较十几万个点比重传还贵。
+ * = lines`），没有原地改的写法 —— 航段高亮也不改数据，改的是样式（`applyStyle`）。
+ * 深比较十几万个点比重传还贵。
  */
 function setSource(id: string, data: FeatureCollection | null | undefined) {
-  const next = data ?? EMPTY;
+  // 交给 MapLibre 的是原始对象：上游若是深层 ref 传来的代理，序列化进 worker 时要
+  // 逐个属性穿过代理，白白慢一截。
+  const next = toRaw(data ?? EMPTY);
   if (lastData.get(id) === next) return;
   lastData.set(id, next);
   (map?.getSource(id) as GeoJSONSource | undefined)?.setData(next);
@@ -568,14 +582,14 @@ onMounted(() => {
   map.on("load", () => {
     styleReady = true;
     registerChartIcons(map!);
-    // 构造时的配色是那一刻取的；`load` 之前切过主题的话，那次 applyTheme 被闸挡
-    // 掉了，这里补上。
-    applyTheme();
+    // 构造时的配色和高亮是那一刻取的；`load` 之前切过主题或换过计划的话，那次
+    // applyStyle 被闸挡掉了，这里补上。
+    applyStyle();
     if (props.padding) camera.setPadding(props.padding);
     render();
     updateCorners();
     emitViewport();
-    void basemap.loadLand();
+    basemap.loadLand();
   });
   map.on("move", updateCorners);
   map.on("moveend", emitViewport);
@@ -589,7 +603,7 @@ onMounted(() => {
   resizeObserver = new ResizeObserver(() => map?.resize());
   resizeObserver.observe(container.value);
 
-  themeObserver = new MutationObserver(applyTheme);
+  themeObserver = new MutationObserver(applyStyle);
   themeObserver.observe(document.documentElement, {
     attributes: true,
     attributeFilter: ["class"],
@@ -608,12 +622,14 @@ onMounted(() => {
  *
  * 分成两个 watch，不是一个：
  *
- * - 上面那组小而且可能被就地修改（航路点来自事件载荷），深比是划算的。
+ * - 上面那组小，来自面板的事件载荷。`useRouteLayer` 每次都整份换掉（`points.value
+ *   = payload.points ?? []`），没有就地改的写法 —— 而 `render` 里那两份备忘录本来
+ *   就按引用认，就地改了深比也画不出来。所以按引用比。
  * - 下面那组是**每次整体替换**的要素集合。对它们深比意味着每一次实时刷新都要遍
  *   历几万个要素（光 MORA 一层就有六万多格），而它们的引用一变就说明内容变了 ——
  *   按引用比既正确又便宜。
  */
-watch(() => [props.points, props.markers, props.focus], render, { deep: true });
+watch(() => [props.points, props.markers, props.focus], render);
 
 watch(
   () => [
@@ -636,6 +652,10 @@ watch(
   ],
   render,
 );
+
+/* 计划高亮只改样式（见 applyStyle）。`useRouteLayer` 只在点亮的那组键真变了时才换
+   对象，所以按引用比。 */
+watch(() => props.litLegs, applyStyle);
 
 /* 署名单独一个 watch，不跟着 render 走：它换的是控件不是图层数据，而 render 每
    次视野变化都会跑好几趟 —— 挂在那上面等于每拖一次地图就摘挂一次控件。 */

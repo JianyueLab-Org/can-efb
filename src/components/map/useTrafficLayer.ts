@@ -4,7 +4,7 @@
  * 从 MapSurface.vue 搬来。两个开关共用一次取数和一个定时器，理由在下面那段原注释
  * 里。新加的只有：取数失败时在地图角上说一声（`live`），成功一次就撤掉。
  */
-import { computed, ref } from "vue";
+import { computed, ref, shallowRef } from "vue";
 import type { FeatureCollection } from "geojson";
 import type { MapFocus } from "@/lib/mapBus";
 import { appendTrack, toTrackLine, type OwnTrack } from "@/lib/ownTrack";
@@ -22,6 +22,7 @@ import {
 } from "@/lib/datafeed";
 import {
   buildCoverage,
+  coverageKey,
   indexBoundaries,
   indexTracons,
   wantsAirportCoords,
@@ -122,22 +123,24 @@ export function useTrafficLayer(options: {
   const showAtc = ref(false);
   /** 两层里有任何一层开着，就该在轮询。 */
   const liveOn = computed(() => showTraffic.value || showAtc.value);
-  const traffic = ref<FeatureCollection | null>(null);
+  /* 下面这些要素集合和按呼号 / CID 的表都是**整份换掉**、从不就地改的，所以用
+     `shallowRef`：一轮几百架飞机的要素，深层代理只是白白给每个坐标数组包一层。 */
+  const traffic = shallowRef<FeatureCollection | null>(null);
   /** 场面席位（放行/地面/塔台），外加没能对上任何范围的那些。画成点。 */
-  const atc = ref<FeatureCollection | null>(null);
+  const atc = shallowRef<FeatureCollection | null>(null);
   /** 区域 / FSS / 进近管的那片空域，和进近的范围圈。`lib/atcCoverage.ts`。 */
-  const atcAreas = ref<FeatureCollection | null>(null);
+  const atcAreas = shallowRef<FeatureCollection | null>(null);
   /** 范围的标注点，「呼号 频率」。 */
-  const atcLabels = ref<FeatureCollection | null>(null);
+  const atcLabels = shallowRef<FeatureCollection | null>(null);
   /**
    * 这一轮在线的席位，按呼号。点地图上的席位时从这里取详情（can-radar 的
    * `RadarDetails`）；ATIS 按它来自哪个数组记，不按 facility。
    */
-  const stations = ref(
+  const stations = shallowRef(
     new Map<string, { station: DatafeedController; isAtis: boolean }>(),
   );
   /** 这一轮的机组，按 CID，自己那架也在里面。点飞机时从这里取详情。 */
-  const pilots = ref(new Map<string, DatafeedPilot>());
+  const pilots = shallowRef(new Map<string, DatafeedPilot>());
   /**
    * 地图上点中的那一个：一个席位（按呼号）或一架飞机（按 CID）。一次只有一张详情卡。
    * 对象下线了卡跟着消失，见下面两个 computed。
@@ -153,13 +156,13 @@ export function useTrafficLayer(options: {
       ? (pilots.value.get(selection.value.cid) ?? null)
       : null,
   );
-  const own = ref<FeatureCollection | null>(null);
+  const own = shallowRef<FeatureCollection | null>(null);
   /**
    * 自己的航迹，从每一轮轮询里攒（`lib/ownTrack.ts`）。只活在这次会话；关掉机组那层
    * 时只是不画，攒下的留着 —— 断得太久的话 `appendTrack` 自己会重新开始。
    */
   let track: OwnTrack | null = null;
-  const ownTrack = ref<FeatureCollection | null>(null);
+  const ownTrack = shallowRef<FeatureCollection | null>(null);
   /** 在线管制席位数，给按钮上那个角标用。 */
   const atcCount = ref(0);
   /**
@@ -189,6 +192,15 @@ export function useTrafficLayer(options: {
    * 以前途中那次点击是直接被丢掉的 —— 按钮不亮、不报错，看起来像没点上。
    */
   let liveAgain = false;
+  /** 上一轮算好的管制要素，见 refreshLive 里用它的地方。 */
+  let coverageMemo: {
+    key: string;
+    boundaries: unknown;
+    tracons: unknown;
+    areas: FeatureCollection;
+    labels: FeatureCollection;
+    atc: FeatureCollection;
+  } | null = null;
 
   /**
    * 从别的标签页切回来时立刻补一次。
@@ -271,15 +283,38 @@ export function useTrafficLayer(options: {
         clearAtc();
         return;
       }
-      const coverage = buildCoverage(
-        controllers,
-        boundaries,
-        tracons,
-        airportAt,
-        atis,
-      );
-      atcAreas.value = coverage.areas;
-      atcLabels.value = coverage.labels;
+      /* 席位和几何都没变就留着上一轮的要素：引用不变，RouteMap 的 setSource 跳过，
+         不把情报区多边形每 30 秒重灌一遍。几何按引用比：进近多边形第一次取回来时
+         要重画。 */
+      const key = coverageKey(controllers, atis);
+      if (
+        !coverageMemo ||
+        coverageMemo.key !== key ||
+        coverageMemo.boundaries !== boundaries ||
+        coverageMemo.tracons !== tracons
+      ) {
+        const coverage = buildCoverage(
+          controllers,
+          boundaries,
+          tracons,
+          airportAt,
+          atis,
+        );
+        const points = toControllerPoints(coverage.points);
+        coverageMemo = {
+          key,
+          boundaries,
+          tracons,
+          areas: coverage.areas,
+          labels: coverage.labels,
+          atc: {
+            ...points,
+            features: [...points.features, ...coverage.extended.features],
+          },
+        };
+      }
+      atcAreas.value = coverageMemo.areas;
+      atcLabels.value = coverageMemo.labels;
       const next = new Map<
         string,
         { station: DatafeedController; isAtis: boolean }
@@ -289,11 +324,7 @@ export function useTrafficLayer(options: {
       for (const a of atis) next.set(a.callsign, { station: a, isAtis: true });
       stations.value = next;
       // 点这一层留给场面席位，外加**没能对上任何范围的那些** —— 它们不该从图上消失。
-      const points = toControllerPoints(coverage.points);
-      atc.value = {
-        ...points,
-        features: [...points.features, ...coverage.extended.features],
-      };
+      atc.value = coverageMemo.atc;
       atcCount.value = controllers.length;
     } catch (error) {
       // **不关掉这一层，也不清空已画的东西。** 实时数据每 30 秒重试一次，一次抖动
@@ -306,6 +337,7 @@ export function useTrafficLayer(options: {
 
   /** 管制那层清干净。关掉时、以及取数途中被关掉时都走这里。 */
   function clearAtc() {
+    coverageMemo = null;
     atc.value = null;
     atcAreas.value = null;
     atcLabels.value = null;

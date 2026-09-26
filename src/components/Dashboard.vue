@@ -24,6 +24,7 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { api, describeFailure } from "@/lib/canApi";
+import { loadFlightPlan } from "@/lib/planStore";
 import { createTranslator } from "@/lib/i18n";
 import { showPlanOnMap } from "@/lib/mapBus";
 import {
@@ -93,7 +94,8 @@ const filed = computed(() =>
 
 async function loadPlan() {
   plan.value = LOADING;
-  const result = await api<Plan | null>("/api/v1/pilot/flightplan");
+  // 和地图那一层共用一次（`lib/planStore.ts`）：打开概览时两边同时要。
+  const result = await loadFlightPlan<Plan>();
   plan.value = fromApiResult(result);
 }
 

@@ -1,10 +1,10 @@
 /**
  * 航路层：面板推来的点、成员已提交的计划、计划在航路网上点亮的那几段、镜头焦点。
  *
- * 从 MapSurface.vue 搬来。航路网本身归图层登记处；这里只读它、在高亮变了时换一个
- * 新对象写回去（原因见 refreshHighlight 里的注释）。
+ * 从 MapSurface.vue 搬来。航路网本身归图层登记处；这里只读它，算出点亮哪几段交给
+ * RouteMap 改样式（见 refreshHighlight）。
  */
-import { ref, type Ref } from "vue";
+import { ref, shallowRef, type Ref } from "vue";
 import type { FeatureCollection } from "geojson";
 import {
   PLAN_CHANGED_EVENT,
@@ -14,9 +14,11 @@ import {
   type MapFocus,
   type MapPoint,
 } from "@/lib/mapBus";
-import { markRouteOnAirways, routeLegs } from "@/lib/airways";
+import { routeLegs, routeLegsOnAirways } from "@/lib/airways";
 import { unwrapList } from "@/lib/aip";
-import { api } from "@/lib/canApi";
+import { loadFlightPlan } from "@/lib/planStore";
+import { loadAirportProcedures } from "@/lib/procedures";
+import { loadHoldings } from "@/lib/holds";
 import { dbFetch } from "@/lib/naip";
 import { viewForPlanRequest } from "@/components/map/planRequest";
 import { applySelection } from "@/lib/planProcedures";
@@ -44,7 +46,13 @@ export function useRouteLayer(options: {
    * 「不要另加元素」。是「标到的」而不是「有 via 的」：没点上的腿仍然要画，否则航路会
    * 断在中间，而断掉在图上看不出来。
    */
-  const highlightedLegs = ref<Set<string> | null>(null);
+  const highlightedLegs = shallowRef<Set<string> | null>(null);
+  /**
+   * 航路网上要点亮的航段（`leg`，图键），排好序。RouteMap 写进航路那几层的样式
+   * （`applyStyle`）。同名的两段只点亮挑中的那一段，所以和 `highlightedLegs` 不是同一
+   * 组键。
+   */
+  const litLegs = shallowRef<readonly string[] | null>(null);
 
   /* 面板发过东西没有。**发过就不要再被计划盖掉** —— 计划是异步取的，而面板可能在它
      回来之前就已经推了自己的内容（航路规划器一进页面就推）。没有这道闸，「打开 /route
@@ -92,11 +100,12 @@ export function useRouteLayer(options: {
   async function loadPlanRoute() {
     if (panelPublished) return;
     const seq = ++planSeq;
-    const plan = await api<{
+    // 和概览页共用一次（`lib/planStore.ts`）：换页回来时读到的还新鲜，就不再问 can-api。
+    const plan = await loadFlightPlan<{
       departure?: string;
       arrival?: string;
       route?: string;
-    } | null>("/api/v1/pilot/flightplan");
+    }>();
     if (seq !== planSeq || panelPublished) return;
     // 没读上：图上是什么就留着什么。读失败不等于撤了计划。
     if (!plan.ok) return;
@@ -135,6 +144,13 @@ export function useRouteLayer(options: {
      * 它要 `aipAccess >= 1`，但这张图上**每一个航行图层本来就都要**（航路、导航
      * 台、空域、MORA、地面全走 can-db）—— 拿不到的成员看到的本来就是一张空底图，
      * 所以这里不多挡任何人。 */
+    /* 起降两端的机场详情和终端等待，`applySelection` 在展开之后要用。**现在就发出去**，
+     * 和 `aip/resolve` 并行 —— 三样都有模块缓存、并发的共用一次，到时候它拿到的是已
+     * 经在路上（或已经回来）的那一份，而不是等展开回来再排一轮。失败在那边照样当没有。 */
+    void loadAirportProcedures(departure).catch(() => null);
+    void loadAirportProcedures(arrival).catch(() => null);
+    void loadHoldings();
+
     const response = await dbFetch(`aip/resolve?${params}`).catch(() => null);
     if (seq !== planSeq || panelPublished) return;
     const resolved = response?.ok
@@ -166,53 +182,40 @@ export function useRouteLayer(options: {
    *
    * 漏掉任何一边的后果都是安静的：切了图层级别之后高亮消失，或者换了一条计划之后旧
    * 的还亮着。
+   *
+   * 航路网的数据不动：点亮哪几段由 RouteMap 写进航路那几层的样式（`applyStyle`）。
    */
-  /** 上一次算出来的那批高亮键，拼成一个串用来比。见 refreshHighlight。 */
+  /** 上一次点亮的那批键，拼成一个串用来比。见 refreshHighlight。 */
   let highlightSignature = "";
-  /** 上一次标过的那份航路网（标完换上去的那个新对象）。见 refreshHighlight。 */
-  let highlightedCollection: FeatureCollection | null = null;
 
   function refreshHighlight() {
     const collection = airways.value;
     if (!collection) {
       highlightedLegs.value = null;
+      litLegs.value = null;
       highlightSignature = "";
-      highlightedCollection = null;
       return;
     }
 
-    const legs = routeLegs(points.value);
+    const { planned, lit } = routeLegsOnAirways(
+      collection,
+      routeLegs(points.value),
+    );
 
-    /* **航路没变就什么都不做。**
+    /* **点亮的键没变就不换对象。**
      *
-     * 这个函数在四处被调（航路网加载完两条路、计划解析完、面板推来新航路），其中好
-     * 几次的航路其实是同一条。而它每次都要遍历八千多条航段、再换一个新集合对象 ——
-     * 换对象会让下游把整份重新上传给 MapLibre，那是一次看得见的顿。
+     * 这个函数在四处被调（航路网补块、计划解析完、面板推来新航路），其中好几次点亮的
+     * 其实是同一批。换对象会让 RouteMap 重算计划线、重设样式 —— 改样式要重排航路那一
+     * 层的瓦片。
      *
-     * 比的是**算出来的键**而不是 `points` 的引用：面板可能推来一份内容相同的新数组
-     * （重新解析同一条计划就是这样），那时候不该重传。
-     *
-     * 航路网自己换了（按视野补了一批块）也要重标：新的那份要素全是 `onRoute: 0`。
-     * 所以同时比集合的引用。 */
-    const signature = legs
-      .map((l) => l.key)
-      .sort()
-      .join("|");
-    if (
-      signature === highlightSignature &&
-      collection === highlightedCollection &&
-      highlightedLegs.value
-    )
-      return;
+     * 比的是**算出来的键**而不是 `points` 或航路网的引用：面板可能推来一份内容相同的
+     * 新数组，补来的块也多半不在计划上。 */
+    const litList = [...lit].sort();
+    const signature = `${[...planned].sort().join("|")}#${litList.join("|")}`;
+    if (signature === highlightSignature && highlightedLegs.value) return;
     highlightSignature = signature;
-
-    const marked = markRouteOnAirways(collection, legs);
-    highlightedLegs.value = marked;
-    /* 换一个新对象，否则 Vue 的 watch 看不出变化 —— `markRouteOnAirways` 改的是里面
-       那些 feature 的属性，集合本身还是同一个引用。这也是上面那道闸存在的理由：这一
-       步不便宜。 */
-    airways.value = { ...collection, features: [...collection.features] };
-    highlightedCollection = airways.value;
+    highlightedLegs.value = planned;
+    litLegs.value = litList;
   }
 
   let unsubscribe: (() => void) | null = null;
@@ -228,6 +231,9 @@ export function useRouteLayer(options: {
    * 挂 `astro:after-swap`（只在导航时触发，首次加载不触发，那一次 onMounted 已经
    * 读过）。在飞行计划那一页交或撤**不导航**，所以那一页另发一个
    * `PLAN_CHANGED_EVENT`（`lib/mapBus.ts`），走的是同一个处理函数。
+   *
+   * 「重读」经过 `lib/planStore.ts`：上一次读到的还在新鲜窗口里就不再发请求。那个事
+   * 件会先把它作废，所以交、撤之后读到的一定是新的。
    */
   function onPageSwap() {
     void loadPlanRoute();
@@ -315,6 +321,7 @@ export function useRouteLayer(options: {
     focus,
     label,
     highlightedLegs,
+    litLegs,
     refreshHighlight,
     reloadPlan,
     start,

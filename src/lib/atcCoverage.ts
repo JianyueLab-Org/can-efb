@@ -357,6 +357,30 @@ export interface Coverage {
 }
 
 /**
+ * `buildCoverage` 读到的那几项，拼成一个串。两轮的串相同，画出来的范围、标注和点就
+ * 相同 —— 实时那层每 30 秒取一次，而管制席位大多一整晚不变，每轮都把情报区多边形
+ * 重新灌给 MapLibre 是白做一次整层重建。
+ *
+ * 只拿 `buildCoverage` 和要素属性真正读的字段：`logon_time` 这类每轮都一样、或者和画
+ * 法无关的字段放进来，只会让它永远不命中。
+ */
+export function coverageKey(
+  controllers: DatafeedController[],
+  atis: DatafeedController[] = [],
+): string {
+  const pick = (c: DatafeedController) => [
+    c.callsign,
+    c.facility,
+    c.frequency,
+    c.latitude,
+    c.longitude,
+    c.visual_range ?? null,
+    c.text_atis,
+  ];
+  return JSON.stringify([controllers.map(pick), atis.map(pick)]);
+}
+
+/**
  * 在线席位 → 范围、标注、点。
  *
  * 两份索引都可以是 null（还没取到、取失败）：那时对应的范围画不出来，席位退回画点

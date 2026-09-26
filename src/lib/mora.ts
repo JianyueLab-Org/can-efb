@@ -55,15 +55,17 @@ export function blocksFor(
   west: number,
   north: number,
   east: number,
+  /** 块边长（度），要能整除 360。航路网用 20，见 `lib/airways.ts` 的 `AIRWAY_BLOCK`。 */
+  size: number = MORA_BLOCK,
 ): { lat: number; lon: number }[] {
   const out: { lat: number; lon: number }[] = [];
-  const floor = (v: number) => Math.floor(v / MORA_BLOCK) * MORA_BLOCK;
+  const floor = (v: number) => Math.floor(v / size) * size;
   const [from, to] =
-    east - west >= 360 ? [-180, 180 - MORA_BLOCK] : [floor(west), floor(east)];
+    east - west >= 360 ? [-180, 180 - size] : [floor(west), floor(east)];
   const lons = new Set<number>();
-  // 块边界是 10 的倍数，360 也是，所以折回之后仍然对齐在块边界上。
-  for (let lon = from; lon <= to; lon += MORA_BLOCK) lons.add(wrapLon(lon));
-  for (let lat = floor(south); lat <= floor(north); lat += MORA_BLOCK) {
+  // 块边长整除 360，所以折回之后仍然对齐在块边界上。
+  for (let lon = from; lon <= to; lon += size) lons.add(wrapLon(lon));
+  for (let lat = floor(south); lat <= floor(north); lat += size) {
     // 网格本身是 lat -89..90（格子的北边）。`-90` 那一块覆盖北边 -89..-81 的格子，
     // 取数时下界会收到 -89，所以要留着；整块落在 -90 以南或 90 以北的才扔 ——
     // 请求出去只会换回一个 400。

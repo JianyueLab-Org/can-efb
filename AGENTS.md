@@ -165,6 +165,8 @@ can-ui 的 `--material-regular` / `--material-blur-regular`）。以前是**轨 
   绕过去。
 - **十分钟而不是一天** —— 数据一个 AIRAC 周期才变，按内容算能缓存很久，但**重导是
   随时可能发生的**（此刻正好欠着一次）。缓存久了，修好之后成员还会继续看那张旧图。
+- **`Vary: Cookie`** —— 同一台设备上换人登录，会话 cookie 变了，缓存就不认上一个人的
+  受限资料。「不使用受限汇编」的两种状态 URL 不同（`unrestricted=1`），本来就是两个条目。
 
 只给成功的响应加：给 401 或 502 加缓存，等于让一次权限变更或一次上游抖动被记住十分
 钟。这和 can-radar 给 METAR 补五分钟是同一条思路 —— 上游没说，而我们知道它多久变。
@@ -348,17 +350,17 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 
 地图的外观全部在 `src/lib/chartStyle.ts`。`RouteMap.vue` 只读它，不写颜色、线宽、门槛。
 
-| 常量 / 函数                  | 内容                                                                    |
-| ---------------------------- | ----------------------------------------------------------------------- |
-| `COLORS`                     | 浅色、夜间两套颜色，各自写全，不做反色。语义色同色相，只调明度          |
-| `ZOOM`                       | 每类要素从哪一级出现。`useChartLayers` 的取数门槛也读它                 |
-| `WIDTH` / `OPACITY`          | 线宽、透明度，`[缩放, 值]` 锚点                                         |
-| `TEXT` / `ICON`              | 字号、图标尺寸                                                          |
-| `SHIELD`                     | 航路代号牌的字外留白                                                    |
-| `AIRSPACE`                   | 空域平涂透明度、斜线图块参数、危险区虚线                                |
-| `MAJOR_AIRPORT_MIN_RUNWAY_M` | 主要机场门槛（最长跑道，米），默认 2500                                 |
-| `buildStyle(theme)`          | 整份 MapLibre 样式                                                      |
-| `themedProperties(theme)`    | 每个图层的每个 paint / layout 属性；`RouteMap` 切主题时比对后设，无清单 |
+| 常量 / 函数                     | 内容                                                                                      |
+| ------------------------------- | ----------------------------------------------------------------------------------------- |
+| `COLORS`                        | 浅色、夜间两套颜色，各自写全，不做反色。语义色同色相，只调明度                            |
+| `ZOOM`                          | 每类要素从哪一级出现。`useChartLayers` 的取数门槛也读它                                   |
+| `WIDTH` / `OPACITY`             | 线宽、透明度，`[缩放, 值]` 锚点                                                           |
+| `TEXT` / `ICON`                 | 字号、图标尺寸                                                                            |
+| `SHIELD`                        | 航路代号牌的字外留白                                                                      |
+| `AIRSPACE`                      | 空域平涂透明度、斜线图块参数、危险区虚线                                                  |
+| `MAJOR_AIRPORT_MIN_RUNWAY_M`    | 主要机场门槛（最长跑道，米），默认 2500                                                   |
+| `buildStyle(theme, legs)`       | 整份 MapLibre 样式；`legs` 是计划点亮的航段键                                             |
+| `themedProperties(theme, legs)` | 每个图层的 filter 和每个 paint / layout 属性；`RouteMap` 切主题、换高亮时比对后设，无清单 |
 
 席位色（`lib/atc.ts`）和高度色带（`lib/traffic.ts`）不在 `COLORS` 里。
 
@@ -406,8 +408,8 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 **航段在定位点前让出 1 NM**（`airways.ts` 的 `toAirwayLines`）：实线在两端各停在点外
 1 NM（大圆上量），让出的那截是 `part: "stub"` 的细淡虚线（`airway-stubs`），接进点里，
 点的符号和点名落在空白里。短于 2.5 NM 的航段按比例让（`min(1, 0.4 × 长度)`）。三段带同
-一组 `airway`/`from`/`to`，高亮照样点亮整段；计划走过的航段连那两截一起画实线，代号牌只
-放在实线段上。在数据里切，不用 `line-offset`。计划航线本身不这样切。
+一个 `leg`，高亮照样点亮整段；计划走过的航段连那两截一起画实线，代号牌只放在实线段
+上。在数据里切，不用 `line-offset`。计划航线本身不这样切。
 
 **航路点和导航台去重**（`markNavaidFixes`）：ident 相同且经纬度差都 ≤ 0.01° 的航路点
 打上那个台的 `tier`，样式在那个台画出来的缩放上把航路点藏掉。导航台图层关着时不打。
@@ -434,17 +436,33 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 级，按 `?level=high` 和 `?level=low` 各取一次，两边都有的记为 `both`。`high`、`both` 和 `low` 都从 z5 起画（`ZOOM.airwaysHigh` / `ZOOM.airwaysLow`）。航路点取连着它的航段里最高的一级。旧偏好
 `airway: "off" | "high" | "low"` 在 `readPrefs` 里折算成 `airways: boolean`。
 
-**航路网按视野分块取**（`useChartLayers` 的 `loadAirwaysFor`）。全球约九万段，不整张
-拉。z5（`ZOOM.airwaysHigh`）以下不取；以上按 10° 的块带 `?bbox=` 取，每块高低空各
-一次，`moveend` 后停 250 ms 再取，取过的块留着，攒过 64 块时丢视野外最早的。块按经
-度折回 ±180 算，跨日界线的视野拆成两侧的块。失败时开关留着、提示带重试，和 MORA 一
-样。
+**地图数据按块取**（`lib/blockCache.ts` 的 `createBlockCache`）。can-db 是全球数据，不
+带 `bbox` 取一次是全世界（航路两层约 24 MB JSON）。只取视野压到的块，取过留着，平移时
+补新块；跨块的条目按键去重。换「不使用受限汇编」时块全部作废（`reset`）。
+
+| 图层             | 块  | 起取 | 去重键 / 回收                                                      |
+| ---------------- | --- | ---- | ------------------------------------------------------------------ |
+| 航路             | 10° | z5   | 整块一条，`unionAirwayGraphs` 按图键并图；攒过 64 块丢视野外最早的 |
+| 导航台           | 20° | z5   | `navaidKey`                                                        |
+| 禁区限制区危险区 | 20° | z5   | `airspaceKey`                                                      |
+| MORA             | 10° | z5   | 格子 `lat,lon`；视野四边各外扩 10° 之外的块扔掉（`evict`）         |
+
+航路的块由 `airwayBlocksFor` 算：经度折回 ±180，跨日界线的视野拆成两侧的块。每块带
+`?bbox=` 高低空各取一次（`fetchAirwayNetwork`）。`moveend` 后停 250 ms 再取。失败时开关
+留着、提示带重试，和 MORA 一样。区域、进近两层仍整份取一次：默认关，开了就画、不设门
+槛。机场和跑道也仍整份取。
 
 **航段端点是图键，不是代号。** can-db 的 `from` / `to` 是 `ident@region/kind`（没
 匹配上的 NAIP 点是裸代号），`fixes` 按图键索引。标注和比对计划用 `fromIdent` /
 `toIdent`（`segmentIdents`，旧版 can-db 退回 `from` / `to`）。同名的两个点是两个要
-素；计划高亮按代号比，同一航路同一对点名有两段时点亮离计划那条腿最近的一段
-（`markRouteOnAirways`）。
+素。
+
+**计划高亮不改航路网数据。** 每条航段带 `leg`（`legKey(airway, from, to)`，图键，和方
+向无关，一段三截同一个）。`useRouteLayer` 用 `routeLegsOnAirways` 按代号比计划，得出
+`planned`（对上了的计划键，`highlightedLegs`，计划线据此让位）和 `lit`（要点亮的
+`leg`，`litLegs`）。同一航路同一对点名有两段时只点亮离计划那条腿最近的一段。
+`RouteMap` 的 `applyStyle` 把 `litLegs` 写进航路那几层的 filter 和 paint（`onRouteOf`）。
+航路 source 只在块清单变了时重传。
 
 **机场地面**在 `lib/ground.ts`。z9 起按机场取 can-db 的
 `/aip/airports/{ICAO}/ground`，视野里只取最近的 4 个场。数据只有一份：扇区包手工

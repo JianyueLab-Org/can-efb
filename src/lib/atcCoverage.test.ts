@@ -7,6 +7,7 @@ import {
   MAX_RANGE_NM,
   wantsAirportCoords,
   wantsTracons,
+  coverageKey,
 } from "./atcCoverage";
 import { useAirportCodes } from "./airportCodes";
 import type { DatafeedController } from "./datafeed";
@@ -535,5 +536,41 @@ describe("buildCoverage — ATIS", () => {
       ),
     ).toBe(true);
     expect(wantsAirportCoords([], [station("ZSPD_ATIS", 7)])).toBe(false);
+  });
+});
+
+describe("两轮之间席位没变就不重画", () => {
+  const ctr = (over: Partial<DatafeedController> = {}): DatafeedController => ({
+    callsign: "ZSHA_CTR",
+    cid: "1",
+    facility: 6,
+    frequency: "125.950",
+    latitude: "31",
+    logon_time: "2026-09-26T10:00:00",
+    longitude: "121",
+    name: "Test",
+    rating: 5,
+    text_atis: [],
+    ...over,
+  });
+
+  test("和画法无关的字段变了，键不变", () => {
+    expect(coverageKey([ctr()])).toBe(
+      coverageKey([ctr({ logon_time: "2026-09-26T11:00:00", name: "Other" })]),
+    );
+  });
+
+  test("频率、Covering、席位变了，键跟着变", () => {
+    const base = coverageKey([ctr()]);
+    expect(coverageKey([ctr({ frequency: "124.000" })])).not.toBe(base);
+    expect(
+      coverageKey([ctr({ text_atis: ["Covering sector - T30"] })]),
+    ).not.toBe(base);
+    expect(
+      coverageKey([ctr(), ctr({ callsign: "ZSPD_APP", facility: 5 })]),
+    ).not.toBe(base);
+    expect(coverageKey([], [ctr({ callsign: "ZSPD_ATIS" })])).not.toBe(
+      coverageKey([]),
+    );
   });
 });

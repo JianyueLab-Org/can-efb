@@ -16,8 +16,9 @@
  *
  * ## 主题切换不靠清单
  *
- * `themedProperties(theme)` 把 `buildStyle(theme)` 里每个图层的每个 paint / layout
- * 属性都列出来，`RouteMap` 逐个对比、有变化才设。新加的图层自动跟着换主题 —— 以前
+ * `themedProperties(theme, routeLegs)` 把 `buildStyle(theme, routeLegs)` 里每个图层的
+ * filter 和每个 paint / layout 属性都列出来，`RouteMap` 逐个对比、有变化才设。计划
+ * 高亮（`onRouteOf`）走同一条路。新加的图层自动跟着换主题 —— 以前
  * 是手写一份 `setPaintProperty` 清单，加层时漏登记过两次。
  *
  * ## 校验
@@ -536,7 +537,13 @@ export function rampCase(
   ];
 }
 
-const onRoute = ["==", ["get", "onRoute"], 1];
+/**
+ * 这条航段在计划上：它的 `leg`（`lib/airways.ts` 的 `legKey`）在 `legs` 里。高亮只改
+ * 样式里这份清单（`RouteMap` 的 `applyStyle`），航路网的数据不动，不重传。
+ */
+export function onRouteOf(legs: readonly string[]): unknown[] {
+  return ["in", ["get", "leg"], ["literal", [...legs]]];
+}
 
 /** 计划航线按段取色：`seg` 是 sid / star / approach / route。 */
 export function routeSegmentColor(c: ColorRoles): unknown {
@@ -817,8 +824,13 @@ const symbolOnly = {
  * 标注内部自下而上是：经纬网、MORA、情报区、空域、地面、航路点、航路代号牌、导航台、
  * 机场、跑道号、管制、计划航线。MapLibre 先放上面的，所以后者优先。
  */
-export function buildStyle(theme: Theme): StyleSpecification {
+/** `routeLegs`：计划点亮的航段键，见 `onRouteOf`。 */
+export function buildStyle(
+  theme: Theme,
+  routeLegs: readonly string[] = [],
+): StyleSpecification {
   const c = COLORS[theme];
+  const onRoute = onRouteOf(routeLegs);
   const halo = { "text-halo-color": c.halo, "text-halo-width": TEXT.haloWidth };
   const img = (key: ThemedIcon | Pattern | Shield) => themedImage(key, theme);
 
@@ -1875,19 +1887,33 @@ export function buildStyle(theme: Theme): StyleSpecification {
 /** 一个图层上随主题可能变的一个属性。 */
 export interface ThemedProperty {
   layer: string;
-  kind: "paint" | "layout";
+  kind: "paint" | "layout" | "filter";
   name: string;
   value: unknown;
 }
 
 /**
- * 这套主题下每个图层的每个 paint / layout 属性。`RouteMap` 切主题时逐个对比，有变
- * 化才设。**不维护清单**：从 `buildStyle` 直接列，新图层自动在内。
+ * 这套主题、这组计划航段下每个图层的 filter 和每个 paint / layout 属性。`RouteMap`
+ * 切主题、换计划时逐个对比，有变化才设。**不维护清单**：从 `buildStyle` 直接列，新
+ * 图层自动在内。
  */
-export function themedProperties(theme: Theme): ThemedProperty[] {
+export function themedProperties(
+  theme: Theme,
+  routeLegs: readonly string[] = [],
+): ThemedProperty[] {
   const out: ThemedProperty[] = [];
-  const style = buildStyle(theme) as unknown as { layers: ChartLayer[] };
+  const style = buildStyle(theme, routeLegs) as unknown as {
+    layers: ChartLayer[];
+  };
   for (const layer of style.layers) {
+    if (layer.filter !== undefined) {
+      out.push({
+        layer: layer.id,
+        kind: "filter",
+        name: "filter",
+        value: layer.filter,
+      });
+    }
     for (const [name, value] of Object.entries(layer.paint ?? {})) {
       out.push({ layer: layer.id, kind: "paint", name, value });
     }

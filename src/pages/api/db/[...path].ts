@@ -202,6 +202,11 @@ const handler: APIRoute = async (context) => {
      十分钟。 */
   if (upstream.ok && !out.has("cache-control")) {
     out.set("cache-control", "private, max-age=600");
+    /* **按 cookie 分开存。** `private` 挡住了共享缓存，挡不住同一台设备上换人：3 级
+       成员退出、1 级成员在同一个浏览器里登录，十分钟内同一个 URL 会直接拿到上一个人
+       的受限资料。会话 cookie 换了，缓存就不认。「不使用受限汇编」开着时 URL 多一个
+       `unrestricted=1`，两种状态本来就是两个缓存条目。 */
+    out.set("vary", "cookie");
   }
 
   return new Response(upstream.body, { status: upstream.status, headers: out });

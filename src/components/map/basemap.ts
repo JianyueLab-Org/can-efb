@@ -5,7 +5,6 @@
  * 以是一个工厂而不是模块级变量 —— 和原来 `<script setup>` 里的写法同一个作用域。
  */
 import type { GeoJSONSource, Map as MapLibreMap } from "maplibre-gl";
-import type { FeatureCollection } from "geojson";
 import { ZOOM } from "@/lib/chartStyle";
 
 /**
@@ -46,65 +45,39 @@ import BORDERS_URL from "@/basemap/borders-10m.json?url";
  * 门槛是 `ZOOM.borders`：国界比陆地细节早一级。**按最早需要的那一层定**，否则会出现「层
  * 该显示了、数据还没到」的一两秒空窗。
  *
- * `detailPending` 挡的是并发：`moveend` 会连着触发，没有它第一次放大就会同时飞出
- * 去好几个一样的请求。失败不写 `detailLoaded`，所以下次移动会再试。
+ * **交给 MapLibre 的是 URL，不是解析好的对象。** 这两份和下面的陆地都只是底图，
+ * 页面自己从不读里面的内容；`setData(url)` 让 MapLibre 在它的 worker 里下载、解析，
+ * 主线程不再为几兆 JSON 的 `response.json()` 停顿。失败从地图的 `error` 事件出来
+ * （`RouteMap.vue` 接着，记一行日志）。
+ *
+ * 只交一次：交出去就记 `detailLoaded`。worker 那边失败不会回到这里，于是不再像以前
+ * 那样在下一次移动时重试 —— 装饰性的细节底图，重新打开页面再试就够了。
  */
 export function createBasemapLoader(getMap: () => MapLibreMap | null) {
-  let landCache: unknown = null;
   let detailLoaded = false;
-  let detailPending = false;
 
-  async function loadDetail() {
+  function loadDetail() {
     const map = getMap();
-    if (detailLoaded || detailPending || !map) return;
+    if (detailLoaded || !map) return;
     if (map.getZoom() < ZOOM.borders) return;
-    detailPending = true;
-    try {
-      const [land, borders] = await Promise.all([
-        fetch(LAND_DETAIL_URL).then((r) => (r.ok ? r.json() : null)),
-        fetch(BORDERS_URL).then((r) => (r.ok ? r.json() : null)),
-      ]);
-      const current = getMap();
-      if (!current) return;
-      if (land) {
-        (current.getSource("landDetail") as GeoJSONSource | undefined)?.setData(
-          land,
-        );
-      }
-      if (borders) {
-        (current.getSource("borders") as GeoJSONSource | undefined)?.setData(
-          borders,
-        );
-      }
-      if (land && borders) detailLoaded = true;
-    } catch (error) {
-      // 和底图同一条：静默降级成没有细节，但日志里留一行。
-      console.error("[efb] 细节底图加载失败:", error);
-    } finally {
-      detailPending = false;
-    }
+    const land = map.getSource("landDetail") as GeoJSONSource | undefined;
+    const borders = map.getSource("borders") as GeoJSONSource | undefined;
+    if (!land || !borders) return;
+    land.setData(LAND_DETAIL_URL);
+    borders.setData(BORDERS_URL);
+    detailLoaded = true;
   }
 
-  async function loadLand() {
-    try {
-      if (!landCache) {
-        const response = await fetch(LAND_URL);
-        if (!response.ok) return;
-        landCache = await response.json();
-      }
-      const map = getMap();
-      if (!map) return;
-      (map.getSource("land") as GeoJSONSource | undefined)?.setData(
-        landCache as FeatureCollection,
-      );
-    } catch (error) {
-      // 界面上仍然静默降级成一片海 —— 为一张装饰性底图弹提示，是把噪音摆在比信息
-      // 更显眼的位置，这条判断没变。
-      //
-      // 但**日志里必须留下一行**。上一版这里是一个空的 catch，于是「底图没画出来」
-      // 成了一个完全没有线索的故障。不弹提示和不留记录是两件事。
-      console.error("[efb] 底图数据加载失败:", error);
-    }
+  /**
+   * 1:50m 陆地。同上，交 URL：URL 带内容哈希、浏览器存一年，所以再交一次（重建地图
+   * 时）也不会真的再下载。失败同样从地图的 `error` 事件出来 —— 界面上仍然静默降级成
+   * 一片海，为一张装饰性底图弹提示是把噪音摆在比信息更显眼的位置；日志里那一行由
+   * `RouteMap.vue` 的 `error` 处理留下。
+   */
+  function loadLand() {
+    const map = getMap();
+    if (!map) return;
+    (map.getSource("land") as GeoJSONSource | undefined)?.setData(LAND_URL);
   }
 
   return { loadLand, loadDetail };

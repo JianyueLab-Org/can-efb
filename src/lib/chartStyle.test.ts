@@ -29,8 +29,12 @@ import {
   registeredImageIds,
 } from "@/lib/chartIcons";
 
-const layersOf = (theme: Theme) =>
-  (buildStyle(theme) as unknown as { layers: ChartLayer[] }).layers;
+/** 计划点亮的航段键（`onRouteOf`）：`ON` 在计划上，`OFF` 不在。 */
+const ON = "W1|AAAAA|BBBBB";
+const OFF = "W9|BBBBB|CCCCC";
+
+const layersOf = (theme: Theme, legs: readonly string[] = [ON]) =>
+  (buildStyle(theme, legs) as unknown as { layers: ChartLayer[] }).layers;
 
 const layer = (id: string, theme: Theme = "light") => {
   const found = layersOf(theme).find((l) => l.id === id);
@@ -79,6 +83,28 @@ describe("主题切换覆盖每一个属性", () => {
       layersOf("light").map((l) => l.id),
     );
   });
+
+  test("计划高亮只改 filter 和 paint：换一组航段，图层和属性名不变", () => {
+    const shape = (legs: string[]) =>
+      themedProperties("light", legs).map(
+        (p) => `${p.layer}.${p.kind}.${p.name}`,
+      );
+    expect(shape([ON])).toEqual(shape([]));
+    const airways = (legs: string[]) =>
+      themedProperties("light", legs).find(
+        (p) => p.layer === "airways" && p.kind === "filter",
+      )?.value;
+    expect(airways([ON])).not.toEqual(airways([]));
+  });
+
+  test.each(["light", "dark"] as const)(
+    "%s 带计划航段时过 MapLibre 校验",
+    (theme) => {
+      expect(
+        validateStyleMin(buildStyle(theme, [ON, OFF])).map((e) => e.message),
+      ).toEqual([]);
+    },
+  );
 
   test("底图颜色确实随主题变", () => {
     const bg = (t: Theme) => layer("ocean", t).paint?.["background-color"];
@@ -247,10 +273,10 @@ describe("按缩放挑要素", () => {
   });
 
   test("低空航段放大才画，但计划走过的在高空那层里一直在", () => {
-    const low = { level: "low", onRoute: 0 };
-    const lowOnRoute = { level: "low", onRoute: 1 };
-    const both = { level: "both", onRoute: 0 };
-    const high = { level: "high", onRoute: 0 };
+    const low = { level: "low", leg: OFF };
+    const lowOnRoute = { level: "low", leg: ON };
+    const both = { level: "both", leg: OFF };
+    const high = { level: "high", leg: OFF };
     expect(shows("airways", ZOOM.airwaysHigh, high)).toBe(true);
     expect(shows("airways", ZOOM.airwaysHigh, both)).toBe(true);
     // 同一段不在两层里各画一遍。
@@ -264,10 +290,10 @@ describe("按缩放挑要素", () => {
   });
 
   test("航段两端那 1 NM 画虚线，计划走过的收回实线，代号牌不放在虚线上", () => {
-    const stub = { level: "high", onRoute: 0, part: "stub" };
-    const stubOnRoute = { level: "high", onRoute: 1, part: "stub" };
-    const lowStub = { level: "low", onRoute: 0, part: "stub" };
-    const line = { level: "high", onRoute: 0, part: "line", rnav: 0 };
+    const stub = { level: "high", leg: OFF, part: "stub" };
+    const stubOnRoute = { level: "high", leg: ON, part: "stub" };
+    const lowStub = { level: "low", leg: OFF, part: "stub" };
+    const line = { level: "high", leg: OFF, part: "line", rnav: 0 };
     expect(shows("airway-stubs", ZOOM.airwaysHigh, stub, 2)).toBe(true);
     expect(shows("airways", ZOOM.airwaysHigh, stub, 2)).toBe(false);
     expect(shows("airway-stubs", ZOOM.airwaysHigh, stubOnRoute, 2)).toBe(false);
@@ -303,12 +329,12 @@ describe("按缩放挑要素", () => {
   test("z5 起有整张航路网（高空和低空）和代号牌", () => {
     expect(ZOOM.airwaysHigh).toBe(5);
     expect(ZOOM.airwaysLow).toBe(5);
-    expect(shows("airways", 5, { level: "high", onRoute: 0 })).toBe(true);
-    expect(shows("airways", 4.9, { level: "high", onRoute: 0 })).toBe(false);
-    expect(shows("airways-low", 5, { level: "low", onRoute: 0 })).toBe(true);
-    expect(shows("airway-labels", 5, { level: "high", onRoute: 0 })).toBe(true);
-    expect(shows("airway-labels", 5, { level: "low", onRoute: 0 })).toBe(true);
-    expect(shows("airway-labels", 4.9, { level: "high", onRoute: 0 })).toBe(
+    expect(shows("airways", 5, { level: "high", leg: OFF })).toBe(true);
+    expect(shows("airways", 4.9, { level: "high", leg: OFF })).toBe(false);
+    expect(shows("airways-low", 5, { level: "low", leg: OFF })).toBe(true);
+    expect(shows("airway-labels", 5, { level: "high", leg: OFF })).toBe(true);
+    expect(shows("airway-labels", 5, { level: "low", leg: OFF })).toBe(true);
+    expect(shows("airway-labels", 4.9, { level: "high", leg: OFF })).toBe(
       false,
     );
   });

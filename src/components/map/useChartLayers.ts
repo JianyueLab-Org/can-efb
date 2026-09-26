@@ -5,7 +5,7 @@
  * 从 MapSurface.vue 搬来，规矩一条没变，注释随代码一起搬。新加的只有一件事：失
  * 败时除了退回关，还要在地图角上说一声并给一个重试（`notice.noteFailure`）。
  */
-import { computed, ref, type Ref } from "vue";
+import { computed, ref, shallowRef, type Ref } from "vue";
 import type { FeatureCollection } from "geojson";
 import {
   airwayBlocksFor,
@@ -19,16 +19,20 @@ import {
   type TaggedAirwayGraph,
 } from "@/lib/airways";
 import {
+  airspaceKey,
   fetchAirspaces,
   fetchNavaids,
+  navaidKey,
   onlyParents,
   toAirspacePolygons,
   toNavaidPoints,
   type Airspace,
+  type Navaid,
 } from "@/lib/aip";
+import { CHART_BLOCK, blockBox, createBlockCache } from "@/lib/blockCache";
 import {
-  blocksFor,
   fetchMORABlock,
+  MORA_BLOCK,
   toMORAPoints,
   type MORACell,
 } from "@/lib/mora";
@@ -69,7 +73,7 @@ export interface AipGeneration {
 }
 
 export interface ChartLayerOptions {
-  /** 航路网。MapStage 持有，因为航路层也要写它（高亮换一个新对象）。 */
+  /** 航路网。MapStage 持有，因为航路层也要读它（算点亮哪几段）。 */
   airways: Ref<FeatureCollection | null>;
   notice: LayerNotice;
   /** MapStage 持有的那一份偏好，开关时就地改、写回 localStorage。 */
@@ -81,108 +85,122 @@ export interface ChartLayerOptions {
   onAirwaysChange: () => void;
 }
 
+/* 下面的要素集合、Map、Set 一律 `shallowRef` 或普通变量：它们动辄几万个要素，每次都整
+ * 份换掉，没有就地改的写法。深层代理只是白白包一遍，交给 MapLibre 时还要再剥掉。 */
 export function useChartLayers(options: ChartLayerOptions) {
   const { airways, notice, prefs, aip, text, onAirwaysChange } = options;
 
-  let navaidCache: FeatureCollection | null = null;
+  /**
+   * 导航台按块取、取过留着（`lib/blockCache.ts`）。can-db 的导航台是全球的，一次全取
+   * 是一万一千多个；从 `ZOOM.vor` 起才画，门槛以下一块都不取。
+   */
+  const NAVAID_MIN_ZOOM = Math.floor(Math.min(ZOOM.vor, ZOOM.minorNavaids));
+  const navaidBlocks = createBlockCache<Navaid>({
+    size: CHART_BLOCK,
+    key: navaidKey,
+    fetch: (lat, lon) => fetchNavaids(blockBox(lat, lon)),
+  });
+  let navaidPending = 0;
 
   /**
-   * 航路图层：开 / 关。
+   * 航路图层：开 / 关，加上按视野补块。
    *
-   * **高低空两层一起取，按缩放决定画哪层**（门槛在 `lib/chartStyle.ts` 的 `ZOOM`）。
+   * **高低空两层一次取齐，按缩放决定画哪层**（门槛在 `lib/chartStyle.ts` 的 `ZOOM`）。
    *
-   * **按视野分块取，和 MORA 同一个做法。** 全球航路网约九万段，整张拉下来不现实。
-   * 视野在 `ZOOM.airwaysHigh` 以下不取（那时这层也不画）；以上按 `AIRWAY_BLOCK`
-   * 度的块取 can-db 的 `?bbox=`，每块高低空各一次，取过的块留着，平移不重取。块按
-   * 经度折回 ±180 算，所以跨日界线的视野拆成两侧的块，每块自己不跨 180°。攒下的块
-   * 超过 `AIRWAY_MAX_BLOCKS` 时丢掉视野外最早取的那些。
+   * **按视野分块取，和 MORA 同一个做法**（`lib/blockCache.ts`）。全球航路网约九万段，
+   * 整张拉下来不现实。视野在 `ZOOM.airwaysHigh` 以下不取（那时这层也不画）；以上按
+   * `AIRWAY_BLOCK` 度的块取 can-db 的 `?bbox=`，每块高低空各一次，取过的块留着，平移
+   * 不重取。块按经度折回 ±180 算（`airwayBlocksFor`），所以跨日界线的视野拆成两侧的
+   * 块，每块自己不跨 180°。攒下的块超过 `AIRWAY_MAX_BLOCKS` 时丢掉视野外最早取的那些。
    *
    * 所有块并成一张图（`unionAirwayGraphs`，按图键去重）再转线和点：跨块边界的航段
    * 两块里各有一份，只画一条。
    */
   const showAirways = ref(false);
-  const airwayFixes = ref<FeatureCollection | null>(null);
+  const airwayFixes = shallowRef<FeatureCollection | null>(null);
   const airwayBusy = ref(false);
-  /** 已取回的块，按取回顺序（Map 的插入顺序）。键是块的左下角。 */
-  const airwayBlocks = new Map<string, TaggedAirwayGraph>();
-  /** 正在取的块，挡住同一块的并发重复请求。 */
-  const airwayPending = new Set<string>();
+  /** 一块取回来的图。块的左下角当键：一块一个条目。 */
+  interface AirwayBlock {
+    id: string;
+    graph: TaggedAirwayGraph;
+  }
+  const airwayBlocks = createBlockCache<AirwayBlock>({
+    size: AIRWAY_BLOCK,
+    key: (b) => b.id,
+    blocks: airwayBlocksFor,
+    maxBlocks: AIRWAY_MAX_BLOCKS,
+    fetch: async (lat, lon) => [
+      {
+        id: `${lat},${lon}`,
+        graph: await fetchAirwayNetwork([
+          lat,
+          lon,
+          lat + AIRWAY_BLOCK,
+          lon + AIRWAY_BLOCK,
+        ]),
+      },
+    ],
+  });
+  /** 并好的图转出来的线和点，只在块清单变了时重算。 */
+  let airwayCache: {
+    from: AirwayBlock[];
+    lines: FeatureCollection;
+    fixes: FeatureCollection;
+  } | null = null;
+  let airwayPending = 0;
   let airwayTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** 把已取回的块画上图。关着就不画。 */
   function publishAirways() {
     if (!showAirways.value) return;
-    if (!airwayBlocks.size) {
+    const list = airwayBlocks.values();
+    if (!list.length) {
       airways.value = null;
       airwayFixes.value = null;
       onAirwaysChange();
       return;
     }
-    const graph = unionAirwayGraphs(airwayBlocks.values());
-    const lines = toAirwayLines(graph);
-    airways.value = lines;
-    // 航路点和线一起来一起走：它们是同一份图的两个面。
-    airwayFixes.value = toAirwayFixes(graph);
+    if (airwayCache?.from !== list) {
+      const graph = unionAirwayGraphs(list.map((b) => b.graph));
+      // 航路点和线一起来一起走：它们是同一份图的两个面。
+      airwayCache = {
+        from: list,
+        lines: toAirwayLines(graph),
+        fixes: toAirwayFixes(graph),
+      };
+    }
+    airways.value = airwayCache.lines;
+    airwayFixes.value = airwayCache.fixes;
     onAirwaysChange();
     /* 按视野取的块是空的，只说明这一片没有航路（比如海上），不说明库里没有 ——
      * 所以不提示「没有航段」，什么都不说。 */
     notice.clearNotice("airways");
   }
 
-  /** 攒得太多时丢掉视野外最早取的块。 */
-  function trimAirwayBlocks(keep: Set<string>) {
-    for (const key of airwayBlocks.keys()) {
-      if (airwayBlocks.size <= AIRWAY_MAX_BLOCKS) return;
-      if (!keep.has(key)) airwayBlocks.delete(key);
-    }
-  }
-
   async function loadAirwaysFor(v: Viewport) {
     if (!showAirways.value || v.zoom < ZOOM.airwaysHigh) return;
     if (notice.isDeniedThisSession()) return;
-    const blocks = airwayBlocksFor(v.south, v.west, v.north, v.east);
-    const inView = new Set(blocks.map((b) => `${b.lat},${b.lon}`));
-    const wanted = blocks.filter((b) => {
-      const key = `${b.lat},${b.lon}`;
-      return !airwayBlocks.has(key) && !airwayPending.has(key);
-    });
-    if (!wanted.length) return;
-    // 先记下来再取：同一块的第二次请求在第一次回来之前就该被挡掉。
-    for (const b of wanted) airwayPending.add(`${b.lat},${b.lon}`);
-
-    airwayBusy.value = true;
     const gen = aip.gen;
+    airwayPending++;
+    airwayBusy.value = true;
     try {
-      const graphs = await Promise.all(
-        wanted.map((b) =>
-          fetchAirwayNetwork([
-            b.lat,
-            b.lon,
-            b.lat + AIRWAY_BLOCK,
-            b.lon + AIRWAY_BLOCK,
-          ]),
-        ),
-      );
+      const changed = await airwayBlocks.load(v);
       if (gen !== aip.gen) return;
-      wanted.forEach((b, i) => {
-        const key = `${b.lat},${b.lon}`;
-        airwayPending.delete(key);
-        airwayBlocks.set(key, graphs[i]);
-      });
-      trimAirwayBlocks(inView);
       notice.clearFailure("airways");
       // 取的途中被关掉了：块照样留着，但不许把图层写回来（publishAirways 自己挡）。
-      publishAirways();
+      // 没带来新块就不重灌 —— 重灌一次是整层重建瓦片。
+      if (changed || !airways.value) publishAirways();
     } catch (error) {
-      // 过期的这一次（NAIP 开关翻过）：块集合已经清过，也不替新的那一次报失败。
+      // 过期的这一次（NAIP 开关翻过）：块已经清过，也不替新的那一次报失败。
       if (gen !== aip.gen) return;
-      // 取失败的块放回去，下次视野变化或重试时再取。开关留着，和 MORA 同一条。
-      for (const b of wanted) airwayPending.delete(`${b.lat},${b.lon}`);
+      // 取失败的块 `airwayBlocks` 放回去了，下次视野变化或重试时再取。开关留着，和
+      // MORA 同一条。
       if (isDenied(error)) notice.noteDenied();
       else notice.noteFailure("airways");
       console.error("[efb:map] 航路网加载失败:", error);
     } finally {
-      if (gen === aip.gen && !airwayPending.size) airwayBusy.value = false;
+      airwayPending--;
+      airwayBusy.value = airwayPending > 0;
     }
   }
 
@@ -207,20 +225,12 @@ export function useChartLayers(options: ChartLayerOptions) {
       return;
     }
     // 已有的块先画上，再按当前视野补。还没收到过视野就等 `moveend` 送过来。
-    if (airwayBlocks.size) publishAirways();
+    if (airwayBlocks.loaded()) publishAirways();
     if (lastViewport) await loadAirwaysFor(lastViewport);
   }
 
-  /**
-   * 其余三个图层：导航台、扇区、限制区。各自独立开关。
-   *
-   * 独立而不是做成一个「显示全部」：这几层的用途不一样 —— 看扇区归属和看限制区是
-   * 两件事，一次全打开只会把图糊掉。
-   *
-   * 和航路一样按需拉、拉过留着。
-   */
   const showNavaids = ref(false);
-  const navaids = ref<FeatureCollection | null>(null);
+  const navaids = shallowRef<FeatureCollection | null>(null);
 
   /**
    * 情报区边界。**独立开关，默认开** —— 它是航图的底子，不是叠加物。
@@ -239,7 +249,7 @@ export function useChartLayers(options: ChartLayerOptions) {
   );
 
   const showFirs = ref(false);
-  const firs = ref<FeatureCollection | null>(null);
+  const firs = shallowRef<FeatureCollection | null>(null);
   let firCache: FeatureCollection | null = null;
 
   /**
@@ -255,13 +265,13 @@ export function useChartLayers(options: ChartLayerOptions) {
   }
 
   /**
-   * Grid MORA。和航路网一样按视野取，其余几层都是一次拉全。
-   *
-   * 理由是量级：格子光是覆盖框内就有几千个，而且它只在放大到读得出数字时才有用。
-   * 所以按 10 度分块取、块内整块缓存 —— 平移不重取，因为格子本身固定不动。
+   * Grid MORA。按 10 度分块取（`lib/blockCache.ts`），块内整块缓存 —— 平移不重取，
+   * 因为格子本身固定不动。全球格子六万多个，而它只在放大到读得出数字时才有用：
+   * `ZOOM.mora` 以下一块都不取；离视野外扩一块之外的块扔掉（`MORA_KEEP`），再看到时
+   * 重取。
    */
   const showMora = ref(false);
-  const mora = ref<FeatureCollection | null>(null);
+  const mora = shallowRef<FeatureCollection | null>(null);
 
   /**
    * 全部机场的点。**没有开关，也不按视野裁** —— 见 lib/airports.ts。
@@ -269,17 +279,23 @@ export function useChartLayers(options: ChartLayerOptions) {
    * 缩放阶梯上它排在情报区之后、航路之前：缩到最小只剩情报区，放一级先看到「这一片
    * 有哪些机场」。出不出现由图层的 minzoom 管，这里只负责把点备好。
    */
-  const airports = ref<FeatureCollection | null>(null);
+  const airports = shallowRef<FeatureCollection | null>(null);
   /**
    * 全库跑道。**整份取一次，不按视野裁** —— 34 kB，而缩放阶梯要它在比例尺 20 公里那
    * 一档就出现，那个视野里有十几个机场。出不出现由图层的 minzoom 管。
    */
-  const runways = ref<FeatureCollection | null>(null);
+  const runways = shallowRef<FeatureCollection | null>(null);
 
-  /** 已取回的格子，跨块累积；键是 `lat,lon`。 */
-  const moraCells = new Map<string, MORACell>();
-  /** 已经取过（或正在取）的块，键是块的左下角。避免同一块并发重复请求。 */
-  const moraBlocks = new Set<string>();
+  const MORA_MIN_ZOOM = Math.floor(ZOOM.mora);
+  /** 视野四边各外扩这么多度，之外的 MORA 块扔掉。 */
+  const MORA_KEEP = MORA_BLOCK;
+  const moraBlocks = createBlockCache<MORACell>({
+    size: MORA_BLOCK,
+    key: (c) => `${c.lat},${c.lon}`,
+    fetch: fetchMORABlock,
+  });
+  /** 留着的格子转成点，只在清单变了时重算。 */
+  let moraPoints: { from: MORACell[]; out: FeatureCollection } | null = null;
   let lastViewport: Viewport | null = null;
 
   /**
@@ -296,11 +312,37 @@ export function useChartLayers(options: ChartLayerOptions) {
 
   /** can-db 那一族的原始清单，取一次就够。 */
   let controlledCache: Airspace[] | null = null;
-  let restrictedCache: Airspace[] | null = null;
+  /**
+   * 禁区、限制区、危险区按块取（`lib/blockCache.ts`）：全球一万三千多块，从
+   * `ZOOM.specialUse` 起才画，门槛以下一块都不取。区域和进近仍是整份取一次 —— 它们默
+   * 认关着，而且「开了就画，不设门槛」，缩到最小时视野压到的块和全图差不多。
+   */
+  const restrictedBlocks = createBlockCache<Airspace>({
+    size: CHART_BLOCK,
+    key: airspaceKey,
+    fetch: (lat, lon) => fetchAirspaces("restricted", blockBox(lat, lon)),
+  });
+  let restrictedPending = 0;
 
-  const airspaces = ref<FeatureCollection | null>(null);
+  const airspaces = shallowRef<FeatureCollection | null>(null);
 
   const layerBusy = ref(false);
+
+  /** 取到的导航台转成点，只在清单变了时重算。 */
+  let navaidPoints: { from: Navaid[]; out: FeatureCollection } | null = null;
+
+  function showNavaidBlocks() {
+    // 一块都还没取到（缩放在门槛以下）：不画也不说空 —— 那不是「没有导航台」。
+    if (!navaidBlocks.loaded()) return;
+    const list = navaidBlocks.values();
+    if (navaidPoints?.from !== list) {
+      navaidPoints = { from: list, out: toNavaidPoints(list) };
+    }
+    navaids.value = navaidPoints.out;
+    // 空不是错，开关留在打开状态，用一句话说明它为什么空。
+    if (list.length) notice.clearNotice("navaids");
+    else notice.setNotice("navaids", text.emptyNavaids);
+  }
 
   async function toggleNavaids() {
     prefs.navaids = !showNavaids.value;
@@ -311,26 +353,25 @@ export function useChartLayers(options: ChartLayerOptions) {
       notice.clearNotice("navaids");
       return;
     }
-    if (navaidCache) {
-      navaids.value = navaidCache;
-      showNavaids.value = true;
-      if (navaidCache.features.length) notice.clearNotice("navaids");
-      else notice.setNotice("navaids", text.emptyNavaids);
-      return;
-    }
     if (notice.isDeniedThisSession()) return;
-    layerBusy.value = true;
+    showNavaids.value = true;
+    showNavaidBlocks();
+    if (lastViewport) await loadNavaidsFor(lastViewport);
+  }
+
+  async function loadNavaidsFor(v: Viewport) {
+    if (!showNavaids.value || v.zoom < NAVAID_MIN_ZOOM) return;
+    if (notice.isDeniedThisSession()) return;
     const gen = aip.gen;
+    navaidPending++;
+    layerBusy.value = true;
     try {
-      const list = await fetchNavaids();
+      const changed = await navaidBlocks.load(v);
       if (gen !== aip.gen) return;
-      navaidCache = toNavaidPoints(list);
       notice.clearFailure("navaids");
-      navaids.value = navaidCache;
-      showNavaids.value = true;
-      // 和航路那层同一条：空不是错，开关留在打开状态，用一句话说明它为什么空。
-      if (navaidCache.features.length) notice.clearNotice("navaids");
-      else notice.setNotice("navaids", text.emptyNavaids);
+      if (changed || !navaids.value) {
+        if (showNavaids.value) showNavaidBlocks();
+      }
     } catch (error) {
       // 过期的这一次（NAIP 开关翻过）失败了：重取的那一次还在路上或已经画上，
       // 不许把它关掉，也不报失败 —— 和航路、MORA 那两层同一条规矩。
@@ -341,8 +382,10 @@ export function useChartLayers(options: ChartLayerOptions) {
       else notice.noteFailure("navaids");
       console.error("[efb:map] 导航台加载失败:", error);
       showNavaids.value = false;
+      navaids.value = null;
     } finally {
-      layerBusy.value = false;
+      navaidPending--;
+      layerBusy.value = navaidPending + restrictedPending > 0;
     }
   }
 
@@ -421,39 +464,37 @@ export function useChartLayers(options: ChartLayerOptions) {
     }
   }
 
-  async function loadMoraFor(v: Viewport) {
-    const wanted = blocksFor(v.south, v.west, v.north, v.east).filter(
-      (b) => !moraBlocks.has(`${b.lat},${b.lon}`),
-    );
-    if (!wanted.length) return;
-    // 先记下来再取：同一块的第二次请求在第一次回来之前就该被挡掉。
-    for (const b of wanted) moraBlocks.add(`${b.lat},${b.lon}`);
+  function showMoraCells() {
+    const list = moraBlocks.values();
+    if (moraPoints?.from !== list) {
+      moraPoints = { from: list, out: toMORAPoints(list) };
+    }
+    mora.value = moraPoints.out;
+  }
 
+  async function loadMoraFor(v: Viewport) {
+    if (v.zoom < MORA_MIN_ZOOM) return;
+    // 先扔再取：扔掉的块不会在这一轮被算进去。
+    const evicted = moraBlocks.evict(v, MORA_KEEP);
     const gen = aip.gen;
     try {
-      const batches = await Promise.all(
-        wanted.map((b) => fetchMORABlock(b.lat, b.lon)),
-      );
+      const changed = await moraBlocks.load(v);
       if (gen !== aip.gen) return;
-      for (const cells of batches) {
-        for (const c of cells) moraCells.set(`${c.lat},${c.lon}`, c);
-      }
       notice.clearFailure("mora");
       /* 取的途中可能已经被关掉了。格子照样进缓存，但**不许**把图层写回来 —— 否则
        * 关掉 MORA 之后，还在路上的那一批一回来网格就又出现了。
        *
-       * 不需要像地面那样按号作废：MORA 是累加的，每次写的都是**全部**已取格子的并
-       * 集，回来的先后不影响结果；关掉再打开时，还在路上的这一批正是新那次被
-       * `moraBlocks` 挡掉、指望它补上的那几块，作废反而会漏。 */
+       * 不需要像地面那样按号作废：每次写的都是缓存里**全部**留着的格子，回来的先后不
+       * 影响结果；过期的那一批由 `moraBlocks` 自己挡掉（`reset` / `evict`）。 */
       if (!showMora.value) return;
-      mora.value = toMORAPoints([...moraCells.values()]);
+      if (changed || evicted || !mora.value) showMoraCells();
     } catch (error) {
-      // 过期的这一次：块集合已经随 NAIP 开关清过，也不替新的那一次报失败。
+      // 过期的这一次：块已经随 NAIP 开关清过，也不替新的那一次报失败。
       if (gen !== aip.gen) return;
       if (isDenied(error)) notice.noteDenied();
       else notice.noteFailure("mora");
-      // 取失败的块要放回去，否则这次会话里再也不会重试它。
-      for (const b of wanted) moraBlocks.delete(`${b.lat},${b.lon}`);
+      // 扔掉的块照样画掉；取失败的块 `moraBlocks` 放回去了，下次视野变化再取。
+      if (evicted && showMora.value) showMoraCells();
       console.error("[efb:map] Grid MORA 加载失败:", error);
     }
   }
@@ -469,7 +510,9 @@ export function useChartLayers(options: ChartLayerOptions) {
       return;
     }
     showMora.value = true;
-    if (moraCells.size) mora.value = toMORAPoints([...moraCells.values()]);
+    // 关着时不扔块，缓存里可能还是上次开着时那一片：先按当前视野扔一遍。
+    if (lastViewport) moraBlocks.evict(lastViewport, MORA_KEEP);
+    if (moraBlocks.values().length) showMoraCells();
     if (notice.isDeniedThisSession()) return;
 
     layerBusy.value = true;
@@ -491,13 +534,34 @@ export function useChartLayers(options: ChartLayerOptions) {
     return list;
   }
 
-  async function loadRestricted(): Promise<Airspace[]> {
-    if (restrictedCache) return restrictedCache;
+  /** 补齐视野里的禁区块。清单变了返回 true。门槛以下不取。 */
+  async function loadRestricted(v: Viewport | null): Promise<boolean> {
+    if (!v || v.zoom < ZOOM.specialUse) return false;
+    return restrictedBlocks.load(v);
+  }
+
+  /** 视野变了：禁区开着就补块，有新的就重新合成。 */
+  async function loadRestrictedFor(v: Viewport) {
+    if (!showRestricted.value || notice.isDeniedThisSession()) return;
     const gen = aip.gen;
-    const list = await fetchAirspaces("restricted");
-    if (gen !== aip.gen) return loadRestricted();
-    restrictedCache = list;
-    return list;
+    restrictedPending++;
+    layerBusy.value = true;
+    try {
+      const changed = await loadRestricted(v);
+      if (gen !== aip.gen) return;
+      notice.clearFailure("restricted");
+      if (changed && showRestricted.value) composeAirspaces();
+    } catch (error) {
+      if (gen !== aip.gen) return;
+      if (isDenied(error)) notice.noteDenied();
+      else notice.noteFailure("restricted");
+      console.error("[efb:map] 空域加载失败:", error);
+      showRestricted.value = false;
+      composeAirspaces();
+    } finally {
+      restrictedPending--;
+      layerBusy.value = navaidPending + restrictedPending > 0;
+    }
   }
 
   /**
@@ -516,9 +580,7 @@ export function useChartLayers(options: ChartLayerOptions) {
     if (showApp.value && controlledCache) {
       parts.push(...onlyParents(controlledCache, "APP"));
     }
-    if (showRestricted.value && restrictedCache) {
-      parts.push(...restrictedCache);
-    }
+    if (showRestricted.value) parts.push(...restrictedBlocks.values());
 
     airspaces.value = parts.length ? toAirspacePolygons(parts).features : null;
   }
@@ -548,14 +610,16 @@ export function useChartLayers(options: ChartLayerOptions) {
 
     layerBusy.value = true;
     try {
-      if (which === "restricted") await loadRestricted();
+      if (which === "restricted") await loadRestricted(lastViewport);
       else await loadControlled();
       flag.value = true;
       notice.clearFailure(which);
       composeAirspaces();
-      // 三层共用一个要素集合，所以空不空要看合成之后的结果，不看单独哪一族。
+      // 三层共用一个要素集合，所以空不空要看合成之后的结果，不看单独哪一族。禁区一块
+      // 都还没取（缩放在门槛以下）时不算空 —— 那不是「这一带没有」。
+      const known = showCtr.value || showApp.value || restrictedBlocks.loaded();
       if (airspaces.value?.features.length) notice.clearNotice("airspace");
-      else notice.setNotice("airspace", text.emptyGeneric);
+      else if (known) notice.setNotice("airspace", text.emptyGeneric);
     } catch (error) {
       if (isDenied(error)) notice.noteDenied();
       else notice.noteFailure(which);
@@ -578,14 +642,14 @@ export function useChartLayers(options: ChartLayerOptions) {
    * 的 `watch(hideNaip)` 先加一，再调这里 —— 号只有一个，各层共用。
    */
   function reloadAip() {
-    airwayBlocks.clear();
-    airwayPending.clear();
-    airwayBusy.value = false;
-    navaidCache = null;
+    airwayBlocks.reset();
+    airwayCache = null;
+    navaidBlocks.reset();
+    navaidPoints = null;
     controlledCache = null;
-    restrictedCache = null;
-    moraCells.clear();
-    moraBlocks.clear();
+    restrictedBlocks.reset();
+    moraBlocks.reset();
+    moraPoints = null;
     airports.value = null;
     runways.value = null;
 
@@ -596,10 +660,8 @@ export function useChartLayers(options: ChartLayerOptions) {
       if (lastViewport) void loadAirwaysFor(lastViewport);
     }
     if (showNavaids.value) {
-      // toggleNavaids 是翻转式的：先摆回关，它再按新值打开。
-      showNavaids.value = false;
       navaids.value = null;
-      void toggleNavaids();
+      if (lastViewport) void loadNavaidsFor(lastViewport);
     }
     if (showCtr.value || showApp.value || showRestricted.value) {
       void reloadAirspaces();
@@ -623,7 +685,7 @@ export function useChartLayers(options: ChartLayerOptions) {
     try {
       await Promise.all([
         showCtr.value || showApp.value ? loadControlled() : null,
-        showRestricted.value ? loadRestricted() : null,
+        showRestricted.value ? loadRestricted(lastViewport) : null,
       ]);
     } catch (error) {
       if (gen !== aip.gen) return;
@@ -642,14 +704,16 @@ export function useChartLayers(options: ChartLayerOptions) {
 
   /**
    * 视野变了。原来这一段在 MapSurface 的 onViewport 里和地面层挤在一起；地面层搬
-   * 走之后这里只剩机场、跑道、航路网和 MORA。
+   * 走之后这里只剩机场、跑道、航路网的块和 MORA。
    *
-   * MORA 关着就什么都不做 —— 地图一直在动，而不看的东西不该产生流量。
+   * 航路和 MORA 关着就什么都不做 —— 地图一直在动，而不看的东西不该产生流量。
    */
   function onViewport(v: Viewport) {
     lastViewport = v;
     void loadForZoom(v.zoom);
     if (showAirways.value) scheduleAirways(v);
+    void loadNavaidsFor(v);
+    void loadRestrictedFor(v);
     if (!showMora.value || notice.isDeniedThisSession()) return;
     void loadMoraFor(v);
   }

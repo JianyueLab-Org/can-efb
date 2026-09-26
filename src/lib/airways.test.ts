@@ -1,5 +1,5 @@
 import { expect, test, describe } from "bun:test";
-import type { FeatureCollection } from "geojson";
+import type { Feature, FeatureCollection } from "geojson";
 
 import {
   airwayBlocksFor,
@@ -7,7 +7,7 @@ import {
   markNavaidFixes,
   legKey,
   routeLegKeys,
-  markRouteOnAirways,
+  routeLegsOnAirways,
   mergeAirwayLevels,
   routeLegs,
   unionAirwayGraphs,
@@ -15,6 +15,7 @@ import {
   toAirwayLines,
   airwayGapNm,
   AIRWAY_FIX_GAP_NM,
+  type TaggedAirwayGraph,
   type AirwayGraph,
   type AirwaySegment,
 } from "@/lib/airways";
@@ -22,7 +23,7 @@ import { distanceNm } from "@/lib/geo";
 
 const seg = (airway: string, from: string, to: string) => ({
   type: "Feature" as const,
-  properties: { airway, from, to, onRoute: 0 },
+  properties: { airway, from, to, leg: legKey(airway, from, to) },
   geometry: {
     type: "LineString" as const,
     coordinates: [
@@ -31,6 +32,12 @@ const seg = (airway: string, from: string, to: string) => ({
     ],
   },
 });
+
+/** 样式点亮的就是 `leg` 在 `lit` 里的那些要素（`chartStyle.ts` 的 `onRouteOf`）。 */
+const lit = (fc: FeatureCollection | Feature[], marked: { lit: Set<string> }) =>
+  (Array.isArray(fc) ? fc : fc.features).map((f) =>
+    marked.lit.has(String(f.properties?.leg)),
+  );
 
 const collection = (
   ...features: ReturnType<typeof seg>[]
@@ -53,12 +60,12 @@ describe("航段键与方向无关", () => {
   test("反着飞的航段照样点亮", () => {
     const fc = collection(seg("W1", "AAAAA", "BBBBB"));
     // 计划是 BBBBB → AAAAA，和库里存的方向相反
-    const marked = markRouteOnAirways(
+    const marked = routeLegsOnAirways(
       fc,
       routeLegKeys([{ ident: "BBBBB" }, { ident: "AAAAA", via: "W1" }]),
     );
-    expect(marked.size).toBe(1);
-    expect(fc.features[0].properties?.onRoute).toBe(1);
+    expect(marked.planned.size).toBe(1);
+    expect(lit(fc, marked)).toEqual([true]);
   });
 });
 
@@ -84,7 +91,7 @@ describe("返回的是真正标到的", () => {
    */
   test("计划里有、但航路网里没有的那一段不算标到", () => {
     const fc = collection(seg("W1", "AAAAA", "BBBBB"));
-    const marked = markRouteOnAirways(
+    const marked = routeLegsOnAirways(
       fc,
       routeLegKeys([
         { ident: "AAAAA" },
@@ -93,44 +100,51 @@ describe("返回的是真正标到的", () => {
         { ident: "CCCCC", via: "W9" },
       ]),
     );
-    expect(marked.has(legKey("W1", "AAAAA", "BBBBB"))).toBe(true);
-    expect(marked.has(legKey("W9", "BBBBB", "CCCCC"))).toBe(false);
+    expect(marked.planned.has(legKey("W1", "AAAAA", "BBBBB"))).toBe(true);
+    expect(marked.planned.has(legKey("W9", "BBBBB", "CCCCC"))).toBe(false);
   });
 
   /**
-   * 每次都重写 `onRoute`，不是只加不清。
-   *
-   * 航路集合是按 level 缓存的，同一份对象反复使用 —— 只加不清的话，换一条计划之后
-   * 图上会同时亮着两条。
+   * 同一份航路集合反复使用（补块之前一直是它）。结果只看这一次的计划 —— 带上上一次
+   * 的话，换一条计划之后图上会同时亮着两条。
    */
   test("换一条航路，旧的高亮要撤掉", () => {
     const fc = collection(
       seg("W1", "AAAAA", "BBBBB"),
       seg("W9", "BBBBB", "CCCCC"),
     );
-    markRouteOnAirways(
+    const first = routeLegsOnAirways(
       fc,
       routeLegKeys([{ ident: "AAAAA" }, { ident: "BBBBB", via: "W1" }]),
     );
-    expect(fc.features[0].properties?.onRoute).toBe(1);
+    expect(lit(fc, first)).toEqual([true, false]);
 
-    markRouteOnAirways(
+    const second = routeLegsOnAirways(
       fc,
       routeLegKeys([{ ident: "BBBBB" }, { ident: "CCCCC", via: "W9" }]),
     );
-    expect(fc.features[0].properties?.onRoute).toBe(0);
-    expect(fc.features[1].properties?.onRoute).toBe(1);
+    expect(lit(fc, second)).toEqual([false, true]);
   });
 
   test("空航路把所有高亮清掉", () => {
     const fc = collection(seg("W1", "AAAAA", "BBBBB"));
-    markRouteOnAirways(
+    routeLegsOnAirways(
       fc,
       routeLegKeys([{ ident: "AAAAA" }, { ident: "BBBBB", via: "W1" }]),
     );
-    const marked = markRouteOnAirways(fc, new Set());
-    expect(marked.size).toBe(0);
-    expect(fc.features[0].properties?.onRoute).toBe(0);
+    const marked = routeLegsOnAirways(fc, new Set());
+    expect(marked.planned.size).toBe(0);
+    expect(lit(fc, marked)).toEqual([false]);
+  });
+
+  test("不改航段数据：高亮换了，航路网不用重传", () => {
+    const fc = collection(seg("W1", "AAAAA", "BBBBB"));
+    const before = JSON.stringify(fc);
+    routeLegsOnAirways(
+      fc,
+      routeLegKeys([{ ident: "AAAAA" }, { ident: "BBBBB", via: "W1" }]),
+    );
+    expect(JSON.stringify(fc)).toBe(before);
   });
 });
 
@@ -340,12 +354,12 @@ describe("航段在定位点前让出 1 NM", () => {
       expect(f.properties?.from).toBe("AAAAA");
       expect(f.properties?.to).toBe("BBBBB");
     }
-    const marked = markRouteOnAirways(
+    const marked = routeLegsOnAirways(
       lines,
       new Set([legKey("W11", "BBBBB", "AAAAA")]),
     );
-    expect(marked.size).toBe(1);
-    expect(lines.features.every((f) => f.properties?.onRoute === 1)).toBe(true);
+    expect(marked.planned.size).toBe(1);
+    expect(lit(lines, marked).every(Boolean)).toBe(true);
   });
 
   test("短航段按比例让：min(1, 0.4 × 长度)，2.5 NM 处接上", () => {
@@ -446,38 +460,55 @@ describe("图键和代号", () => {
 
   test("计划按代号点亮，同名两段只亮离计划近的那一段", () => {
     const fc = toAirwayLines(graph);
-    const marked = markRouteOnAirways(
+    const marked = routeLegsOnAirways(
       fc,
       routeLegs([
         { ident: "BUNGO", lat: 37.5, lon: 129.0 },
         { ident: "AKAGI", lat: 36.5, lon: 128.0, via: "A1" },
       ]),
     );
-    expect(marked.has(legKey("A1", "AKAGI", "BUNGO"))).toBe(true);
-    const on = mainLines(fc).map((f) => f.properties?.onRoute);
-    expect(on).toEqual([0, 1, 0]);
+    expect(marked.planned.has(legKey("A1", "AKAGI", "BUNGO"))).toBe(true);
+    expect(lit(mainLines(fc), marked)).toEqual([false, true, false]);
+    // 一段三截（实线加两截虚线）一起亮。
+    const rk = fc.features.filter(
+      (f) => f.properties?.from === "AKAGI@RK/waypoint",
+    );
+    expect(rk.length).toBe(3);
+    expect(lit(rk, marked).every(Boolean)).toBe(true);
   });
 
   test("不带位置时同名的都点亮", () => {
     const fc = toAirwayLines(graph);
-    markRouteOnAirways(
+    const marked = routeLegsOnAirways(
       fc,
       routeLegKeys([{ ident: "AKAGI" }, { ident: "BUNGO", via: "A1" }]),
     );
-    expect(mainLines(fc).map((f) => f.properties?.onRoute)).toEqual([1, 1, 0]);
+    expect(lit(mainLines(fc), marked)).toEqual([true, true, false]);
   });
 
   test("旧版航段（没有 fromIdent）照样按代号点亮", () => {
     const fc = toAirwayLines(graph);
-    const marked = markRouteOnAirways(
+    const marked = routeLegsOnAirways(
       fc,
       routeLegs([
         { ident: "NAIPX", lat: 30, lon: 120 },
         { ident: "AKAGI", lat: 36.5, lon: 139, via: "W1" },
       ]),
     );
-    expect(marked.has(legKey("W1", "NAIPX", "AKAGI"))).toBe(true);
-    expect(mainLines(fc)[2].properties?.onRoute).toBe(1);
+    expect(marked.planned.has(legKey("W1", "NAIPX", "AKAGI"))).toBe(true);
+    expect(lit(mainLines(fc), marked)[2]).toBe(true);
+  });
+
+  test("航路点标注写代号，坐标照图键查", () => {
+    const pts = toAirwayFixes(graph);
+    const akagi = pts.features.find(
+      (f) => f.properties?.key === "AKAGI@RJ/waypoint",
+    );
+    expect(akagi?.properties?.ident).toBe("AKAGI");
+    expect(akagi?.geometry).toEqual({
+      type: "Point",
+      coordinates: [139.0, 36.5],
+    });
   });
 
   test("跨 180° 的航段走短的那一边", () => {
@@ -507,6 +538,39 @@ describe("图键和代号", () => {
     const tagged = mergeAirwayLevels(graph, graph);
     const union = unionAirwayGraphs([tagged, tagged]);
     expect(union.segments.length).toBe(3);
+  });
+
+  test("跨块边界的航段两块都给，并起来只留一条，点集取并集", () => {
+    const block = (
+      fixes: AirwayGraph["fixes"],
+      ...segments: [string, string, string][]
+    ): TaggedAirwayGraph => ({
+      fixes,
+      airways: {},
+      segments: segments.map(([airway, from, to]) => ({
+        airway,
+        from,
+        to,
+        dir: "both",
+        minAlt: null,
+        maxAlt: null,
+        level: "both" as const,
+      })),
+    });
+    const union = unionAirwayGraphs([
+      block({ AAAAA: [30, 119], BBBBB: [30, 121] }, ["W1", "AAAAA", "BBBBB"]),
+      block(
+        { BBBBB: [30, 121], CCCCC: [31, 122] },
+        ["W1", "AAAAA", "BBBBB"],
+        ["W2", "BBBBB", "CCCCC"],
+      ),
+    ]);
+    expect(union.segments.map((s) => s.airway)).toEqual(["W1", "W2"]);
+    expect(Object.keys(union.fixes).sort()).toEqual([
+      "AAAAA",
+      "BBBBB",
+      "CCCCC",
+    ]);
   });
 });
 

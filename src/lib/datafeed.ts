@@ -117,10 +117,38 @@ export interface Datafeed {
   pilots: DatafeedPilot[];
 }
 
-export async function fetchDatafeed(): Promise<Datafeed> {
-  const response = await fetch(DATAFEED_URL, { cache: "no-store" });
-  if (!response.ok) throw new Error(`datafeed: ${response.status}`);
-  return (await response.json()) as Datafeed;
+/**
+ * 上一次取回来的那份，和它是什么时候取到的。`DATAFEED_REUSE_MS` 之内再要就直接给它。
+ *
+ * 概览页和地图的实时层在同一个标签页里各取一次：打开概览时两边同时要，从前是两个一
+ * 模一样的请求。复用窗口比轮询间隔（30 秒）短得多，不会让轮询拿到旧数据。
+ *
+ * 调用方拿到的是**同一个对象**，只读不改 —— `onlineControllers` / `onlineAtis`
+ * 都先复制再排序。
+ */
+const DATAFEED_REUSE_MS = 5_000;
+let lastFeed: { at: number; feed: Datafeed } | null = null;
+/** 正在路上的那一次。并发的调用共用它，失败不留。 */
+let feedInFlight: Promise<Datafeed> | null = null;
+
+export function fetchDatafeed(): Promise<Datafeed> {
+  if (lastFeed && Date.now() - lastFeed.at < DATAFEED_REUSE_MS) {
+    return Promise.resolve(lastFeed.feed);
+  }
+  if (feedInFlight) return feedInFlight;
+  const request = (async () => {
+    const response = await fetch(DATAFEED_URL, { cache: "no-store" });
+    if (!response.ok) throw new Error(`datafeed: ${response.status}`);
+    const feed = (await response.json()) as Datafeed;
+    lastFeed = { at: Date.now(), feed };
+    return feed;
+  })();
+  feedInFlight = request;
+  request.then(
+    () => (feedInFlight = null),
+    () => (feedInFlight = null),
+  );
+  return request;
 }
 
 /**
