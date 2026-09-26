@@ -373,7 +373,19 @@
       "planOnMap": "已提交的飞行计划 {from} → {to}",
       "layersMenu": "图层",
       "layerFailed": "「{layer}」没取到，图上这一层是空的。",
-      "locate": "定位到我的飞机"
+      "locate": "定位到我的飞机",
+      "atc": {
+        "close": "关闭",
+        "airspace": "管制区",
+        "covering": "覆盖扇区",
+        "extending": "延伸席位",
+        "frequency": "频率",
+        "member": "成员",
+        "rating": "等级",
+        "online": "已在线",
+        "atisText": "ATIS 内容",
+        "controllerInfo": "管制员信息"
+      }
     },
     "airports": {
       "search": "搜索 ICAO、机场名或飞行情报区",

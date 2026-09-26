@@ -17,6 +17,7 @@ import {
   toControllerPoints,
   toOwnPoint,
   toTrafficPoints,
+  type DatafeedController,
 } from "@/lib/datafeed";
 import {
   buildCoverage,
@@ -122,6 +123,20 @@ export function useTrafficLayer(options: {
   const atcAreas = ref<FeatureCollection | null>(null);
   /** 范围的标注点，「呼号 频率」。 */
   const atcLabels = ref<FeatureCollection | null>(null);
+  /**
+   * 这一轮在线的席位，按呼号。点地图上的席位时从这里取详情（can-radar 的
+   * `RadarDetails`）；ATIS 按它来自哪个数组记，不按 facility。
+   */
+  const stations = ref(
+    new Map<string, { station: DatafeedController; isAtis: boolean }>(),
+  );
+  /** 点中的那个席位的呼号。下线了详情卡跟着消失，见 `selected`。 */
+  const selectedCallsign = ref<string | null>(null);
+  const selected = computed(() =>
+    selectedCallsign.value
+      ? (stations.value.get(selectedCallsign.value) ?? null)
+      : null,
+  );
   const own = ref<FeatureCollection | null>(null);
   /**
    * 自己的航迹，从每一轮轮询里攒（`lib/ownTrack.ts`）。只活在这次会话；关掉机组那层
@@ -248,6 +263,14 @@ export function useTrafficLayer(options: {
       );
       atcAreas.value = coverage.areas;
       atcLabels.value = coverage.labels;
+      const next = new Map<
+        string,
+        { station: DatafeedController; isAtis: boolean }
+      >();
+      for (const c of controllers)
+        next.set(c.callsign, { station: c, isAtis: false });
+      for (const a of atis) next.set(a.callsign, { station: a, isAtis: true });
+      stations.value = next;
       // 点这一层留给场面席位，外加**没能对上任何范围的那些** —— 它们不该从图上消失。
       const points = toControllerPoints(coverage.points);
       atc.value = {
@@ -269,6 +292,8 @@ export function useTrafficLayer(options: {
     atc.value = null;
     atcAreas.value = null;
     atcLabels.value = null;
+    stations.value = new Map();
+    selectedCallsign.value = null;
     atcCount.value = 0;
   }
 
@@ -374,6 +399,8 @@ export function useTrafficLayer(options: {
     atc,
     atcAreas,
     atcLabels,
+    selectedCallsign,
+    selected,
     own,
     ownTrack,
     atcCount,

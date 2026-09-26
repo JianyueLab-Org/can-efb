@@ -20,6 +20,7 @@ import { expect, test, describe } from "bun:test";
 import {
   atisForAirport,
   atisLetter,
+  ratingShort,
   atisText,
   facilityColor,
   facilityRank,
@@ -336,5 +337,18 @@ describe("atisForAirport", () => {
   test("没有就是空，不拿别的场凑", () => {
     expect(atisForAirport([a("ZSSS_ATIS")], "ZSPD")).toEqual([]);
     expect(atisForAirport([a("ZSSS_ATIS")], "")).toEqual([]);
+  });
+});
+
+describe("ratingShort", () => {
+  test("按 can-radar 那张表", () => {
+    expect(ratingShort(5)).toBe("C1");
+    expect(ratingShort(8)).toBe("I1");
+    expect(ratingShort(11)).toBe("SUP");
+    expect(ratingShort(-1)).toBe("INAC");
+  });
+
+  test("认不出就写数字，不猜", () => {
+    expect(ratingShort(42)).toBe("42");
   });
 });

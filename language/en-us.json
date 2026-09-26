@@ -373,7 +373,19 @@
       "planOnMap": "Filed flight plan {from} → {to}",
       "layersMenu": "Layers",
       "layerFailed": "Couldn't load {layer}; that layer is empty on the map.",
-      "locate": "Center on my aircraft"
+      "locate": "Center on my aircraft",
+      "atc": {
+        "close": "Close",
+        "airspace": "Airspace",
+        "covering": "Covering",
+        "extending": "Extending",
+        "frequency": "Frequency",
+        "member": "Member",
+        "rating": "Rating",
+        "online": "Online for",
+        "atisText": "ATIS",
+        "controllerInfo": "Controller info"
+      }
     },
     "airports": {
       "search": "Search by ICAO, name or FIR",

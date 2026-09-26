@@ -37,6 +37,9 @@ import {
 } from "vue";
 import type { FeatureCollection } from "geojson";
 import MapControls from "@/components/map/MapControls.vue";
+import AtcDetails, {
+  type AtcDetailsText,
+} from "@/components/map/AtcDetails.vue";
 import { useLayerNotice, type LayerId } from "@/components/map/useLayerNotice";
 import {
   useChartLayers,
@@ -72,6 +75,8 @@ const props = defineProps<{
     layerFailed: string;
     retry: string;
     locate: string;
+    /** 管制席位详情卡的文案。 */
+    atc: AtcDetailsText;
   };
   /** 地图整个起不来时那两句，转交给 RouteMap。 */
   failureText: { init: string; webgl: string };
@@ -133,8 +138,22 @@ const {
   skippedTotal,
 } = chart;
 const { ground, groundAttribution } = groundLayer;
-const { traffic, atc, atcAreas, atcLabels, own, ownTrack, atcCount, ownAt } =
-  live;
+const {
+  traffic,
+  atc,
+  atcAreas,
+  atcLabels,
+  selected,
+  own,
+  ownTrack,
+  atcCount,
+  ownAt,
+} = live;
+
+/** 点地图：点中席位就换成它，点在空处就收起详情卡。 */
+function onStation(callsign: string | null) {
+  live.selectedCallsign.value = callsign;
+}
 const noticeLine = notice.notice;
 const failedLayer = notice.failure;
 
@@ -293,6 +312,7 @@ onBeforeUnmount(() => {
       :firs-label="layerLabels.firs"
       class="h-full"
       @viewport="onViewport"
+      @station="onStation"
     />
     <!-- 水合之前的占位：没有它，首屏这一整块是空的，等 JS 到了才突然出现地图。 -->
     <div v-else class="surface-grid h-full"></div>
@@ -316,5 +336,15 @@ onBeforeUnmount(() => {
       @retry="onRetry"
       @locate="locateOwn"
     />
+
+    <div class="map-overlay">
+      <AtcDetails
+        v-if="selected"
+        :station="selected.station"
+        :is-atis="selected.isAtis"
+        :text="t.atc"
+        @close="onStation(null)"
+      />
+    </div>
   </section>
 </template>

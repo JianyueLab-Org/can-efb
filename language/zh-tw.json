@@ -373,7 +373,19 @@
       "planOnMap": "已提交的飛行計畫 {from} → {to}",
       "layersMenu": "圖層",
       "layerFailed": "「{layer}」沒取到，圖上這一層是空的。",
-      "locate": "定位到我的飛機"
+      "locate": "定位到我的飛機",
+      "atc": {
+        "close": "關閉",
+        "airspace": "管制區",
+        "covering": "覆蓋扇區",
+        "extending": "延伸席位",
+        "frequency": "頻率",
+        "member": "成員",
+        "rating": "等級",
+        "online": "已在線",
+        "atisText": "ATIS 內容",
+        "controllerInfo": "管制員資訊"
+      }
     },
     "airports": {
       "search": "搜尋 ICAO、機場名或飛航情報區",

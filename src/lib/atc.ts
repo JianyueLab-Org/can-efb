@@ -272,3 +272,30 @@ export function atisForAirport(
     .filter((a) => stationAirport(a.callsign) === code)
     .sort((a, b) => a.callsign.localeCompare(b.callsign));
 }
+
+/**
+ * 管制等级的简称（`C1`、`I1`），席位详情卡上那一行。
+ *
+ * 表取自 can-radar 的 `lib/tools.ts` 的 `ratings`（`ratingTrans(…, "short")`），只要
+ * 简称那一列。认不出的等级原样写数字，和 can-radar 一样。
+ */
+const RATING_SHORT: Record<number, string> = {
+  [-1]: "INAC",
+  0: "SUS",
+  1: "OBS",
+  2: "S1",
+  3: "S2",
+  4: "S3",
+  5: "C1",
+  6: "C2",
+  7: "C3",
+  8: "I1",
+  9: "I2",
+  10: "I3",
+  11: "SUP",
+  12: "ADM",
+};
+
+export function ratingShort(rating: number): string {
+  return RATING_SHORT[rating] ?? String(rating);
+}

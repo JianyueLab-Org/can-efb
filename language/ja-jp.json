@@ -373,7 +373,19 @@
       "planOnMap": "提出済みフライトプラン {from} → {to}",
       "layersMenu": "レイヤー",
       "layerFailed": "「{layer}」を取得できませんでした。地図上のこのレイヤーは空です。",
-      "locate": "自機を中央に表示"
+      "locate": "自機を中央に表示",
+      "atc": {
+        "close": "閉じる",
+        "airspace": "管制空域",
+        "covering": "カバーセクタ",
+        "extending": "延伸席",
+        "frequency": "周波数",
+        "member": "メンバー",
+        "rating": "レーティング",
+        "online": "接続時間",
+        "atisText": "ATIS",
+        "controllerInfo": "管制員情報"
+      }
     },
     "airports": {
       "search": "ICAO・空港名・FIR で検索",

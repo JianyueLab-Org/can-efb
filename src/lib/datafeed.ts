@@ -216,6 +216,9 @@ export function toControllerPoints(
       type: "Feature",
       properties: {
         callsign: c.callsign,
+        // 点这个点时要弹出的那个席位。这里和呼号相同；Extending 出去的那些点
+        // （`lib/atcCoverage.ts`）呼号是扩出去的，`station` 仍是原席位。
+        station: c.callsign,
         // 频率是飞行员真正要的那一样，和呼号一起进标注。
         frequency: c.frequency,
         // **席位类型进要素，好让地图按它分色。** 以前这一层所有点是同一个琥珀色，

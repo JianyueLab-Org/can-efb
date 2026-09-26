@@ -390,6 +390,7 @@ export function buildCoverage(
         type: "Feature",
         properties: {
           callsign: extendedCallsign(c.callsign, field),
+          station: c.callsign,
           frequency: c.frequency,
           facility: c.facility,
         },
@@ -404,6 +405,7 @@ export function buildCoverage(
       properties: {
         kind,
         callsign: c.callsign,
+        station: c.callsign,
         frequency: c.frequency,
         facility: c.facility,
       },
@@ -419,6 +421,7 @@ export function buildCoverage(
       type: "Feature",
       properties: {
         label: `${callsign} ${c.frequency}`,
+        station: c.callsign,
         facility: c.facility,
       },
       geometry: { type: "Point", coordinates: at },
