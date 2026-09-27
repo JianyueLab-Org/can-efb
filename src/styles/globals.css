@@ -488,7 +488,7 @@
 /* 「定位到我」。放在缩放控件下面：它是改变视野的动作，和 +/- 同一类。 */
 .map-locate {
   position: absolute;
-  top: 5.25rem;
+  top: 7rem;
   left: 0.5rem;
   display: flex;
   align-items: center;
@@ -570,6 +570,18 @@
   color: #fff;
   font-size: 0.65rem;
   font-variant-numeric: tabular-nums;
+}
+/* 「3D」：在图层按钮下面，按下时和开着的图层同一种底色。 */
+.map-3d-toggle {
+  order: 3;
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--radius-control);
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+.map-3d-toggle.is-on {
+  color: var(--color-ink);
+  background: var(--surface-overlay);
 }
 /* 没取到的那一层。小，但带一个能按的重试。 */
 .map-layer-failure {

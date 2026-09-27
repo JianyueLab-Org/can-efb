@@ -301,6 +301,8 @@ export function toTrafficPoints(
         // MapLibre 的过滤和表达式对布尔支持得别扭，用 0/1 省去一层判断。
         onGround: onGroundOf(p.groundspeed) ? 1 : 0,
         level: levelOf(p.altitude),
+        // 倾斜视角的高度柱用（`lib/extrude.ts`）。取整到百英尺，理由同 toOwnPoint。
+        altitude: Math.round((p.altitude ?? 0) / 100) * 100,
       },
       // 上面 `hasPosition` 已经确认过两个都是有限数，这里的 `!` 是给编译器
       // 的，不是一次赌博。

@@ -373,6 +373,9 @@ export function toAirspacePolygons(list: Airspace[]): {
         code: a.code ?? a.name ?? "",
         localType: a.localType ?? "",
         vertical: verticalLabel(a),
+        // 倾斜视角的立体块用（`airspace-volume`），米。上限缺席时样式按不封顶处理。
+        lowerM: a.lowerM ?? 0,
+        upperM: a.upperM ?? 0,
         activeTime: a.activeTime ?? "",
       },
       geometry: { type: "Polygon", coordinates: [ring] },

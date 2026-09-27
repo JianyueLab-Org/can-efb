@@ -22,6 +22,7 @@ import { loadHoldings } from "@/lib/holds";
 import { dbFetch } from "@/lib/naip";
 import { viewForPlanRequest } from "@/components/map/planRequest";
 import { applySelection } from "@/lib/planProcedures";
+import { parseCruiseLevel } from "@/lib/extrude";
 import {
   PROCEDURES_CHANGED_EVENT,
   readSelection,
@@ -38,6 +39,8 @@ export function useRouteLayer(options: {
   const markers = ref<MapPoint[]>([]);
   const focus = ref<MapFocus | null>(null);
   const label = ref(text.label);
+  /** 图上那条航线的巡航高度，英尺。倾斜时据此画高度剖面；不知道就是 null，不画。 */
+  const cruiseFt = ref<number | null>(null);
 
   /**
    * 计划里**真正被点亮**的那些航段。
@@ -76,6 +79,7 @@ export function useRouteLayer(options: {
     planShown = false;
     planKey = "";
     points.value = [];
+    cruiseFt.value = null;
     refreshHighlight();
     label.value = text.label;
   }
@@ -105,6 +109,7 @@ export function useRouteLayer(options: {
       departure?: string;
       arrival?: string;
       route?: string;
+      cruisingAltitude?: string;
     }>();
     if (seq !== planSeq || panelPublished) return;
     // 没读上：图上是什么就留着什么。读失败不等于撤了计划。
@@ -121,7 +126,8 @@ export function useRouteLayer(options: {
     }
     // 本机选的跑道和程序也是这份画法的一部分，变了要重画。
     const selection = readSelection(departure, arrival);
-    const key = `${departure}|${arrival}|${route ?? ""}|${JSON.stringify(selection)}`;
+    const cruise = parseCruiseLevel(plan.data?.cruisingAltitude);
+    const key = `${departure}|${arrival}|${route ?? ""}|${cruise}|${JSON.stringify(selection)}`;
     // 还是同一份计划，就别每换一页都重新展开一遍。
     if (planShown && key === planKey) return;
 
@@ -170,6 +176,7 @@ export function useRouteLayer(options: {
     planShown = true;
     planKey = key;
     points.value = drawn;
+    cruiseFt.value = cruise;
     // 计划到了，把它在航路网上点亮。航路网可能还没加载好 —— 那边加载完也会再算一次。
     refreshHighlight();
     label.value = text.planOnMap
@@ -261,6 +268,7 @@ export function useRouteLayer(options: {
       planShown = false;
       planKey = "";
       points.value = payload.points ?? [];
+      cruiseFt.value = payload.cruiseFt ?? null;
       // 面板换了一条航路：旧的高亮必须撤掉，否则图上会同时亮着两条。
       refreshHighlight();
       markers.value = payload.markers ?? [];
@@ -297,6 +305,7 @@ export function useRouteLayer(options: {
       label.value = next.label;
       if (next.pointsChanged) {
         points.value = next.points;
+        cruiseFt.value = null;
         refreshHighlight();
       }
       void loadPlanRoute();
@@ -320,6 +329,7 @@ export function useRouteLayer(options: {
     markers,
     focus,
     label,
+    cruiseFt,
     highlightedLegs,
     litLegs,
     refreshHighlight,

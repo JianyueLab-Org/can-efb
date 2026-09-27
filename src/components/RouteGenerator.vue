@@ -109,6 +109,8 @@ async function generate() {
     publishToMap({
       points: planToMapPoints(result),
       label: `${result.from} → ${result.to}`,
+      // 高度框是英尺（见文案）；留空就没有剖面。
+      cruiseFt: Number(level.value) > 0 ? Number(level.value) : undefined,
     });
   } catch (e) {
     // 四种答案，不合并成一句「失败」：400 是改输入；404 是这对机场在这个高度上没有

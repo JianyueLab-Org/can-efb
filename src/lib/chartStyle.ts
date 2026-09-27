@@ -435,6 +435,57 @@ export const AIRSPACE = {
   lineOpacity: 0.9,
 } as const;
 
+/**
+ * 倾斜视角的立体图层：空域块、计划航线的高度剖面、在线机组的高度柱。
+ *
+ * **三层共用一个放大倍数**（`extrudeHeight`），高低才比得了。真实比例下 FL350 只有
+ * 10.7 km，全国视野里压成一张纸，所以按缩放放大：远看放得多，近看接近真实。
+ *
+ * 这五层只在地图倾斜时显示，开关在 `RouteMap`（`visibility`，不写进样式 —— 写进来的
+ * 话 `applyStyle` 切主题时会把它改回去）。
+ */
+export const EXTRUDE = {
+  /** `[缩放, 倍数]`。 */
+  exaggeration: [
+    [3, 20],
+    [6, 8],
+    [9, 3],
+    [12, 1.5],
+  ] as Stops,
+  /** 空域上限缺席（`UNLTD`）时画到多高，米。FL600。 */
+  unlimitedM: 18288,
+  opacity: {
+    airspace: 0.3,
+    wall: 0.16,
+    ribbon: 0.9,
+    stalk: 0.45,
+    cap: 0.95,
+  },
+  /** 倾斜多少度起算 3D 视图，立体图层出现。 */
+  minPitch: 10,
+  /** 「3D」按钮倾斜到多少度。 */
+  pitch: 55,
+  maxPitch: 70,
+} as const;
+
+/** 米数按缩放放大成立体高度。见 `EXTRUDE`。 */
+export function extrudeHeight(meters: unknown): unknown {
+  const out: unknown[] = ["interpolate", ["linear"], ["zoom"]];
+  for (const [zoom, factor] of EXTRUDE.exaggeration) {
+    out.push(zoom, ["*", meters, factor]);
+  }
+  return out;
+}
+
+/** 立体图层的 id，`RouteMap` 按倾斜与否整体开关。 */
+export const EXTRUSION_LAYERS = [
+  "airspace-volume",
+  "route-profile-wall",
+  "route-profile",
+  "traffic-stalks",
+  "traffic-caps",
+] as const;
+
 // ---------------------------------------------------------------- 图片
 
 /**
@@ -764,7 +815,7 @@ export function graticule(): FeatureCollection {
 /** 图层的宽松形状。合法性交给 MapLibre 的校验器（check:style / 测试）。 */
 export interface ChartLayer {
   id: string;
-  type: "background" | "fill" | "line" | "symbol" | "circle";
+  type: "background" | "fill" | "line" | "symbol" | "circle" | "fill-extrusion";
   source?: string;
   minzoom?: number;
   maxzoom?: number;
@@ -792,8 +843,10 @@ export const SOURCE_IDS = [
   "atcLabels",
   "atc",
   "route",
+  "route3d",
   "markers",
   "traffic",
+  "traffic3d",
   "ownTrack",
   "own",
 ] as const;
@@ -832,8 +885,9 @@ const symbolOnly = {
 /**
  * 建整份样式。图层顺序自下而上：
  *
- *   底图（海、陆、国界、经纬网）→ 机场地面 → 空域填充 → 空域和情报区边界 → 航路 →
- *   计划航线 → 航路点 / 导航台 / 机场符号 → 全部标注 → 在线机组 → 自己的航迹 → 自己
+ *   底图（海、陆、国界、经纬网）→ 机场地面 → 空域填充 → 空域和情报区边界 → 空域立体块
+ *   → 航路 → 计划航线 → 航线高度剖面 → 航路点 / 导航台 / 机场符号 → 全部标注 → 机组高
+ *   度柱 → 在线机组 → 自己的航迹 → 自己
  *
  * 标注内部自下而上是：经纬网、MORA、情报区、空域、地面、航路点、航路代号牌、导航台、
  * 机场、跑道号、管制、计划航线。MapLibre 先放上面的，所以后者优先。
@@ -1188,6 +1242,25 @@ export function buildStyle(
         "line-dasharray": [4, 6],
       },
     },
+    {
+      /* 空域立体块：下限到上限，按类别取色。倾斜时才开（见 EXTRUDE）。下限为 0 是地面，
+       * 上限为 0 是不封顶（`verticalLabel` 的 GND / UNLTD）。 */
+      id: "airspace-volume",
+      type: "fill-extrusion",
+      source: "airspaces",
+      filter: specialUseVisible,
+      paint: {
+        "fill-extrusion-color": airspaceColor(c),
+        "fill-extrusion-base": extrudeHeight(["get", "lowerM"]),
+        "fill-extrusion-height": extrudeHeight([
+          "case",
+          [">", ["get", "upperM"], 0],
+          ["get", "upperM"],
+          EXTRUDE.unlimitedM,
+        ]),
+        "fill-extrusion-opacity": EXTRUDE.opacity.airspace,
+      },
+    },
 
     // ------------------------------------------------ 航路
     {
@@ -1314,6 +1387,32 @@ export function buildStyle(
         "line-color": c.routeApproach,
         "line-width": ramp(WIDTH.routeMissed),
         "line-dasharray": [2, 1.5],
+      },
+    },
+    {
+      /* 计划航线的估算高度剖面（`lib/extrude.ts` 的 `routeProfile`）：从地面立起的
+       * 半透明幕，和剖面那条带。 */
+      id: "route-profile-wall",
+      type: "fill-extrusion",
+      source: "route3d",
+      filter: ["==", ["get", "part"], "wall"],
+      paint: {
+        "fill-extrusion-color": c.route,
+        "fill-extrusion-base": 0,
+        "fill-extrusion-height": extrudeHeight(["get", "topM"]),
+        "fill-extrusion-opacity": EXTRUDE.opacity.wall,
+      },
+    },
+    {
+      id: "route-profile",
+      type: "fill-extrusion",
+      source: "route3d",
+      filter: ["==", ["get", "part"], "ribbon"],
+      paint: {
+        "fill-extrusion-color": c.route,
+        "fill-extrusion-base": extrudeHeight(["get", "baseM"]),
+        "fill-extrusion-height": extrudeHeight(["get", "topM"]),
+        "fill-extrusion-opacity": EXTRUDE.opacity.ribbon,
       },
     },
     {
@@ -1790,6 +1889,42 @@ export function buildStyle(
     },
 
     // ------------------------------------------------ 在线机组
+    {
+      /* 高度柱（`lib/extrude.ts` 的 `trafficColumns`）：细柱立到飞机的高度，顶上一块
+       * 按高度档着色，自己那架用自己的颜色。 */
+      id: "traffic-stalks",
+      type: "fill-extrusion",
+      source: "traffic3d",
+      filter: ["==", ["get", "part"], "stalk"],
+      paint: {
+        "fill-extrusion-color": [
+          "case",
+          ["==", ["get", "own"], 1],
+          c.own,
+          altitudeBandColor(theme),
+        ],
+        "fill-extrusion-base": 0,
+        "fill-extrusion-height": extrudeHeight(["get", "topM"]),
+        "fill-extrusion-opacity": EXTRUDE.opacity.stalk,
+      },
+    },
+    {
+      id: "traffic-caps",
+      type: "fill-extrusion",
+      source: "traffic3d",
+      filter: ["==", ["get", "part"], "cap"],
+      paint: {
+        "fill-extrusion-color": [
+          "case",
+          ["==", ["get", "own"], 1],
+          c.own,
+          altitudeBandColor(theme),
+        ],
+        "fill-extrusion-base": extrudeHeight(["get", "baseM"]),
+        "fill-extrusion-height": extrudeHeight(["get", "topM"]),
+        "fill-extrusion-opacity": EXTRUDE.opacity.cap,
+      },
+    },
     {
       /* 按高度分色，地面上的小一号、压淡。尺寸的 interpolate 在最外层，地面那一档写
        * 进每个锚点。 */

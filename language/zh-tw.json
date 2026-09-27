@@ -372,6 +372,8 @@
       "layersMenu": "圖層",
       "layerFailed": "「{layer}」沒取到，圖上這一層是空的。",
       "locate": "定位到我的飛機",
+      "view3d": "3D",
+      "view3dHint": "傾斜視圖裡的航線高度按巡航高度估算，不含程序高度限制，不是性能計算。",
       "atc": {
         "close": "關閉",
         "airspace": "管制區",

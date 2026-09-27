@@ -18,7 +18,14 @@ import type { LayerToggle } from "@/components/map/useChartLayers";
 
 const props = defineProps<{
   labels: Record<LayerToggle, string>;
-  text: { menu: string; retry: string; locate: string; layerFailed: string };
+  text: {
+    menu: string;
+    retry: string;
+    locate: string;
+    layerFailed: string;
+    view3d: string;
+    view3dHint: string;
+  };
   on: Record<LayerToggle, boolean>;
   busy: { airways: boolean; other: boolean };
   /** 在线管制席位数，只给管制那一项挂角标（模板里 `id === 'atcLive'` 那一段）。 */
@@ -27,12 +34,17 @@ const props = defineProps<{
   failure: LayerId | null;
   /** 自己连着线时才有；「定位到我」按钮只在那时出现。 */
   own: { callsign: string } | null;
+  /** 地图此刻倾斜着（立体图层开着）。 */
+  view3d: boolean;
+  /** 倾斜时图上有没有航线高度剖面。有就说一句那是估算。 */
+  profileShown: boolean;
 }>();
 
 const emit = defineEmits<{
   toggle: [LayerToggle];
   retry: [LayerId];
   locate: [];
+  view3d: [];
 }>();
 
 /** 菜单里的顺序，和原来那一排按钮一致。 */
@@ -101,6 +113,10 @@ onBeforeUnmount(() => {
     <!-- 「这一层没有数据」/「你没有航行资料库权限」。 -->
     <p v-if="notice" class="map-notice glass" :data-notice="notice.layer">
       {{ notice.text }}
+    </p>
+    <!-- 剖面是按巡航高度估算的，不是性能计算，也不含程序高度限制。画出来就要说。 -->
+    <p v-else-if="view3d && profileShown" class="map-notice glass">
+      {{ text.view3dHint }}
     </p>
 
     <!-- 只在自己真的连着线时出现；按下去没反应的按钮比没有更让人怀疑。 -->
@@ -175,6 +191,16 @@ onBeforeUnmount(() => {
           >
         </button>
       </div>
+      <!-- 倾斜视角：空域立体块、航线高度剖面、机组高度柱。手势倾斜也会让它亮起来。 -->
+      <button
+        type="button"
+        class="map-3d-toggle glass"
+        :class="view3d ? 'is-on' : ''"
+        :aria-pressed="view3d"
+        @click="emit('view3d')"
+      >
+        {{ text.view3d }}
+      </button>
     </div>
   </div>
 </template>

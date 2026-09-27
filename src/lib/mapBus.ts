@@ -58,6 +58,8 @@ export interface MapPayload {
   markers?: MapPoint[];
   /** 地图角上的说明，**已经翻译好** —— 岛屿之间不传 i18n 的键。 */
   label?: string;
+  /** `points` 那条航线的巡航高度，英尺。给了才在倾斜视角里画高度剖面。 */
+  cruiseFt?: number;
 }
 
 /**

@@ -80,6 +80,9 @@ const props = defineProps<{
     layerFailed: string;
     retry: string;
     locate: string;
+    /** 「3D」按钮，和倾斜时航线剖面的那句说明。 */
+    view3d: string;
+    view3dHint: string;
     /** 管制席位详情卡的文案。 */
     atc: AtcDetailsText;
     /** 飞机详情卡的文案。 */
@@ -134,7 +137,17 @@ const live = useTrafficLayer({
 });
 
 /* 模板里只有顶层的 ref 会自动解包，所以把要用的拆出来。 */
-const { points, markers, focus, label, highlightedLegs, litLegs } = route;
+const { points, markers, focus, label, cruiseFt, highlightedLegs, litLegs } =
+  route;
+
+/**
+ * 倾斜视角。按钮改它，地图倾斜过门槛时（手势也算）经 `view3d` 事件写回来 —— 地图
+ * 的 pitch 是真相，这个 ref 只是它的镜像加一个请求。不存偏好：打开 EFB 默认俯视。
+ */
+const view3d = ref(false);
+const profileShown = computed(
+  () => cruiseFt.value != null && points.value.length > 1,
+);
 const { shownFixes, airports, runways, navaids, firs, mora, airspaces } = chart;
 const { ground, groundAttribution } = groundLayer;
 const {
@@ -310,12 +323,15 @@ onBeforeUnmount(() => {
       :own="own"
       :own-track="ownTrack"
       :airspaces="airspaces"
+      :cruise-ft="cruiseFt"
+      :view3d="view3d"
       :label="label"
       :failure-text="failureText"
       :firs-label="layerLabels.firs"
       class="h-full"
       @viewport="onViewport"
       @select="onSelect"
+      @view3d="view3d = $event"
     />
     <!-- 水合之前的占位：没有它，首屏这一整块是空的，等 JS 到了才突然出现地图。 -->
     <div v-else class="surface-grid h-full"></div>
@@ -327,6 +343,8 @@ onBeforeUnmount(() => {
         retry: t.retry,
         locate: t.locate,
         layerFailed: t.layerFailed,
+        view3d: t.view3d,
+        view3dHint: t.view3dHint,
       }"
       :on="layerState"
       :busy="busy"
@@ -334,6 +352,9 @@ onBeforeUnmount(() => {
       :notice="noticeLine"
       :failure="failedLayer"
       :own="ownButton"
+      :view3d="view3d"
+      :profile-shown="profileShown"
+      @view3d="view3d = !view3d"
       @toggle="onToggle"
       @retry="onRetry"
       @locate="locateOwn"

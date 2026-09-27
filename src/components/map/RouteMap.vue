@@ -45,11 +45,19 @@ import {
   type GeoJSONSource,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { prefersReducedMotion } from "@jianyuelab-org/can-ui/motion";
 // eslint-disable-next-line import/no-unresolved -- Vite 的 worker 后缀，不是真实路径
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import type { FeatureCollection } from "geojson";
 import { formatLatLon } from "@/lib/mapText";
-import { buildStyle, themedProperties, type Theme } from "@/lib/chartStyle";
+import {
+  buildStyle,
+  EXTRUDE,
+  EXTRUSION_LAYERS,
+  themedProperties,
+  type Theme,
+} from "@/lib/chartStyle";
+import { metersPerPixel, routeProfile, trafficColumns } from "@/lib/extrude";
 import { registerChartIcons } from "@/lib/chartIcons";
 import type { MapFocus } from "@/lib/mapBus";
 import type { MapPadding } from "@/lib/panelLayout";
@@ -100,6 +108,8 @@ const emit = defineEmits<{
   viewport: [Viewport];
   /** 点中了一个席位或一架飞机，或者点在空处（null）。 */
   select: [MapSelection | null];
+  /** 地图倾斜过了 `EXTRUDE.minPitch`（或回到俯视）。手势和按钮都会触发。 */
+  view3d: [boolean];
 }>();
 
 /**
@@ -233,6 +243,13 @@ const props = defineProps<{
   own?: FeatureCollection | null;
   /** 自己这次会话的航迹，一条线（`lib/ownTrack.ts`）。 */
   ownTrack?: FeatureCollection | null;
+  /** 计划航线的巡航高度，英尺。有它才画高度剖面，见 `lib/extrude.ts`。 */
+  cruiseFt?: number | null;
+  /**
+   * 要不要倾斜。**真相在地图的 pitch 上**：手势倾斜也算，变了经 `view3d` 事件报出
+   * 去；这个 prop 只在和地图此刻不一致时才动镜头。
+   */
+  view3d?: boolean;
   label: string;
   /**
    * 地图起不来时显示的两句话，**已翻译**。
@@ -486,8 +503,104 @@ function render() {
   setSource("ownTrack", props.ownTrack);
   setSource("own", props.own);
 
+  render3d();
+
   if (camera.applyFocus(props.focus ?? null)) return;
   camera.fitPoints([...points, ...markers]);
+}
+
+/** 此刻是不是倾斜着。立体图层的开关和 `view3d` 事件都按它。 */
+let tilted = false;
+
+/* 立体要素的宽度按整级缩放算（`widthKey`），每级重铺一次；俯视时不算。 */
+let route3dMemo: {
+  points: unknown;
+  cruiseFt: number | null;
+  key: string;
+  out: FeatureCollection;
+} | null = null;
+let traffic3dMemo: {
+  traffic: unknown;
+  own: unknown;
+  key: string;
+  out: FeatureCollection;
+} | null = null;
+
+/** 这一级缩放下多少像素宽，换成米。纬度取视野中心，缩放取整级。 */
+function widthM(px: number): { key: string; meters: number } {
+  const zoom = Math.floor(map!.getZoom());
+  const lat = map!.getCenter().lat;
+  return {
+    key: `${zoom}:${Math.round(lat)}`,
+    meters: px * metersPerPixel(zoom, Math.round(lat)),
+  };
+}
+
+function render3d() {
+  if (!map || !styleReady || !tilted) return;
+  const ribbon = widthM(3);
+  const cruiseFt = props.cruiseFt ?? null;
+  if (
+    !route3dMemo ||
+    route3dMemo.points !== props.points ||
+    route3dMemo.cruiseFt !== cruiseFt ||
+    route3dMemo.key !== ribbon.key
+  ) {
+    route3dMemo = {
+      points: props.points,
+      cruiseFt,
+      key: ribbon.key,
+      out: routeProfile(props.points ?? [], cruiseFt, ribbon.meters),
+    };
+  }
+  setSource("route3d", route3dMemo.out);
+
+  const cap = widthM(4);
+  if (
+    !traffic3dMemo ||
+    traffic3dMemo.traffic !== props.traffic ||
+    traffic3dMemo.own !== props.own ||
+    traffic3dMemo.key !== cap.key
+  ) {
+    traffic3dMemo = {
+      traffic: props.traffic,
+      own: props.own,
+      key: cap.key,
+      out: trafficColumns(props.traffic, props.own, cap.meters),
+    };
+  }
+  setSource("traffic3d", traffic3dMemo.out);
+}
+
+/**
+ * 倾斜与否变了：立体图层整体开关，报给外面（按钮的按下态）。
+ *
+ * 俯视时立体块从正上方看就是一片平涂，会把二维航图糊掉，所以关着。开关写
+ * `visibility`，不经 `applyStyle`：样式里不写这个属性，切主题不会把它改回去。
+ */
+function syncTilt() {
+  if (!map || !styleReady) return;
+  const next = map.getPitch() >= EXTRUDE.minPitch;
+  if (next === tilted) return;
+  tilted = next;
+  for (const id of EXTRUSION_LAYERS) {
+    if (map.getLayer(id)) {
+      map.setLayoutProperty(id, "visibility", tilted ? "visible" : "none");
+    }
+  }
+  render3d();
+  emit("view3d", tilted);
+}
+
+/** 按钮要的倾斜和地图此刻不一致时才动镜头。 */
+function applyView3d() {
+  if (!map || !styleReady) return;
+  const want = Boolean(props.view3d);
+  if (want === tilted) return;
+  map.easeTo({
+    pitch: want ? EXTRUDE.pitch : 0,
+    duration: prefersReducedMotion() ? 0 : 600,
+  });
 }
 
 onMounted(() => {
@@ -538,9 +651,15 @@ onMounted(() => {
       // 面卡住」那回事了。以前这里问 CSS 里三栏外壳的排布变量，那个变量随三栏外壳
       // 一起删了。
       scrollZoom: true,
+      // 倾斜看立体空域和高度（`EXTRUDE`）。右键拖、Ctrl 拖或双指上下推都能倾斜。
+      maxPitch: EXTRUDE.maxPitch,
     });
 
-    map.addControl(new NavigationControl({ showCompass: false }), "top-left");
+    // 指北针带倾斜示意：地图转过或倾斜过之后，点它回到正北俯视。
+    map.addControl(
+      new NavigationControl({ showCompass: true, visualizePitch: true }),
+      "top-left",
+    );
   } catch (error) {
     // WebGL 不可用、构造参数不合法都会走到这里。以前它会作为一个未捕获异常冒到
     // Vue 的生命周期里 —— 而那条路径在生产构建下未必留下任何可读的东西。
@@ -582,6 +701,12 @@ onMounted(() => {
   map.on("load", () => {
     styleReady = true;
     registerChartIcons(map!);
+    // 立体图层先关上，按此刻的倾斜再开（syncTilt 只在变化时动手）。
+    for (const id of EXTRUSION_LAYERS) {
+      map!.setLayoutProperty(id, "visibility", "none");
+    }
+    syncTilt();
+    applyView3d();
     // 构造时的配色和高亮是那一刻取的；`load` 之前切过主题或换过计划的话，那次
     // applyStyle 被闸挡掉了，这里补上。
     applyStyle();
@@ -592,6 +717,9 @@ onMounted(() => {
     basemap.loadLand();
   });
   map.on("move", updateCorners);
+  map.on("pitch", syncTilt);
+  // 立体要素的宽度按整级缩放铺，缩放停下后看要不要重铺（render3d 里按级比）。
+  map.on("zoomend", render3d);
   map.on("moveend", emitViewport);
   map.on("click", (event) => emit("select", selectionAt(event.point)));
   // 悬停在席位或飞机上换成手指，否则没人知道这些东西点得动。
@@ -649,9 +777,12 @@ watch(
     props.atcLabels,
     props.ownTrack,
     props.own,
+    props.cruiseFt,
   ],
   render,
 );
+
+watch(() => props.view3d, applyView3d);
 
 /* 计划高亮只改样式（见 applyStyle）。`useRouteLayer` 只在点亮的那组键真变了时才换
    对象，所以按引用比。 */
