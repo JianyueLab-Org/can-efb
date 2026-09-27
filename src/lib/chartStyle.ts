@@ -545,6 +545,20 @@ export function onRouteOf(legs: readonly string[]): unknown[] {
   return ["in", ["get", "leg"], ["literal", [...legs]]];
 }
 
+/**
+ * 这个航路点是点亮航段的端点：`key` 在 `legs` 的某个 `legKey` 里。计划航线自己写点
+ * 名（`route-labels`），这些点在航路点图层上就不再写一遍。
+ */
+export function onRouteFixOf(legs: readonly string[]): unknown[] {
+  const keys = new Set<string>();
+  for (const leg of legs) {
+    const [, a, b] = leg.split("|");
+    keys.add(a);
+    keys.add(b);
+  }
+  return ["in", ["get", "key"], ["literal", [...keys]]];
+}
+
 /** 计划航线按段取色：`seg` 是 sid / star / approach / route。 */
 export function routeSegmentColor(c: ColorRoles): unknown {
   return [
@@ -1573,7 +1587,7 @@ export function buildStyle(
       type: "symbol",
       source: "airwayFixes",
       minzoom: ZOOM.waypointLabels,
-      filter: fixVisible,
+      filter: ["all", fixVisible, ["!", onRouteFixOf(routeLegs)]],
       layout: labelLayout(img("waypoint"), ICON.waypoint, {
         "text-field": ["get", "ident"],
         "text-size": TEXT.waypoint,

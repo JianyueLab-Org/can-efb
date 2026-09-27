@@ -349,6 +349,15 @@ describe("按缩放挑要素", () => {
     }
   });
 
+  /** 点亮航段的端点由 `route-labels` 写名字，航路点图层只画符号。 */
+  test("计划上的航路点不重复写点名", () => {
+    const fix = (key: string) => ({ level: "high", navaid: "", key });
+    expect(shows("waypoint-labels", 8, fix("AAAAA"))).toBe(false);
+    expect(shows("waypoint-labels", 8, fix("BBBBB"))).toBe(false);
+    expect(shows("waypoint-labels", 8, fix("CCCCC"))).toBe(true);
+    expect(shows("waypoint-symbols", 8, fix("AAAAA"))).toBe(true);
+  });
+
   test("禁区、限制区、危险区 z5 起画，CTR 不受限", () => {
     for (const cls of ["prohibited", "restricted"]) {
       expect(shows("airspace-hatch", 4, { cls })).toBe(false);
