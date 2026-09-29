@@ -26,6 +26,16 @@ describe("ResponseCache", () => {
     expect(cache.size).toBe(0);
   });
 
+  test("expiresAt：命中时回过期时刻，过期后回 undefined", () => {
+    let now = 100;
+    const cache = new ResponseCache(10, () => now);
+    cache.set("a", response("a"), 1000);
+    expect(cache.expiresAt("a")).toBe(1100);
+    expect(cache.expiresAt("b")).toBeUndefined();
+    now = 1100;
+    expect(cache.expiresAt("a")).toBeUndefined();
+  });
+
   test("满了先丢最早放进来的那条", () => {
     const cache = new ResponseCache(2, () => 0);
     cache.set("a", response("a"), 1000);

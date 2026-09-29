@@ -43,6 +43,7 @@ import {
   ScaleControl,
   setWorkerUrl,
   type GeoJSONSource,
+  type RasterTileSource,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { prefersReducedMotion } from "@jianyuelab-org/can-ui/motion";
@@ -70,7 +71,13 @@ import { createBasemapLoader } from "@/components/map/basemap";
 import type { MapSelection } from "@/components/map/useTrafficLayer";
 import { createAttribution } from "@/components/map/attribution";
 import { createCamera } from "@/components/map/camera";
-import { isWeatherTileFailure, WEATHER_SOURCE } from "@/lib/weather";
+import {
+  isWeatherTileFailure,
+  weatherErrorCode,
+  weatherTileUrl,
+  WEATHER_SOURCE,
+  type WeatherTileOutcome,
+} from "@/lib/weather";
 
 /**
  * **告诉 MapLibre 它的 worker 在哪，否则整块地图是死的。**
@@ -111,8 +118,8 @@ const emit = defineEmits<{
   select: [MapSelection | null];
   /** 地图倾斜过了 `EXTRUDE.minPitch`（或回到俯视）。手势和按钮都会触发。 */
   view3d: [boolean];
-  /** 降水瓦片没取到（503 / 502）。见 `useWeatherLayer` 的 `fail`。 */
-  weatherError: [];
+  /** 一张降水瓦片的结果。见 `useWeatherLayer` 的 `noteTile`。 */
+  weatherTile: [outcome: WeatherTileOutcome];
 }>();
 
 /**
@@ -255,6 +262,8 @@ const props = defineProps<{
   view3d?: boolean;
   /** 降水图层开着没有。只切 `visibility`，瓦片由 MapLibre 自己取。 */
   weather?: boolean;
+  /** 降水瓦片的时间桶（`lib/weather.ts` 的 `weatherBucket`），变了就换瓦片地址。 */
+  weatherBucket?: number;
   label: string;
   /**
    * 地图起不来时显示的两句话，**已翻译**。
@@ -598,12 +607,27 @@ function syncTilt() {
   emit("view3d", tilted);
 }
 
+/** 降水 source 此刻用的时间桶；`null` 是样式里那条不带 `?t=` 的初始地址。 */
+let appliedWeatherBucket: number | null = null;
+
 /**
  * 降水层开关。写 `visibility`，不经 `applyStyle`（`themedProperties` 跳过它）。隐藏
- * 时 MapLibre 不取瓦片。
+ * 时 MapLibre 不取瓦片。开着且时间桶变了时先 `setTiles` 换地址，再显示。
  */
 function applyWeather() {
   if (!map || !styleReady || !map.getLayer(WEATHER_SOURCE)) return;
+  const bucket = props.weatherBucket;
+  if (
+    props.weather &&
+    bucket !== undefined &&
+    bucket !== appliedWeatherBucket
+  ) {
+    const source = map.getSource(WEATHER_SOURCE) as
+      | RasterTileSource
+      | undefined;
+    source?.setTiles([weatherTileUrl(bucket)]);
+    appliedWeatherBucket = bucket;
+  }
   map.setLayoutProperty(
     WEATHER_SOURCE,
     "visibility",
@@ -692,9 +716,20 @@ onMounted(() => {
   // MapLibre 的样式、瓦片、数据错误**全部**从这个事件出来，不接就等于看不见。
   map.on("error", (event) => {
     console.error("[efb] 地图错误:", event.error ?? event);
-    // 降水瓦片取失败只关掉那一层，地图照常。
-    if (isWeatherTileFailure(event as { sourceId?: unknown; error?: unknown }))
-      emit("weatherError");
+    // 降水瓦片取失败报给 useWeatherLayer，由它判断是空着那一张还是关掉整层。
+    if (
+      isWeatherTileFailure(event as { sourceId?: unknown; error?: unknown })
+    ) {
+      void weatherErrorCode(event.error).then((code) =>
+        emit("weatherTile", { ok: false, code }),
+      );
+    }
+  });
+
+  // 降水瓦片取到了。和上面的失败一起算「整层挂了」没有。
+  map.on("sourcedata", (event) => {
+    if (event.sourceId === WEATHER_SOURCE && event.tile)
+      emit("weatherTile", { ok: true });
   });
 
   // 署名。CC BY-SA 4.0 要求的，不是装饰 —— can-radar 用同一份数据，署得也是同
@@ -815,6 +850,9 @@ watch(
     attribution.apply();
   },
 );
+
+/* 降水：到了新的十分钟时间桶，换瓦片地址。 */
+watch(() => props.weatherBucket, applyWeather);
 
 /* 计划高亮只改样式（见 applyStyle）。`useRouteLayer` 只在点亮的那组键真变了时才换
    对象，所以按引用比。 */

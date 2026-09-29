@@ -1019,12 +1019,25 @@ export function buildStyle(
 
     // ------------------------------------------------ 降水
     {
-      // 底图之上、其余一切之下。开关在 `RouteMap`（`visibility`）。
+      // 底图之上、其余一切之下。开关在 `RouteMap`（`visibility`）。低缩放看大片雨区，
+      // 浓一些；放大后底下细节多，淡一些。
       id: WEATHER_SOURCE,
       type: "raster",
       source: WEATHER_SOURCE,
       layout: { visibility: "none" },
-      paint: { "raster-opacity": 0.7 },
+      paint: {
+        "raster-opacity": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          3,
+          0.8,
+          10,
+          0.6,
+        ],
+        "raster-fade-duration": 300,
+        "raster-resampling": "linear",
+      },
     },
 
     // ------------------------------------------------ 机场地面

@@ -1,6 +1,12 @@
 import type { APIRoute } from "astro";
 import { CAN_API_ORIGIN } from "@/lib/config";
-import { parseTile, weatherTilePath } from "@/lib/weather";
+import {
+  parseTile,
+  remainingMaxAge,
+  weatherCacheTtlMs,
+  weatherTilePath,
+  withMaxAge,
+} from "@/lib/weather";
 import { ResponseCache, cacheKey } from "@/server/responseCache";
 import { fetchHeadersWithin } from "@/server/upstreamFetch";
 
@@ -18,14 +24,14 @@ export const prerender = false;
  * 不转发 cookie：瓦片与请求者无关，can-api 这条路由也不看会话。OpenWeather 的 key 在
  * can-api（`OPENWEATHER_API_KEY`），这个站不持有。
  *
- * 成功的响应在本进程缓存 600 秒，键只由 z/x/y 组成；非 2xx 不缓存。`Cache-Control`
- * 原样交给浏览器（can-api 发的是 `public, max-age=600`）。
+ * 成功的响应在本进程缓存上游 `max-age` 那么久（缺失或解析不了按 600 秒，上限 600
+ * 秒，0 不缓存），键只由 z/x/y 组成；非 2xx 不缓存。查询串（地图带的时间桶 `?t=`）
+ * 不进缓存键，也不转给 can-api。`Cache-Control` 原样交给浏览器；从缓存回时
+ * `max-age` 改成条目的剩余秒数（下限 30）。换算在 `lib/weather.ts`。
  */
 
 /** z 0..6 一共 5461 张，常看的是中国周边几级，1000 张够用。 */
 const cache = new ResponseCache(1000);
-
-const TTL_MS = 600_000;
 
 const PASS_THROUGH = ["content-type", "cache-control"];
 
@@ -41,11 +47,13 @@ export const GET: APIRoute = async (context) => {
   const path = weatherTilePath(tile);
   const key = cacheKey(path, new URLSearchParams());
   const hit = cache.get(key);
-  if (hit) {
-    return new Response(hit.body.slice(0), {
-      status: hit.status,
-      headers: hit.headers,
-    });
+  const expires = cache.expiresAt(key);
+  if (hit && expires !== undefined) {
+    const maxAge = remainingMaxAge(expires, Date.now());
+    const headers = hit.headers.filter(([name]) => name !== "cache-control");
+    const upstreamCc = hit.headers.find(([name]) => name === "cache-control");
+    headers.push(["cache-control", withMaxAge(upstreamCc?.[1], maxAge)]);
+    return new Response(hit.body.slice(0), { status: hit.status, headers });
   }
 
   let upstream: Response;
@@ -78,7 +86,10 @@ export const GET: APIRoute = async (context) => {
   }
 
   const body = await upstream.arrayBuffer();
-  cache.set(key, { status: upstream.status, headers: kept, body }, TTL_MS);
+  const ttl = weatherCacheTtlMs(upstream.headers.get("cache-control"));
+  if (ttl > 0) {
+    cache.set(key, { status: upstream.status, headers: kept, body }, ttl);
+  }
   return new Response(body.slice(0), {
     status: upstream.status,
     headers: kept,

@@ -10,7 +10,7 @@
  * - `useGroundLayer`  机场地面，没有开关，由缩放决定
  * - `useTrafficLayer` 实时：在线机组、在线管制、自己那架和它的航迹
  * - `useRouteLayer`   航路：面板推来的点、已提交的计划、航路网上点亮的那几段
- * - `useWeatherLayer` 降水瓦片：开关、偏好、失败
+ * - `useWeatherLayer` 降水瓦片：开关、偏好、刷新、失败
  * - `MapControls.vue` 图层菜单、提示、重试、「定位到我」
  *
  * 横向依赖有两条。一条是航路网：登记处开关它，航路层要在它变了之后重算高亮。所以这
@@ -146,7 +146,7 @@ const live = useTrafficLayer({
 });
 
 const weather = useWeatherLayer({ prefs, notice });
-const { showWeather } = weather;
+const { showWeather, weatherBucket } = weather;
 
 /* 模板里只有顶层的 ref 会自动解包，所以把要用的拆出来。 */
 const { points, markers, focus, label, cruiseFt, highlightedLegs, litLegs } =
@@ -345,6 +345,7 @@ onBeforeUnmount(() => {
       :cruise-ft="cruiseFt"
       :view3d="view3d"
       :weather="showWeather"
+      :weather-bucket="weatherBucket"
       :label="label"
       :failure-text="failureText"
       :firs-label="layerLabels.firs"
@@ -352,7 +353,7 @@ onBeforeUnmount(() => {
       @viewport="onViewport"
       @select="onSelect"
       @view3d="view3d = $event"
-      @weather-error="weather.fail()"
+      @weather-tile="weather.noteTile($event)"
     />
     <!-- 水合之前的占位：没有它，首屏这一整块是空的，等 JS 到了才突然出现地图。 -->
     <div v-else class="surface-grid h-full"></div>

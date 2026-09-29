@@ -48,6 +48,11 @@ export class ResponseCache {
     return entry.value;
   }
 
+  /** 条目的过期时刻（毫秒时间戳）；没有或已过期回 `undefined`。 */
+  expiresAt(key: string): number | undefined {
+    return this.get(key) ? this.entries.get(key)?.expires : undefined;
+  }
+
   set(key: string, value: CachedResponse, ttlMs: number): void {
     // 先删再插，让重新写入的键排到 Map 的末尾 —— 淘汰按插入顺序走。
     this.entries.delete(key);

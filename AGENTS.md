@@ -173,8 +173,11 @@ can-ui 的 `--material-regular` / `--material-blur-regular`）。以前是**轨 
 
 **降水瓦片有自己的一条反代**：`pages/api/v1/weather/precipitation/[z]/[x]/[y].ts`
 → can-api 同一路径。只接 GET，z 0..6、x/y 按 `lib/weather.ts` 的 `parseTile` 校验，
-不合法回 400。不转发 cookie。成功响应在进程内缓存 600 秒（`ResponseCache`，1000
-条，键只含 z/x/y），非 2xx 不缓存；`Cache-Control` 原样给浏览器。连不上回 502。
+不合法回 400。不转发 cookie。成功响应在进程内缓存上游 `max-age` 那么久（缺失或解析
+不了按 600 秒，上限 600 秒，0 不缓存；`ResponseCache`，1000 条，键只含 z/x/y），非
+2xx 不缓存。查询串不进缓存键，也不转给 can-api。`Cache-Control` 原样给浏览器；从缓存
+回时 `max-age` 改成条目剩余秒数，下限 30。换算在 `lib/weather.ts`（`weatherCacheTtlMs`、
+`remainingMaxAge`、`withMaxAge`）。连不上回 502。
 OpenWeather 的 key 在 can-api（`OPENWEATHER_API_KEY`），这个站仍然一个 Secret 都没有。
 
 **浏览器打 `/api/db/*` 一律走 `lib/naip.ts` 的 `dbFetch`。** 设置页「不使用受限汇编」
@@ -356,10 +359,17 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 
 - 偏好键 `weather`，默认关。
 - 栅格 source / 图层 `weather` 在 `lib/chartStyle.ts`：底图之上、其余一切之下，
-  `maxzoom` 6（往上 MapLibre 放大），不透明度 0.7。
+  `maxzoom` 6（往上 MapLibre 放大）。不透明度按缩放插值，z3 0.8 → z10 0.6；淡入
+  300 ms；`raster-resampling: linear`。
 - 开关写 `visibility`，由 `RouteMap` 管；`themedProperties` 跳过 `visibility`。
-- 瓦片取失败（503 / 502）：退回关，挂「重试」提示，偏好不改。判定在
-  `lib/weather.ts` 的 `isWeatherTileFailure`。
+- 刷新：开着且页面可见时，每到墙上时钟的十分钟边界换时间桶
+  （`weatherBucket` = `floor(now / 600000)`），`RouteMap` 用 `setTiles` 把地址换成
+  `…/{z}/{x}/{y}?t=<桶>`。页面隐藏时停表，重新可见时跨过边界就立刻换。关着不刷新。
+- 失败：`RouteMap` 把每张瓦片的结果经 `weatherTile` 事件报给 `noteTile`（失败带响应体
+  里的 `error` 码）。单张失败只让那一张空着。`lib/weather.ts` 的 `noteWeatherTile`
+  判整层挂了：`not_configured`，或一阵加载（间隔 ≤ 5 秒）里失败 ≥ 3 张且没有成功。
+  挂了才退回关、挂「重试」提示，偏好不改。哪些错误算瓦片失败见
+  `isWeatherTileFailure`。
 - 开着时署名加一行「Weather © OpenWeather」，图层菜单下出一条小雨 → 大雨图例。
 
 ## 航图样式（`lib/chartStyle.ts`）
