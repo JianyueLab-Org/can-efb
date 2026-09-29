@@ -9,7 +9,7 @@ import { computed, ref, shallowRef, type Ref } from "vue";
 import type { FeatureCollection } from "geojson";
 import {
   airwayBlocksFor,
-  fetchAirwayNetwork,
+  fetchAirwayChart,
   markNavaidFixes,
   toAirwayFixes,
   toAirwayLines,
@@ -45,6 +45,7 @@ import {
 } from "@/lib/runways";
 import { MAJOR_AIRPORT_MIN_RUNWAY_M, ZOOM } from "@/lib/chartStyle";
 import { writePrefs, type LayerPrefs } from "@/lib/mapPrefs";
+import { airspacesOnChart, type IfrChart } from "@/lib/ifrChart";
 import {
   isDenied,
   type LayerId,
@@ -108,11 +109,12 @@ export function useChartLayers(options: ChartLayerOptions) {
   /**
    * 航路图层：开 / 关，加上按视野补块。
    *
-   * **高低空两层一次取齐，按缩放决定画哪层**（门槛在 `lib/chartStyle.ts` 的 `ZOOM`）。
+   * **只取当前航图那一层**（`chart`，IFR 高空 / 低空，`lib/ifrChart.ts`）。两张航图
+   * 各一份块缓存：换回来时已取的块直接画，不重取。
    *
    * **按视野分块取，和 MORA 同一个做法**（`lib/blockCache.ts`）。全球航路网约九万段，
    * 整张拉下来不现实。视野在 `ZOOM.airwaysHigh` 以下不取（那时这层也不画）；以上按
-   * `AIRWAY_BLOCK` 度的块取 can-db 的 `?bbox=`，每块高低空各一次，取过的块留着，平移
+   * `AIRWAY_BLOCK` 度的块取 can-db 的 `?bbox=`，每块取当前航图那一层，取过的块留着，平移
    * 不重取。块按经度折回 ±180 算（`airwayBlocksFor`），所以跨日界线的视野拆成两侧的
    * 块，每块自己不跨 180°。攒下的块超过 `AIRWAY_MAX_BLOCKS` 时丢掉视野外最早取的那些。
    *
@@ -127,53 +129,68 @@ export function useChartLayers(options: ChartLayerOptions) {
     id: string;
     graph: TaggedAirwayGraph;
   }
-  const airwayBlocks = createBlockCache<AirwayBlock>({
-    size: AIRWAY_BLOCK,
-    key: (b) => b.id,
-    blocks: airwayBlocksFor,
-    maxBlocks: AIRWAY_MAX_BLOCKS,
-    fetch: async (lat, lon) => [
-      {
-        id: `${lat},${lon}`,
-        graph: await fetchAirwayNetwork([
-          lat,
-          lon,
-          lat + AIRWAY_BLOCK,
-          lon + AIRWAY_BLOCK,
-        ]),
-      },
-    ],
-  });
-  /** 并好的图转出来的线和点，只在块清单变了时重算。 */
-  let airwayCache: {
+  /** 当前航图。开关写回偏好，`setChart` 改它。 */
+  const chart = ref<IfrChart>(prefs.chart);
+  const airwayBlockCache = (level: IfrChart) =>
+    createBlockCache<AirwayBlock>({
+      size: AIRWAY_BLOCK,
+      key: (b) => b.id,
+      blocks: airwayBlocksFor,
+      maxBlocks: AIRWAY_MAX_BLOCKS,
+      fetch: async (lat, lon) => [
+        {
+          id: `${lat},${lon}`,
+          graph: await fetchAirwayChart(level, [
+            lat,
+            lon,
+            lat + AIRWAY_BLOCK,
+            lon + AIRWAY_BLOCK,
+          ]),
+        },
+      ],
+    });
+  const airwayCaches = {
+    high: airwayBlockCache("high"),
+    low: airwayBlockCache("low"),
+  };
+  /** 当前航图那一份。 */
+  const airwayBlocks = () => airwayCaches[chart.value];
+  /** 并好的图转出来的线和点，每张航图一份，只在块清单变了时重算。 */
+  interface AirwayDrawn {
     from: AirwayBlock[];
     lines: FeatureCollection;
     fixes: FeatureCollection;
-  } | null = null;
+  }
+  const airwayDrawn: Record<IfrChart, AirwayDrawn | null> = {
+    high: null,
+    low: null,
+  };
   let airwayPending = 0;
   let airwayTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** 把已取回的块画上图。关着就不画。 */
   function publishAirways() {
     if (!showAirways.value) return;
-    const list = airwayBlocks.values();
+    const list = airwayBlocks().values();
     if (!list.length) {
       airways.value = null;
       airwayFixes.value = null;
       onAirwaysChange();
       return;
     }
-    if (airwayCache?.from !== list) {
+    let drawn = airwayDrawn[chart.value];
+    if (drawn?.from !== list) {
       const graph = unionAirwayGraphs(list.map((b) => b.graph));
       // 航路点和线一起来一起走：它们是同一份图的两个面。
-      airwayCache = {
+      drawn = {
         from: list,
         lines: toAirwayLines(graph),
         fixes: toAirwayFixes(graph),
       };
+      airwayDrawn[chart.value] = drawn;
     }
-    airways.value = airwayCache.lines;
-    airwayFixes.value = airwayCache.fixes;
+    airways.value = drawn.lines;
+    airwayFixes.value = drawn.fixes;
     onAirwaysChange();
     /* 按视野取的块是空的，只说明这一片没有航路（比如海上），不说明库里没有 ——
      * 所以不提示「没有航段」，什么都不说。 */
@@ -184,11 +201,14 @@ export function useChartLayers(options: ChartLayerOptions) {
     if (!showAirways.value || v.zoom < ZOOM.airwaysHigh) return;
     if (notice.isDeniedThisSession()) return;
     const gen = aip.gen;
+    const level = chart.value;
     airwayPending++;
     airwayBusy.value = true;
     try {
-      const changed = await airwayBlocks.load(v);
+      const changed = await airwayCaches[level].load(v);
       if (gen !== aip.gen) return;
+      // 取的途中换了航图：块留在那张图的缓存里，不画到这一张上。
+      if (level !== chart.value) return;
       notice.clearFailure("airways");
       // 取的途中被关掉了：块照样留着，但不许把图层写回来（publishAirways 自己挡）。
       // 没带来新块就不重灌 —— 重灌一次是整层重建瓦片。
@@ -228,8 +248,29 @@ export function useChartLayers(options: ChartLayerOptions) {
       return;
     }
     // 已有的块先画上，再按当前视野补。还没收到过视野就等 `moveend` 送过来。
-    if (airwayBlocks.loaded()) publishAirways();
+    if (airwayBlocks().loaded()) publishAirways();
     if (lastViewport) await loadAirwaysFor(lastViewport);
+  }
+
+  /**
+   * 换航图：航路换成那一层的块（取过的直接画，缺的按视野补），禁区一族按垂直范围重新
+   * 筛（`airspacesOnChart`）。
+   */
+  function setChart(next: IfrChart) {
+    if (chart.value === next) return;
+    chart.value = next;
+    prefs.chart = next;
+    writePrefs(prefs);
+    if (showAirways.value) {
+      if (airwayBlocks().loaded()) publishAirways();
+      else {
+        airways.value = null;
+        airwayFixes.value = null;
+        onAirwaysChange();
+      }
+      if (lastViewport) void loadAirwaysFor(lastViewport);
+    }
+    if (showRestricted.value) composeAirspaces();
   }
 
   const showNavaids = ref(false);
@@ -328,6 +369,8 @@ export function useChartLayers(options: ChartLayerOptions) {
   let restrictedPending = 0;
 
   const airspaces = shallowRef<FeatureCollection | null>(null);
+  /** 合成前有几块（禁区一族按航图筛之前）。筛空了不算「没有数据」。 */
+  let airspaceRaw = 0;
 
   const layerBusy = ref(false);
 
@@ -583,7 +626,12 @@ export function useChartLayers(options: ChartLayerOptions) {
     if (showApp.value && controlledCache) {
       parts.push(...onlyParents(controlledCache, "APP"));
     }
-    if (showRestricted.value) parts.push(...restrictedBlocks.values());
+    airspaceRaw = parts.length;
+    if (showRestricted.value) {
+      const all = restrictedBlocks.values();
+      airspaceRaw += all.length;
+      parts.push(...airspacesOnChart(all, chart.value));
+    }
 
     airspaces.value = parts.length ? toAirspacePolygons(parts).features : null;
   }
@@ -622,7 +670,9 @@ export function useChartLayers(options: ChartLayerOptions) {
       // 都还没取（缩放在门槛以下）时不算空 —— 那不是「这一带没有」。
       const known = showCtr.value || showApp.value || restrictedBlocks.loaded();
       if (airspaces.value?.features.length) notice.clearNotice("airspace");
-      else if (known) notice.setNotice("airspace", text.emptyGeneric);
+      else if (known && !airspaceRaw) {
+        notice.setNotice("airspace", text.emptyGeneric);
+      }
     } catch (error) {
       if (isDenied(error)) notice.noteDenied();
       else notice.noteFailure(which);
@@ -645,8 +695,10 @@ export function useChartLayers(options: ChartLayerOptions) {
    * 的 `watch(hideNaip)` 先加一，再调这里 —— 号只有一个，各层共用。
    */
   function reloadAip() {
-    airwayBlocks.reset();
-    airwayCache = null;
+    airwayCaches.high.reset();
+    airwayCaches.low.reset();
+    airwayDrawn.high = null;
+    airwayDrawn.low = null;
     navaidBlocks.reset();
     navaidPoints = null;
     controlledCache = null;
@@ -726,6 +778,8 @@ export function useChartLayers(options: ChartLayerOptions) {
    * 只是一个没人读的常量。不 await：地图不该等航路网下载完才出现。
    */
   function restore(saved: LayerPrefs) {
+    // 先定航图：下面打开的航路和禁区按它取、按它筛。
+    chart.value = saved.chart;
     if (saved.airways) void toggleAirways(true);
     if (saved.firs) void toggleFirs();
     if (saved.mora) void toggleMora();
@@ -768,6 +822,8 @@ export function useChartLayers(options: ChartLayerOptions) {
     shownFixes,
     airwayBusy,
     toggleAirways,
+    chart,
+    setChart,
     showNavaids,
     navaids,
     toggleNavaids,

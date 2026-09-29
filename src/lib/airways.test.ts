@@ -8,7 +8,7 @@ import {
   legKey,
   routeLegKeys,
   routeLegsOnAirways,
-  mergeAirwayLevels,
+  tagAirwayLevel,
   routeLegs,
   unionAirwayGraphs,
   toAirwayFixes,
@@ -148,7 +148,7 @@ describe("返回的是真正标到的", () => {
   });
 });
 
-describe("高低空合成一张图", () => {
+describe("按航图取的一层", () => {
   const leg = (airway: string, from: string, to: string): AirwaySegment => ({
     airway,
     from,
@@ -170,43 +170,43 @@ describe("高低空合成一张图", () => {
   });
 
   /**
-   * can-db 的 `?level=high` 给 high + both + NULL，`low` 给 low + both + NULL，响应
-   * 里不带层级。两边都有的就是 `both`，而且只画一条。
+   * 只取当前航图那一层：can-db 的 `?level=high` 给 high + both + NULL，`low` 给
+   * low + both + NULL，响应里不带层级。
    */
-  const merged = mergeAirwayLevels(
-    graph(leg("J1", "AAAAA", "BBBBB"), leg("W1", "BBBBB", "CCCCC")),
-    graph(leg("V1", "CCCCC", "DDDDD"), leg("W1", "BBBBB", "CCCCC")),
+  const high = tagAirwayLevel(
+    graph(
+      leg("J1", "AAAAA", "BBBBB"),
+      leg("W1", "BBBBB", "CCCCC"),
+      leg("W1", "BBBBB", "CCCCC"),
+    ),
+    "high",
   );
-  const levelOf = (airway: string) =>
-    merged.segments.find((s) => s.airway === airway)?.level;
+  const low = tagAirwayLevel(
+    graph(leg("V1", "CCCCC", "DDDDD"), leg("W1", "BBBBB", "CCCCC")),
+    "low",
+  );
 
-  test("按出现在哪一边打标记", () => {
-    expect(levelOf("J1")).toBe("high");
-    expect(levelOf("V1")).toBe("low");
-    expect(levelOf("W1")).toBe("both");
-  });
-
-  test("两边都有的只留一条", () => {
-    expect(merged.segments.filter((s) => s.airway === "W1").length).toBe(1);
-    expect(merged.segments.length).toBe(3);
+  test("每条航段打上这一层，重复的只留一条", () => {
+    expect(high.segments.map((s) => [s.airway, s.level])).toEqual([
+      ["J1", "high"],
+      ["W1", "high"],
+    ]);
   });
 
   test("线要素带层级", () => {
-    const lines = toAirwayLines(merged);
+    const lines = toAirwayLines(low);
     const v1 = lines.features.find((f) => f.properties?.airway === "V1");
     expect(v1?.properties?.level).toBe("low");
   });
 
-  /** 只被低空航段用到的点，只在低空那层出现时才画；有高空航段连着就是高空的点。 */
-  test("航路点跟着连它的航段分层", () => {
-    const pts = toAirwayFixes(merged);
-    const levelAt = (ident: string) =>
-      pts.features.find((f) => f.properties?.ident === ident)?.properties
-        ?.level;
-    expect(levelAt("AAAAA")).toBe("high");
-    expect(levelAt("DDDDD")).toBe("low");
-    // CCCCC 同时连着 W1（both）和 V1（low）。
-    expect(levelAt("CCCCC")).toBe("both");
+  /** 点集是整张图的（can-db 不按 level 筛它），只画这张航图上有航段连着的点。 */
+  test("航路点跟着航图走", () => {
+    const idents = (g: TaggedAirwayGraph) =>
+      toAirwayFixes(g)
+        .features.map((f) => f.properties?.ident)
+        .sort();
+    expect(idents(high)).toEqual(["AAAAA", "BBBBB", "CCCCC"]);
+    expect(idents(low)).toEqual(["BBBBB", "CCCCC", "DDDDD"]);
   });
 });
 
@@ -535,7 +535,7 @@ describe("图键和代号", () => {
   });
 
   test("按块取回来的图按图键去重", () => {
-    const tagged = mergeAirwayLevels(graph, graph);
+    const tagged = tagAirwayLevel(graph, "both");
     const union = unionAirwayGraphs([tagged, tagged]);
     expect(union.segments.length).toBe(3);
   });

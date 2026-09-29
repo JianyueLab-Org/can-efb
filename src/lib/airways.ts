@@ -140,28 +140,37 @@ export async function fetchAirways(
 }
 
 /**
- * 两个层级一起取，合成一张带层级标记的图。
+ * 取一张航图（`lib/ifrChart.ts`）上的航路，每条航段打上这一层。
  *
- * can-db 的响应里**没有 level 这一列**（`AirwaySegment` 不带它），只能按 `?level=`
- * 分两次取：`high` 给 high + both + NULL，`low` 给 low + both + NULL。两边都出现的
- * 就是 `both`。地图按缩放决定画哪一层（`lib/chartStyle.ts` 的 `ZOOM`），不再让人去
- * 选。
+ * can-db 的响应里**没有 level 这一列**（`AirwaySegment` 不带它）：`?level=high` 给
+ * high + both + NULL，`low` 给 low + both + NULL。只取当前航图那一层，航段的
+ * `level` 就是那一层。
  */
-export async function fetchAirwayNetwork(
+export async function fetchAirwayChart(
+  level: AirwayLevel,
   bbox?: AirwayBbox,
 ): Promise<TaggedAirwayGraph> {
-  const [high, low] = await Promise.all([
-    fetchAirways("high", bbox),
-    fetchAirways("low", bbox),
-  ]);
-  return mergeAirwayLevels(high, low);
+  return tagAirwayLevel(await fetchAirways(level, bbox), level);
+}
+
+/** 给一张单层的图打上层级。航段每条一份，同一视图里重复的只留一条。 */
+export function tagAirwayLevel(
+  graph: AirwayGraph,
+  level: SegmentLevel,
+): TaggedAirwayGraph {
+  const byKey = new Map<string, TaggedSegment>();
+  for (const seg of graph.segments) {
+    const key = segmentKey(seg);
+    if (!byKey.has(key)) byKey.set(key, { ...seg, level });
+  }
+  return { ...graph, segments: [...byKey.values()] };
 }
 
 /**
  * 把按块取回来的几张图并成一张。
  *
  * 航段按图键认（`segmentKey`），跨块边界的那一段在两块里各出现一次，只留一份。两
- * 块给同一段打的层级不一样时记为 `both` —— 每块都是高低空两次都取的，正常不会发生，
+ * 块给同一段打的层级不一样时记为 `both` —— 每份缓存只装一张航图的块，正常不会发生，
  * 取并集只是防御。
  */
 export function unionAirwayGraphs(
@@ -186,35 +195,6 @@ export function unionAirwayGraphs(
 /** 同一行航段在两次响应里一模一样，按这几项认。 */
 function segmentKey(s: AirwaySegment): string {
   return `${s.airway}|${s.from}|${s.to}|${s.dir}`;
-}
-
-/**
- * 合并两个视图，每条航段只留一份并打上层级。
- *
- * 点集和航路属性两边本来就是全量（can-db 不按 level 筛它们），取并集只是防御。同
- * 一视图里重复出现的航段也收成一条 —— 两条重合的线画出来没有区别，高亮时却会算两
- * 遍。
- */
-export function mergeAirwayLevels(
-  high: AirwayGraph,
-  low: AirwayGraph,
-): TaggedAirwayGraph {
-  const byKey = new Map<string, TaggedSegment>();
-  for (const seg of high.segments) {
-    const key = segmentKey(seg);
-    if (!byKey.has(key)) byKey.set(key, { ...seg, level: "high" });
-  }
-  for (const seg of low.segments) {
-    const key = segmentKey(seg);
-    const seen = byKey.get(key);
-    if (!seen) byKey.set(key, { ...seg, level: "low" });
-    else if (seen.level === "high") seen.level = "both";
-  }
-  return {
-    fixes: { ...low.fixes, ...high.fixes },
-    airways: { ...low.airways, ...high.airways },
-    segments: [...byKey.values()],
-  };
 }
 
 /**
@@ -588,8 +568,9 @@ export function toAirwayLines(
 export function toAirwayFixes(
   graph: AirwayGraph | TaggedAirwayGraph,
 ): FeatureCollection {
-  /* 点的层级跟着连着它的航段走，取最高的那一级：high > both > low。只被低空航段用
-   * 到的点，只在低空那一层出现时才画。 */
+  /* 只收这张图里的航段连着的点：图是按航图取的（`fetchAirwayChart`），所以一个点在
+   * 这张航图上出现，当且仅当有一条连着它的航段在这张航图上。层级取连着它的航段里
+   * 最高的一级：high > both > low。 */
   /* 按图键记：同名的两个点是两个要素。标注用代号。 */
   const used = new Map<string, { ident: string; level: SegmentLevel }>();
   for (const seg of graph.segments) {

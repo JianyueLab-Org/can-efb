@@ -375,6 +375,11 @@
       "locate": "自機を中央に表示",
       "view3d": "3D",
       "view3dHint": "傾斜表示の経路高度は巡航高度からの推定です。手順の高度制限は含まず、性能計算ではありません。",
+      "chart": {
+        "label": "航空図",
+        "high": "IFR High",
+        "low": "IFR Low"
+      },
       "weather": {
         "light": "弱い雨",
         "heavy": "強い雨"

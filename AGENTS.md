@@ -400,8 +400,8 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 | 主要机场               | 4         | 5                                    |
 | 其余机场               | 6         | 6                                    |
 | 跑道线（接替机场符号） | 9         | 11                                   |
-| 高空航路（high、both） | 5         | 代号牌 5                             |
-| 低空航路（low）        | 5         | 5                                    |
+| 高空图航路             | 5         | 代号牌 5                             |
+| 低空图航路             | 5         | 5                                    |
 | VOR 一族               | 5         | 5 识别码；7 起「台名 D 频率 识别码」 |
 | NDB、DME、未知台型     | 6         | 6                                    |
 | 航路点                 | 5         | 5                                    |
@@ -449,9 +449,19 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 `DME`、`NDB`；`TACAN`、`VORTAC` 预留）和 `airspaceClass`（`restricted` 族的 `P` 禁
 区 / `R` 限制区 / `D` 危险区）。禁区、限制区画斜线；危险区画虚线边加淡平涂。
 
-**航路只有一个开关。** 高低空一起取（`fetchAirwayNetwork`）：can-db 的响应不带层
-级，按 `?level=high` 和 `?level=low` 各取一次，两边都有的记为 `both`。`high`、`both` 和 `low` 都从 z5 起画（`ZOOM.airwaysHigh` / `ZOOM.airwaysLow`）。航路点取连着它的航段里最高的一级。旧偏好
-`airway: "off" | "high" | "low"` 在 `readPrefs` 里折算成 `airways: boolean`。
+**航路一个开关，加一个航图选择。** 偏好 `chart: "high" | "low"`（IFR 高空 / 低空，
+默认 `low`，`lib/ifrChart.ts`），在图层菜单航路开关后面。只取当前航图那一层
+（`fetchAirwayChart`）：`?level=high` 给 high + both，`?level=low` 给 low + both，航段的
+`level` 记为取的那一层，从 z5 起画（`ZOOM.airwaysHigh` / `ZOOM.airwaysLow`）。两张航图
+各一份块缓存，换航图时已取的块直接画。航路点只画这张图里有航段连着的。旧偏好
+`airway: "off" | "high" | "low"` 在 `readPrefs` 里折成 `airways: boolean`，`high` /
+`low` 同时折成 `chart`。
+
+**禁区一族跟着航图筛**（`airspacesOnChart`）。分界 `IFR_SPLIT_M` = 6000 m（CCAR-93
+高空 / 中低空管制区的分界，约 FL197）。高空图画上限高于分界的，低空图画下限低于分界
+的，跨分界的两张都画。`parseLimitM` 读限制：can-db 给米，下限 0 是地面，上限 0 或
+null 是不封顶；字符串认 `GND` / `SFC` / `MSL`、`UNL`、`FL197`、`S0840`、英尺、米。
+读不出的那一端不藏这块空域。筛空了不提示「没有数据」。区域、进近不筛。
 
 **地图数据按块取**（`lib/blockCache.ts` 的 `createBlockCache`）。can-db 是全球数据，不
 带 `bbox` 取一次是全世界（航路两层约 24 MB JSON）。只取视野压到的块，取过留着，平移时
@@ -465,7 +475,7 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 | MORA             | 10° | z5   | 格子 `lat,lon`；视野四边各外扩 10° 之外的块扔掉（`evict`）         |
 
 航路的块由 `airwayBlocksFor` 算：经度折回 ±180，跨日界线的视野拆成两侧的块。每块带
-`?bbox=` 高低空各取一次（`fetchAirwayNetwork`）。`moveend` 后停 250 ms 再取。失败时开关
+`?bbox=` 取当前航图那一层（`fetchAirwayChart`）。`moveend` 后停 250 ms 再取。失败时开关
 留着、提示带重试，和 MORA 一样。区域、进近两层仍整份取一次：默认关，开了就画、不设门
 槛。机场和跑道也仍整份取。
 

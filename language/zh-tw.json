@@ -375,6 +375,11 @@
       "locate": "定位到我的飛機",
       "view3d": "3D",
       "view3dHint": "傾斜視圖裡的航線高度按巡航高度估算，不含程序高度限制，不是性能計算。",
+      "chart": {
+        "label": "航圖",
+        "high": "IFR 高空",
+        "low": "IFR 低空"
+      },
       "weather": {
         "light": "小雨",
         "heavy": "大雨"

@@ -15,6 +15,7 @@ import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { Icon } from "@jianyuelab-org/can-ui";
 import type { LayerId } from "@/components/map/useLayerNotice";
 import type { LayerToggle } from "@/components/map/useChartLayers";
+import type { IfrChart } from "@/lib/ifrChart";
 
 const props = defineProps<{
   labels: Record<LayerToggle, string>;
@@ -28,8 +29,14 @@ const props = defineProps<{
     /** 降水图例两端。 */
     weatherLight: string;
     weatherHeavy: string;
+    /** IFR 高空 / 低空航图那一组的名字和两个选项。 */
+    chart: string;
+    chartHigh: string;
+    chartLow: string;
   };
   on: Record<LayerToggle, boolean>;
+  /** 当前航图：管航路、航路点和禁区一族画哪些。 */
+  chart: IfrChart;
   busy: { airways: boolean; other: boolean };
   /** 在线管制席位数，只给管制那一项挂角标（模板里 `id === 'atcLive'` 那一段）。 */
   atcCount: number;
@@ -45,6 +52,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   toggle: [LayerToggle];
+  chart: [IfrChart];
   retry: [LayerId];
   locate: [];
   view3d: [];
@@ -63,6 +71,9 @@ const ORDER: LayerToggle[] = [
   "restricted",
   "weather",
 ];
+
+/** 航图两个选项，高空在前。 */
+const CHARTS: IfrChart[] = ["high", "low"];
 
 const menuOpen = ref(false);
 const root = ref<HTMLElement | null>(null);
@@ -179,23 +190,43 @@ onBeforeUnmount(() => {
         role="group"
         :aria-label="text.menu"
       >
-        <button
-          v-for="id in ORDER"
-          :key="id"
-          type="button"
-          class="map-layer-btn"
-          :class="on[id] ? 'is-on' : ''"
-          :aria-pressed="on[id]"
-          :disabled="isBusy(id)"
-          @click="emit('toggle', id)"
-        >
-          {{ labels[id]
-          }}<span
-            v-if="id === 'atcLive' && on.atcLive && atcCount"
-            class="map-layer-count"
-            >{{ atcCount }}</span
+        <template v-for="id in ORDER" :key="id">
+          <button
+            type="button"
+            class="map-layer-btn"
+            :class="on[id] ? 'is-on' : ''"
+            :aria-pressed="on[id]"
+            :disabled="isBusy(id)"
+            @click="emit('toggle', id)"
           >
-        </button>
+            {{ labels[id]
+            }}<span
+              v-if="id === 'atcLive' && on.atcLive && atcCount"
+              class="map-layer-count"
+              >{{ atcCount }}</span
+            >
+          </button>
+          <!-- 航路开关后面：IFR 高空 / 低空。航路关着也管禁区一族，所以一直在。 -->
+          <div
+            v-if="id === 'airways'"
+            class="map-chart-seg"
+            role="radiogroup"
+            :aria-label="text.chart"
+          >
+            <button
+              v-for="c in CHARTS"
+              :key="c"
+              type="button"
+              role="radio"
+              class="map-chart-opt"
+              :class="chart === c ? 'is-on' : ''"
+              :aria-checked="chart === c"
+              @click="emit('chart', c)"
+            >
+              {{ c === "high" ? text.chartHigh : text.chartLow }}
+            </button>
+          </div>
+        </template>
       </div>
       <!-- 降水图例：开着才有。颜色是 can-api 重新着色后的那条绿 → 黄 → 红。 -->
       <div

@@ -1,3 +1,5 @@
+import { isIfrChart, type IfrChart } from "@/lib/ifrChart";
+
 /**
  * 地图图层偏好：哪几层开着。
  *
@@ -22,6 +24,11 @@ export interface LayerPrefs {
    * 不是 `off` 就算开（见 `readPrefs`）。
    */
   airways: boolean;
+  /**
+   * IFR 高空图还是低空图（`lib/ifrChart.ts`）。管航路、航路点和禁区一族画哪些。旧偏
+   * 好没有这个键：旧的 `airway: "high" | "low"` 折过来，没有就用默认值。
+   */
+  chart: IfrChart;
   firs: boolean;
   mora: boolean;
   /**
@@ -57,6 +64,8 @@ export interface LayerPrefs {
  */
 export const DEFAULT_PREFS: LayerPrefs = {
   airways: true,
+  // 默认低空图：离场、进场和转场都从低空开始，低空图也画两层共用（`both`）的航路。
+  chart: "low",
   firs: true,
   // **默认关。** 它是全图铺满的数字，和航路点、导航台标注抢同一片空白 —— 开着
   // 好看，但要读航路的时候是噪音。需要它的人（雷达引导、绕飞、备降）自己开。
@@ -96,7 +105,12 @@ export function readPrefs(
     if (typeof saved.airway === "string" && saved.airways === undefined) {
       saved.airways = saved.airway !== "off";
     }
+    // 旧偏好选的是哪一层，就是哪张航图；`off` 不带层级，用默认值。
+    if (saved.chart === undefined && isIfrChart(saved.airway)) {
+      saved.chart = saved.airway;
+    }
     delete saved.airway;
+    if (!isIfrChart(saved.chart)) delete saved.chart;
     return { ...DEFAULT_PREFS, ...saved };
   } catch {
     return { ...DEFAULT_PREFS };

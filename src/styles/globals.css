@@ -561,6 +561,27 @@
 .map-layer-btn:disabled {
   opacity: 0.5;
 }
+/* IFR 高空 / 低空：航路开关后面的一对单选，选中的和开着的图层同一种底色。 */
+.map-chart-seg {
+  display: inline-flex;
+  padding: 0.125rem;
+  border-radius: 0.3rem;
+  border: 1px solid var(--border-subtle);
+}
+.map-chart-opt {
+  font-size: 0.7rem;
+  padding: 0.125rem 0.45rem;
+  border-radius: 0.2rem;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+.map-chart-opt:hover:not(:disabled) {
+  background: var(--surface-overlay);
+}
+.map-chart-opt.is-on {
+  background: var(--surface-overlay);
+  color: var(--color-ink);
+}
 /* 在线管制席位数。「现在有没有人管」是开图第一眼要的答案之一。 */
 .map-layer-count {
   margin-left: 0.35rem;

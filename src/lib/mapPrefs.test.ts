@@ -46,6 +46,40 @@ describe("readPrefs", () => {
     ).toBe(false);
   });
 
+  test("默认低空图", () => {
+    expect(DEFAULT_PREFS.chart).toBe("low");
+  });
+
+  test("旧的三选一：high / low 就是那张航图，off 用默认值", () => {
+    const read = (airway: string) =>
+      readPrefs(memoryStorage({ [PREF_KEY]: JSON.stringify({ airway }) }));
+    expect(read("high").chart).toBe("high");
+    expect(read("low").chart).toBe("low");
+    expect(read("off").chart).toBe(DEFAULT_PREFS.chart);
+  });
+
+  test("新旧键都在时航图以新键为准", () => {
+    expect(
+      readPrefs(
+        memoryStorage({
+          [PREF_KEY]: JSON.stringify({ airway: "low", chart: "high" }),
+        }),
+      ).chart,
+    ).toBe("high");
+  });
+
+  test("没有 chart 键的偏好补默认值；存坏了的值也回到默认", () => {
+    expect(
+      readPrefs(memoryStorage({ [PREF_KEY]: JSON.stringify({ mora: true }) }))
+        .chart,
+    ).toBe(DEFAULT_PREFS.chart);
+    expect(
+      readPrefs(
+        memoryStorage({ [PREF_KEY]: JSON.stringify({ chart: "medium" }) }),
+      ).chart,
+    ).toBe(DEFAULT_PREFS.chart);
+  });
+
   test("没有 weather 键的旧偏好：补默认值（关），其余照旧", () => {
     const prefs = readPrefs(
       memoryStorage({
@@ -79,6 +113,7 @@ describe("writePrefs", () => {
       mora: true,
       traffic: false,
       weather: true,
+      chart: "high" as const,
     };
     writePrefs(prefs, storage);
     expect(readPrefs(storage)).toEqual(prefs);

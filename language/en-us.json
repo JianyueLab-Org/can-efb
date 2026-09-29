@@ -375,6 +375,11 @@
       "locate": "Center on my aircraft",
       "view3d": "3D",
       "view3dHint": "Route altitudes in the tilted view are estimated from the cruise level. They ignore procedure altitude restrictions and are not a performance calculation.",
+      "chart": {
+        "label": "Chart",
+        "high": "IFR High",
+        "low": "IFR Low"
+      },
       "weather": {
         "light": "Light",
         "heavy": "Heavy"

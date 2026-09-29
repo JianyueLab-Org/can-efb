@@ -85,6 +85,10 @@ const props = defineProps<{
     /** 「3D」按钮，和倾斜时航线剖面的那句说明。 */
     view3d: string;
     view3dHint: string;
+    /** 图层菜单里 IFR 高空 / 低空那一组。 */
+    chart: string;
+    chartHigh: string;
+    chartLow: string;
     /** 降水图例两端：小雨、大雨。 */
     weatherLight: string;
     weatherHeavy: string;
@@ -157,6 +161,7 @@ const profileShown = computed(
   () => cruiseFt.value != null && points.value.length > 1,
 );
 const { shownFixes, airports, runways, navaids, firs, mora, airspaces } = chart;
+const ifrChart = chart.chart;
 const { ground, groundAttribution } = groundLayer;
 const {
   traffic,
@@ -363,8 +368,12 @@ onBeforeUnmount(() => {
         view3dHint: t.view3dHint,
         weatherLight: t.weatherLight,
         weatherHeavy: t.weatherHeavy,
+        chart: t.chart,
+        chartHigh: t.chartHigh,
+        chartLow: t.chartLow,
       }"
       :on="layerState"
+      :chart="ifrChart"
       :busy="busy"
       :atc-count="atcCount"
       :notice="noticeLine"
@@ -374,6 +383,7 @@ onBeforeUnmount(() => {
       :profile-shown="profileShown"
       @view3d="view3d = !view3d"
       @toggle="onToggle"
+      @chart="chart.setChart"
       @retry="onRetry"
       @locate="locateOwn"
     />
