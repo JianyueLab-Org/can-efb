@@ -60,9 +60,12 @@ export interface Viewport {
   zoom: number;
 }
 
-export type ChartLayerToggle = Exclude<LayerId, "live">;
-/** 图层菜单里的九个开关。实时那两层各一个，但失败时算同一次取数（`live`）。 */
-export type LayerToggle = ChartLayerToggle | "traffic" | "atcLive";
+export type ChartLayerToggle = Exclude<LayerId, "live" | "weather">;
+/**
+ * 图层菜单里的十个开关。实时那两层各一个，但失败时算同一次取数（`live`）；降水归
+ * `useWeatherLayer`。
+ */
+export type LayerToggle = ChartLayerToggle | "traffic" | "atcLive" | "weather";
 
 /**
  * 「不使用受限汇编」每变一次加一。MapStage 持有这一个对象，传给每个取 can-db 的

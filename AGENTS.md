@@ -171,6 +171,12 @@ can-ui 的 `--material-regular` / `--material-blur-regular`）。以前是**轨 
 只给成功的响应加：给 401 或 502 加缓存，等于让一次权限变更或一次上游抖动被记住十分
 钟。这和 can-radar 给 METAR 补五分钟是同一条思路 —— 上游没说，而我们知道它多久变。
 
+**降水瓦片有自己的一条反代**：`pages/api/v1/weather/precipitation/[z]/[x]/[y].ts`
+→ can-api 同一路径。只接 GET，z 0..6、x/y 按 `lib/weather.ts` 的 `parseTile` 校验，
+不合法回 400。不转发 cookie。成功响应在进程内缓存 600 秒（`ResponseCache`，1000
+条，键只含 z/x/y），非 2xx 不缓存；`Cache-Control` 原样给浏览器。连不上回 502。
+OpenWeather 的 key 在 can-api（`OPENWEATHER_API_KEY`），这个站仍然一个 Secret 都没有。
+
 **浏览器打 `/api/db/*` 一律走 `lib/naip.ts` 的 `dbFetch`。** 设置页「不使用受限汇编」
 （3 级起才显示）是全站一个开关，**默认开**，存 localStorage，只有明确存了 `"0"` 才
 显示 NAIP；开着时 `dbFetch` 给每个请求加
@@ -321,7 +327,7 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 岛屿（每页一个：`Dashboard`、`flightplan/FlightPlan`、`RouteTabs`、`Airports`、
 `Settings`）、共用的状态与表单件（`components/ui/`：`StateCard`、`PanelSection`、
 `Field`、`FieldGrid`）、地图（`components/map/`：`MapStage.vue` 是外壳侧的常驻显示
-面，四个 `use*Layer` 各管一类图层，`RouteMap.vue` 是画布），以及 `lib/nav.ts`、
+面，五个 `use*Layer` 各管一类图层，`RouteMap.vue` 是画布），以及 `lib/nav.ts`、
 `language/*.json`。
 
 （这份清单里以前有 `Logbook`。那一页删掉时**词典里的 `logbook` 命名空间跟着一起
@@ -345,6 +351,16 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 `SidebarNav.vue` 虽然形状来自 can-web，但把可折叠的 `children` 换成了**扁平分
 节** —— 理由见 `src/lib/nav.ts`：轨能收成图标态，而手风琴在图标态下没有讲得通
 的交互（点一个图标是展开还是跳转？）。
+
+### 降水图层（`useWeatherLayer`）
+
+- 偏好键 `weather`，默认关。
+- 栅格 source / 图层 `weather` 在 `lib/chartStyle.ts`：底图之上、其余一切之下，
+  `maxzoom` 6（往上 MapLibre 放大），不透明度 0.7。
+- 开关写 `visibility`，由 `RouteMap` 管；`themedProperties` 跳过 `visibility`。
+- 瓦片取失败（503 / 502）：退回关，挂「重试」提示，偏好不改。判定在
+  `lib/weather.ts` 的 `isWeatherTileFailure`。
+- 开着时署名加一行「Weather © OpenWeather」，图层菜单下出一条小雨 → 大雨图例。
 
 ## 航图样式（`lib/chartStyle.ts`）
 

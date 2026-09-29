@@ -25,6 +25,9 @@ const props = defineProps<{
     layerFailed: string;
     view3d: string;
     view3dHint: string;
+    /** 降水图例两端。 */
+    weatherLight: string;
+    weatherHeavy: string;
   };
   on: Record<LayerToggle, boolean>;
   busy: { airways: boolean; other: boolean };
@@ -58,6 +61,7 @@ const ORDER: LayerToggle[] = [
   "ctr",
   "app",
   "restricted",
+  "weather",
 ];
 
 const menuOpen = ref(false);
@@ -79,6 +83,8 @@ function isBusy(id: LayerToggle): boolean {
   if (id === "airways") return props.busy.airways;
   // 实时两层从来不禁用：取数途中再点一次是合法的，见 useTrafficLayer 的 liveAgain。
   if (id === "traffic" || id === "atcLive") return false;
+  // 降水不取数，瓦片由 MapLibre 自己取，没有「取数途中」。
+  if (id === "weather") return false;
   return props.busy.other;
 }
 
@@ -190,6 +196,16 @@ onBeforeUnmount(() => {
             >{{ atcCount }}</span
           >
         </button>
+      </div>
+      <!-- 降水图例：开着才有。颜色是 can-api 重新着色后的那条绿 → 黄 → 红。 -->
+      <div
+        v-if="on.weather"
+        class="map-weather-legend glass"
+        aria-hidden="true"
+      >
+        <span>{{ text.weatherLight }}</span>
+        <span class="map-weather-ramp"></span>
+        <span>{{ text.weatherHeavy }}</span>
       </div>
       <!-- 倾斜视角：空域立体块、航线高度剖面、机组高度柱。手势倾斜也会让它亮起来。 -->
       <button

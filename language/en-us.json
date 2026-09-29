@@ -361,7 +361,8 @@
         "atcLive": "ATC",
         "ctr": "CTR",
         "app": "APP",
-        "restricted": "Restricted"
+        "restricted": "Restricted",
+        "weather": "Precipitation"
       },
       "failure": {
         "init": "The map failed to start. Reload the page; if it still fails, send us the console error.",
@@ -374,6 +375,10 @@
       "locate": "Center on my aircraft",
       "view3d": "3D",
       "view3dHint": "Route altitudes in the tilted view are estimated from the cruise level. They ignore procedure altitude restrictions and are not a performance calculation.",
+      "weather": {
+        "light": "Light",
+        "heavy": "Heavy"
+      },
       "atc": {
         "close": "Close",
         "airspace": "Airspace",

@@ -361,7 +361,8 @@
         "atcLive": "管制",
         "ctr": "區域",
         "app": "進近",
-        "restricted": "限制區"
+        "restricted": "限制區",
+        "weather": "降水"
       },
       "failure": {
         "init": "地圖沒能啟動。重新整理一次；仍然不行請把主控台裡的錯誤發給我們。",
@@ -374,6 +375,10 @@
       "locate": "定位到我的飛機",
       "view3d": "3D",
       "view3dHint": "傾斜視圖裡的航線高度按巡航高度估算，不含程序高度限制，不是性能計算。",
+      "weather": {
+        "light": "小雨",
+        "heavy": "大雨"
+      },
       "atc": {
         "close": "關閉",
         "airspace": "管制區",

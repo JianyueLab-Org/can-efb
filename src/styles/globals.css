@@ -571,6 +571,22 @@
   font-size: 0.65rem;
   font-variant-numeric: tabular-nums;
 }
+/* 降水图例：小雨 → 大雨。颜色对着 can-api 重新着色后的瓦片。 */
+.map-weather-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-control);
+  font-size: 0.7rem;
+  color: var(--color-muted);
+}
+.map-weather-ramp {
+  width: 5rem;
+  height: 0.4rem;
+  border-radius: 0.2rem;
+  background: linear-gradient(to right, #3fbf4f, #f2d43a, #e0402f);
+}
 /* 「3D」：在图层按钮下面，按下时和开着的图层同一种底色。 */
 .map-3d-toggle {
   order: 3;

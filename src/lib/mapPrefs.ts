@@ -43,6 +43,11 @@ export interface LayerPrefs {
   ctr: boolean;
   app: boolean;
   restricted: boolean;
+  /**
+   * 降水（OpenWeather，经 can-api）。这个键是后来加的：旧偏好里没有它，`readPrefs`
+   * 按默认值补上。
+   */
+  weather: boolean;
 }
 
 /**
@@ -68,6 +73,8 @@ export const DEFAULT_PREFS: LayerPrefs = {
   // 拆成两个开关是为了**能分别关掉**，不是为了默认少画一层 —— 默认行为没变。
   traffic: true,
   atcLive: true,
+  // **默认关。** 一整片半透明色块，盖在航路上；瓦片还要花 can-api 的 OpenWeather 额度。
+  weather: false,
 };
 
 function localStorageOrNull(): Storage | null {

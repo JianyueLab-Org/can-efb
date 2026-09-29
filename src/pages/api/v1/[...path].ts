@@ -114,6 +114,10 @@ const ALLOW_LIST: Record<string, Allowed> = {
     cacheSeconds: 300,
     params: ["departure", "arrival", "route"],
   },
+
+  // 降水瓦片 `weather/precipitation/{z}/{x}/{y}` 不在这张表里：路径带坐标，精确匹配
+  // 接不住。它有自己的一条窄路由 `weather/precipitation/[z]/[x]/[y].ts`，调用方是
+  // RouteMap.vue 的降水图层。
 };
 
 /**

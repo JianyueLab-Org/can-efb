@@ -33,6 +33,11 @@ import type { NavaidClass } from "@/lib/aip";
 import { GROUND_MIN_ZOOM } from "@/lib/ground";
 import { FACILITY_COLORS } from "@/lib/atc";
 import { altitudeRamp } from "@/lib/traffic";
+import {
+  WEATHER_MAX_ZOOM,
+  WEATHER_SOURCE,
+  WEATHER_TILE_URL,
+} from "@/lib/weather";
 
 export type Theme = "light" | "dark";
 
@@ -815,7 +820,14 @@ export function graticule(): FeatureCollection {
 /** 图层的宽松形状。合法性交给 MapLibre 的校验器（check:style / 测试）。 */
 export interface ChartLayer {
   id: string;
-  type: "background" | "fill" | "line" | "symbol" | "circle" | "fill-extrusion";
+  type:
+    | "background"
+    | "fill"
+    | "line"
+    | "symbol"
+    | "circle"
+    | "fill-extrusion"
+    | "raster";
   source?: string;
   minzoom?: number;
   maxzoom?: number;
@@ -912,6 +924,15 @@ export function buildStyle(
           : { type: "FeatureCollection", features: [] },
     };
   }
+  /* 降水瓦片（`lib/weather.ts`）。唯一一个栅格 source：走本站同源反代，`maxzoom` 是
+   * can-api 的上限，再往上 MapLibre 放大 z6 那一张。图层默认 `visibility: none`，隐藏
+   * 时 MapLibre 不取瓦片。 */
+  sources[WEATHER_SOURCE] = {
+    type: "raster",
+    tiles: [WEATHER_TILE_URL],
+    tileSize: 256,
+    maxzoom: WEATHER_MAX_ZOOM,
+  };
 
   const airportSize = rampCase(isMajor, ICON.airportMajor, ICON.airportMinor);
   const airportVisible = ["any", isMajor, [">=", ["zoom"], ZOOM.airportAll]];
@@ -994,6 +1015,16 @@ export function buildStyle(
       source: "grid",
       filter: gridVisible,
       paint: { "line-color": c.grid, "line-width": WIDTH.grid },
+    },
+
+    // ------------------------------------------------ 降水
+    {
+      // 底图之上、其余一切之下。开关在 `RouteMap`（`visibility`）。
+      id: WEATHER_SOURCE,
+      type: "raster",
+      source: WEATHER_SOURCE,
+      layout: { visibility: "none" },
+      paint: { "raster-opacity": 0.7 },
     },
 
     // ------------------------------------------------ 机场地面
@@ -2067,6 +2098,8 @@ export function themedProperties(
       out.push({ layer: layer.id, kind: "paint", name, value });
     }
     for (const [name, value] of Object.entries(layer.layout ?? {})) {
+      // `visibility` 归开关管（降水层），切主题不许把它改回样式里的初值。
+      if (name === "visibility") continue;
       out.push({ layer: layer.id, kind: "layout", name, value });
     }
   }

@@ -10,6 +10,7 @@
  * - `useGroundLayer`  机场地面，没有开关，由缩放决定
  * - `useTrafficLayer` 实时：在线机组、在线管制、自己那架和它的航迹
  * - `useRouteLayer`   航路：面板推来的点、已提交的计划、航路网上点亮的那几段
+ * - `useWeatherLayer` 降水瓦片：开关、偏好、失败
  * - `MapControls.vue` 图层菜单、提示、重试、「定位到我」
  *
  * 横向依赖有两条。一条是航路网：登记处开关它，航路层要在它变了之后重算高亮。所以这
@@ -58,6 +59,7 @@ import {
 } from "@/components/map/useTrafficLayer";
 import { hasPosition } from "@/lib/datafeed";
 import { useRouteLayer } from "@/components/map/useRouteLayer";
+import { useWeatherLayer } from "@/components/map/useWeatherLayer";
 import { DEFAULT_PREFS, readPrefs, type LayerPrefs } from "@/lib/mapPrefs";
 import { hideNaip } from "@/lib/naip";
 import { subscribePanelLayout } from "@/lib/mapBus";
@@ -68,7 +70,7 @@ const props = defineProps<{
   label: string;
   /** 自己的 CAN ID。没登录是 null。见 useTrafficLayer：按 CID 认自己。 */
   cid: string | null;
-  /** 九个图层开关的文案，已翻译。 */
+  /** 十个图层开关的文案，已翻译。 */
   layerLabels: Record<LayerToggle, string>;
   /** 图层相关的几句话，已翻译。`planOnMap` 带 `{from}` / `{to}`，`layerFailed` 带 `{layer}`。 */
   t: {
@@ -83,6 +85,9 @@ const props = defineProps<{
     /** 「3D」按钮，和倾斜时航线剖面的那句说明。 */
     view3d: string;
     view3dHint: string;
+    /** 降水图例两端：小雨、大雨。 */
+    weatherLight: string;
+    weatherHeavy: string;
     /** 管制席位详情卡的文案。 */
     atc: AtcDetailsText;
     /** 飞机详情卡的文案。 */
@@ -136,6 +141,9 @@ const live = useTrafficLayer({
   notice,
 });
 
+const weather = useWeatherLayer({ prefs, notice });
+const { showWeather } = weather;
+
 /* 模板里只有顶层的 ref 会自动解包，所以把要用的拆出来。 */
 const { points, markers, focus, label, cruiseFt, highlightedLegs, litLegs } =
   route;
@@ -188,6 +196,7 @@ const layerState = computed<Record<LayerToggle, boolean>>(() => ({
   ctr: chart.showCtr.value,
   app: chart.showApp.value,
   restricted: chart.showRestricted.value,
+  weather: showWeather.value,
 }));
 
 const busy = computed(() => ({
@@ -239,6 +248,9 @@ function onToggle(id: LayerToggle) {
     case "atcLive":
       void live.toggleLive("atc");
       return;
+    case "weather":
+      weather.toggleWeather();
+      return;
     default:
       void chart.toggleAirspace(id);
   }
@@ -246,6 +258,7 @@ function onToggle(id: LayerToggle) {
 
 function onRetry(id: LayerId) {
   if (id === "live") void live.refreshLive();
+  else if (id === "weather") weather.retry();
   else chart.retry(id);
 }
 
@@ -284,6 +297,7 @@ onMounted(() => {
   Object.assign(prefs, saved);
   chart.restore(saved);
   live.start(saved);
+  weather.restore(saved);
   route.start();
 });
 
@@ -325,6 +339,7 @@ onBeforeUnmount(() => {
       :airspaces="airspaces"
       :cruise-ft="cruiseFt"
       :view3d="view3d"
+      :weather="showWeather"
       :label="label"
       :failure-text="failureText"
       :firs-label="layerLabels.firs"
@@ -332,6 +347,7 @@ onBeforeUnmount(() => {
       @viewport="onViewport"
       @select="onSelect"
       @view3d="view3d = $event"
+      @weather-error="weather.fail()"
     />
     <!-- 水合之前的占位：没有它，首屏这一整块是空的，等 JS 到了才突然出现地图。 -->
     <div v-else class="surface-grid h-full"></div>
@@ -345,6 +361,8 @@ onBeforeUnmount(() => {
         layerFailed: t.layerFailed,
         view3d: t.view3d,
         view3dHint: t.view3dHint,
+        weatherLight: t.weatherLight,
+        weatherHeavy: t.weatherHeavy,
       }"
       :on="layerState"
       :busy="busy"

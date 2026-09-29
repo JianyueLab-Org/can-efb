@@ -6,7 +6,10 @@
  */
 import { ref, type Ref } from "vue";
 
-/** 会失败、会被重试的那几层。`live` 是机组和管制共用的那一次 datafeed 取数。 */
+/**
+ * 会失败、会被重试的那几层。`live` 是机组和管制共用的那一次 datafeed 取数；
+ * `weather` 是降水瓦片（`useWeatherLayer`），不来自 can-db。
+ */
 export type LayerId =
   | "airways"
   | "firs"
@@ -15,7 +18,8 @@ export type LayerId =
   | "ctr"
   | "app"
   | "restricted"
-  | "live";
+  | "live"
+  | "weather";
 
 /**
  * 取自 can-db、会被 aipAccess 拒掉的那几层。`live`（can-fsd 的 datafeed）和

@@ -70,6 +70,7 @@ import { createBasemapLoader } from "@/components/map/basemap";
 import type { MapSelection } from "@/components/map/useTrafficLayer";
 import { createAttribution } from "@/components/map/attribution";
 import { createCamera } from "@/components/map/camera";
+import { isWeatherTileFailure, WEATHER_SOURCE } from "@/lib/weather";
 
 /**
  * **告诉 MapLibre 它的 worker 在哪，否则整块地图是死的。**
@@ -110,6 +111,8 @@ const emit = defineEmits<{
   select: [MapSelection | null];
   /** 地图倾斜过了 `EXTRUDE.minPitch`（或回到俯视）。手势和按钮都会触发。 */
   view3d: [boolean];
+  /** 降水瓦片没取到（503 / 502）。见 `useWeatherLayer` 的 `fail`。 */
+  weatherError: [];
 }>();
 
 /**
@@ -250,6 +253,8 @@ const props = defineProps<{
    * 去；这个 prop 只在和地图此刻不一致时才动镜头。
    */
   view3d?: boolean;
+  /** 降水图层开着没有。只切 `visibility`，瓦片由 MapLibre 自己取。 */
+  weather?: boolean;
   label: string;
   /**
    * 地图起不来时显示的两句话，**已翻译**。
@@ -309,6 +314,7 @@ const attribution = createAttribution(
   () => ({
     firsLabel: props.firsLabel,
     extra: props.extraAttribution ?? [],
+    weather: Boolean(props.weather),
   }),
 );
 const camera = createCamera(() => map);
@@ -592,6 +598,19 @@ function syncTilt() {
   emit("view3d", tilted);
 }
 
+/**
+ * 降水层开关。写 `visibility`，不经 `applyStyle`（`themedProperties` 跳过它）。隐藏
+ * 时 MapLibre 不取瓦片。
+ */
+function applyWeather() {
+  if (!map || !styleReady || !map.getLayer(WEATHER_SOURCE)) return;
+  map.setLayoutProperty(
+    WEATHER_SOURCE,
+    "visibility",
+    props.weather ? "visible" : "none",
+  );
+}
+
 /** 按钮要的倾斜和地图此刻不一致时才动镜头。 */
 function applyView3d() {
   if (!map || !styleReady) return;
@@ -673,6 +692,9 @@ onMounted(() => {
   // MapLibre 的样式、瓦片、数据错误**全部**从这个事件出来，不接就等于看不见。
   map.on("error", (event) => {
     console.error("[efb] 地图错误:", event.error ?? event);
+    // 降水瓦片取失败只关掉那一层，地图照常。
+    if (isWeatherTileFailure(event as { sourceId?: unknown; error?: unknown }))
+      emit("weatherError");
   });
 
   // 署名。CC BY-SA 4.0 要求的，不是装饰 —— can-radar 用同一份数据，署得也是同
@@ -710,6 +732,7 @@ onMounted(() => {
     // 构造时的配色和高亮是那一刻取的；`load` 之前切过主题或换过计划的话，那次
     // applyStyle 被闸挡掉了，这里补上。
     applyStyle();
+    applyWeather();
     if (props.padding) camera.setPadding(props.padding);
     render();
     updateCorners();
@@ -783,6 +806,15 @@ watch(
 );
 
 watch(() => props.view3d, applyView3d);
+
+/* 降水：图层开关，外加署名里 OpenWeather 那一行。 */
+watch(
+  () => props.weather,
+  () => {
+    applyWeather();
+    attribution.apply();
+  },
+);
 
 /* 计划高亮只改样式（见 applyStyle）。`useRouteLayer` 只在点亮的那组键真变了时才换
    对象，所以按引用比。 */

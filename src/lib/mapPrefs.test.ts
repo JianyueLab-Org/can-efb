@@ -46,6 +46,17 @@ describe("readPrefs", () => {
     ).toBe(false);
   });
 
+  test("没有 weather 键的旧偏好：补默认值（关），其余照旧", () => {
+    const prefs = readPrefs(
+      memoryStorage({
+        [PREF_KEY]: JSON.stringify({ airways: false, mora: true }),
+      }),
+    );
+    expect(prefs.weather).toBe(false);
+    expect(prefs.airways).toBe(false);
+    expect(prefs.mora).toBe(true);
+  });
+
   test("存坏了、或者 localStorage 本身会抛，一律回到默认", () => {
     expect(readPrefs(memoryStorage({ [PREF_KEY]: "{" }))).toEqual(
       DEFAULT_PREFS,
@@ -63,7 +74,12 @@ describe("readPrefs", () => {
 describe("writePrefs", () => {
   test("写进去再读出来是同一份", () => {
     const storage = memoryStorage();
-    const prefs = { ...DEFAULT_PREFS, mora: true, traffic: false };
+    const prefs = {
+      ...DEFAULT_PREFS,
+      mora: true,
+      traffic: false,
+      weather: true,
+    };
     writePrefs(prefs, storage);
     expect(readPrefs(storage)).toEqual(prefs);
   });
