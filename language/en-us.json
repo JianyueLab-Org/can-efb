@@ -250,6 +250,7 @@
         "arrival": "Arrival",
         "runway": "Runway",
         "anyRunway": "Any",
+        "pickRunway": "No runway selected: the map and leg table show one runway variant as an example. Pick a runway to draw the one for it.",
         "none": "None",
         "approachNote": "The approach is not written into the route string (ATC assigns it); picking one only changes the map and the leg table below.",
         "sidGap": "This SID does not join the route — it ends at, and the route starts at:",

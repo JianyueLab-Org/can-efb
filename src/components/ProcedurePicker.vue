@@ -55,22 +55,22 @@ import {
   findRunway,
   joinIdent,
   joinsRoute,
+  findProcedureOption,
   loadAirportProcedures,
-  pickProcedures,
-  procedureLabel,
+  procedureKey,
+  procedureOptions,
   procedureTrack,
   procedureTransitions,
   ProcedureError,
-  procedureRunways,
   rewriteRoute,
   runwayIdents,
   runwayTrueBearing,
-  servesAllRunways,
   speedLimitText,
   trackEndIdent,
   type AirportProcedures,
   type Procedure,
   type ProcedureKind,
+  type ProcedureOption,
 } from "@/lib/procedures";
 
 const props = defineProps<{
@@ -280,35 +280,41 @@ const windFailed = computed(
 
 // ---------------------------------------------------------------- 程序
 
+/**
+ * 一个名字一项。同名的几行（Navigraph 按跑道一行）由 `procedureOptions` 按选的跑道解
+ * 析成一行；没选跑道时是代表那一行（不限跑道的，否则第一行），选了跑道再按跑道定。
+ */
+function optionsFor(
+  data: AirportProcedures | null,
+  kind: ProcedureKind,
+  runway: string,
+): ProcedureOption[] {
+  return procedureOptions(data?.procedures ?? [], kind, runway);
+}
 const sids = computed(() =>
-  pickProcedures(depData.value?.procedures ?? [], "sid", sel.value.depRunway),
+  optionsFor(depData.value, "sid", sel.value.depRunway),
 );
 const stars = computed(() =>
-  pickProcedures(arrData.value?.procedures ?? [], "star", sel.value.arrRunway),
+  optionsFor(arrData.value, "star", sel.value.arrRunway),
 );
 const approaches = computed(() =>
-  pickProcedures(
-    arrData.value?.procedures ?? [],
-    "approach",
-    sel.value.arrRunway,
-  ),
+  optionsFor(arrData.value, "approach", sel.value.arrRunway),
 );
 
-/**
- * 选中的那条。先按带变体的标签找，找不到再按名字找第一条 —— 航路串里只写名字，
- * 同名的几种变体由跑道筛掉。
- */
-function find(list: Procedure[], label: string): Procedure | null {
-  if (!label) return null;
-  return (
-    list.find((p) => procedureLabel(p) === label) ??
-    list.find((p) => p.name === label) ??
-    null
-  );
-}
-const sid = computed(() => find(sids.value, sel.value.sid));
-const star = computed(() => find(stars.value, sel.value.star));
-const approach = computed(() => find(approaches.value, sel.value.approach));
+/** 选中的那一项。先比带变体的标签，再比名字 —— 航路串里只写名字。 */
+const sidOption = computed(() =>
+  findProcedureOption(sids.value, sel.value.sid),
+);
+const starOption = computed(() =>
+  findProcedureOption(stars.value, sel.value.star),
+);
+const approachOption = computed(() =>
+  findProcedureOption(approaches.value, sel.value.approach),
+);
+/** 解析出的那一行。画线、腿表、转换都只从它取，不跨行合并。 */
+const sid = computed(() => sidOption.value?.procedure ?? null);
+const star = computed(() => starOption.value?.procedure ?? null);
+const approach = computed(() => approachOption.value?.procedure ?? null);
 
 function procedureName(label: string): string {
   return label.replace(/-[A-Z0-9]+$/, "");
@@ -332,27 +338,22 @@ const approachTransitions = computed(() =>
  */
 function update(patch: Partial<ProcedureSelection>) {
   const next = { ...sel.value, ...patch };
-  const depList = pickProcedures(
-    depData.value?.procedures ?? [],
-    "sid",
-    next.depRunway,
-  );
-  const arrStars = pickProcedures(
-    arrData.value?.procedures ?? [],
-    "star",
-    next.arrRunway,
-  );
-  const arrApps = pickProcedures(
-    arrData.value?.procedures ?? [],
-    "approach",
-    next.arrRunway,
-  );
-  if (next.sid && !find(depList, next.sid)) next.sid = "";
-  if (next.star && !find(arrStars, next.star)) next.star = "";
-  if (next.approach && !find(arrApps, next.approach)) next.approach = "";
-  if (next.sid !== sel.value.sid) next.sidTransition = "";
-  if (next.star !== sel.value.star) next.starTransition = "";
-  if (next.approach !== sel.value.approach) next.approachTransition = "";
+  const depList = optionsFor(depData.value, "sid", next.depRunway);
+  const arrStars = optionsFor(arrData.value, "star", next.arrRunway);
+  const arrApps = optionsFor(arrData.value, "approach", next.arrRunway);
+  const nextSid = findProcedureOption(depList, next.sid);
+  const nextStar = findProcedureOption(arrStars, next.star);
+  const nextApp = findProcedureOption(arrApps, next.approach);
+  // 名字留着，这条跑道上没有一行用得上时才清。
+  if (next.sid && !nextSid) next.sid = "";
+  if (next.star && !nextStar) next.star = "";
+  if (next.approach && !nextApp) next.approach = "";
+  // 名字变了，或换跑道后解析成了另一行：转换清掉。
+  if (variantChanged(sidOption.value, nextSid)) next.sidTransition = "";
+  if (variantChanged(starOption.value, nextStar)) next.starTransition = "";
+  if (variantChanged(approachOption.value, nextApp)) {
+    next.approachTransition = "";
+  }
 
   const before = sel.value;
   sel.value = next;
@@ -363,18 +364,23 @@ function update(patch: Partial<ProcedureSelection>) {
       props.route.trim().toUpperCase(),
       { sid: routeSid.value, star: routeStar.value },
       {
-        sid: next.sid
-          ? procedureName(find(depList, next.sid)?.name ?? next.sid)
-          : null,
-        star: next.star
-          ? procedureName(find(arrStars, next.star)?.name ?? next.star)
-          : null,
+        sid: next.sid ? (nextSid?.name ?? procedureName(next.sid)) : null,
+        star: next.star ? (nextStar?.name ?? procedureName(next.star)) : null,
       },
     );
     if (rewritten !== props.route.trim().toUpperCase()) {
       emit("update:route", rewritten);
     }
   }
+}
+
+function variantChanged(
+  before: ProcedureOption | null,
+  after: ProcedureOption | null,
+): boolean {
+  const key = (o: ProcedureOption | null) =>
+    o?.procedure ? procedureKey(o.procedure) : "";
+  return key(before) !== key(after);
 }
 
 function onSelect(field: keyof ProcedureSelection, event: Event) {
@@ -503,10 +509,14 @@ const legs = computed(() =>
     ),
 );
 
-function runwayNote(p: Procedure): string {
-  return servesAllRunways(p)
-    ? t("route.procedures.anyRunway")
-    : procedureRunways(p).join(" ");
+/** 下拉里的副标题：这个名字的全部变体写明服务的跑道。 */
+function runwayNote(o: ProcedureOption): string {
+  return o.anyRunway ? t("route.procedures.anyRunway") : o.runways.join(" ");
+}
+
+/** 没选跑道而这个名字有好几行：图上和腿表画的是代表那一行。 */
+function isRepresentative(o: ProcedureOption | null, runway: string): boolean {
+  return Boolean(o && !runway && o.variants.length > 1);
 }
 
 function kindLabel(kind: ProcedureKind): string {
@@ -615,20 +625,22 @@ function crossText(row: RunwayRow): string {
               >{{ kindLabel("sid") }} · {{ sids.length }}</span
             >
             <select
-              :value="sid ? procedureLabel(sid) : ''"
+              :value="sidOption?.label ?? ''"
               class="input font-mono"
               @change="onSelect('sid', $event)"
             >
               <option value="">{{ t("route.procedures.none") }}</option>
-              <option
-                v-for="p in sids"
-                :key="procedureLabel(p)"
-                :value="procedureLabel(p)"
-              >
-                {{ procedureLabel(p) }} — {{ runwayNote(p) }}
+              <option v-for="o in sids" :key="o.key" :value="o.label">
+                {{ o.label }} — {{ runwayNote(o) }}
               </option>
             </select>
           </label>
+          <p
+            v-if="isRepresentative(sidOption, sel.depRunway)"
+            class="text-xs text-muted"
+          >
+            {{ t("route.procedures.pickRunway") }}
+          </p>
           <label v-if="sidTransitions.length" class="flex flex-col gap-1">
             <span class="text-xs text-muted">{{
               t("route.procedures.transition")
@@ -706,20 +718,22 @@ function crossText(row: RunwayRow): string {
               >{{ kindLabel("star") }} · {{ stars.length }}</span
             >
             <select
-              :value="star ? procedureLabel(star) : ''"
+              :value="starOption?.label ?? ''"
               class="input font-mono"
               @change="onSelect('star', $event)"
             >
               <option value="">{{ t("route.procedures.none") }}</option>
-              <option
-                v-for="p in stars"
-                :key="procedureLabel(p)"
-                :value="procedureLabel(p)"
-              >
-                {{ procedureLabel(p) }} — {{ runwayNote(p) }}
+              <option v-for="o in stars" :key="o.key" :value="o.label">
+                {{ o.label }} — {{ runwayNote(o) }}
               </option>
             </select>
           </label>
+          <p
+            v-if="isRepresentative(starOption, sel.arrRunway)"
+            class="text-xs text-muted"
+          >
+            {{ t("route.procedures.pickRunway") }}
+          </p>
           <label v-if="starTransitions.length" class="flex flex-col gap-1">
             <span class="text-xs text-muted">{{
               t("route.procedures.transition")
@@ -743,20 +757,22 @@ function crossText(row: RunwayRow): string {
               >{{ kindLabel("approach") }} · {{ approaches.length }}</span
             >
             <select
-              :value="approach ? procedureLabel(approach) : ''"
+              :value="approachOption?.label ?? ''"
               class="input font-mono"
               @change="onSelect('approach', $event)"
             >
               <option value="">{{ t("route.procedures.none") }}</option>
-              <option
-                v-for="p in approaches"
-                :key="procedureLabel(p)"
-                :value="procedureLabel(p)"
-              >
-                {{ procedureLabel(p) }}
+              <option v-for="o in approaches" :key="o.key" :value="o.label">
+                {{ o.label }}
               </option>
             </select>
           </label>
+          <p
+            v-if="isRepresentative(approachOption, sel.arrRunway)"
+            class="text-xs text-muted"
+          >
+            {{ t("route.procedures.pickRunway") }}
+          </p>
           <label v-if="approachTransitions.length" class="flex flex-col gap-1">
             <span class="text-xs text-muted">{{
               t("route.procedures.transition")

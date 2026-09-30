@@ -290,9 +290,14 @@ export function servesAllRunways(p: Procedure): boolean {
  * 有。取数字部分当主键就没有这个问题。
  */
 export function runwayIdents(runways: AirportRunway[]): string[] {
+  return sortRunwayCodes(runways.map((r) => r.id ?? ""));
+}
+
+/** 跑道代号去重、排序，规则同 `runwayIdents`。 */
+export function sortRunwayCodes(codes: Iterable<string>): string[] {
   const seen = new Set<string>();
-  for (const r of runways) {
-    const id = (r.id ?? "").trim().toUpperCase();
+  for (const code of codes) {
+    const id = code.trim().toUpperCase();
     if (id) seen.add(id);
   }
   return [...seen].sort((a, b) => {
@@ -332,6 +337,170 @@ export function procedureLabel(p: Procedure): string {
   // NAIP 有一批进近的名字里已经带着变体（`R01-Y` 配 `y`，89 条），再接一次就成了
   // `R01-Y-Y`。
   return p.name.toUpperCase().endsWith(suffix) ? p.name : p.name + suffix;
+}
+
+// ------------------------------------------------------------------ 跑道变体
+
+/**
+ * 同一个名字可以有好几行。
+ *
+ * - Navigraph 按跑道一行：`runway` 是 `18L`、`34B`（这个号码的全部平行跑道）或 null
+ *   （全部跑道）。RJTT `BEKL3A` 有 04 / 05 / 16L / 16R / null 五行，每行是自己的一串腿。
+ * - NAIP 一个名字一行：`runway` 是第一条跑道，`runways` 是全部。
+ *
+ * 变体的身份是（类别，带变体的名字，跑道）。接口不带行 id，所以键由这几列拼。**不能拿
+ * 标签当键**：同名的几行标签一模一样。腿只从解析出的那一行取，不跨行合并。
+ */
+export function procedureKey(p: Procedure): string {
+  return [p.kind, procedureLabel(p), p.runway ?? "", p.runways ?? ""].join("|");
+}
+
+/** 这一行没写跑道：Navigraph 的 `ALL`，或 NAIP 两列都空。 */
+function isAllRunways(p: Procedure): boolean {
+  return !ownRunway(p) && procedureRunways(p).length === 0;
+}
+
+function ownRunway(p: Procedure): string {
+  const code = (p.runway ?? "").trim().toUpperCase();
+  return code === "ALL" || code === "ALLRWY" ? "" : code;
+}
+
+/**
+ * 这一行用在跑道 `runway` 上有多具体。0 是用不上。
+ *
+ *   3  `runway` 就是这条跑道
+ *   2  `runway` 是 `nnB`，这条跑道是 `nnL` / `nnC` / `nnR`
+ *   1  `runway` 为空（全部跑道），或这条跑道在 `runways` 里
+ */
+export function variantSpecificity(p: Procedure, runway: string): number {
+  const want = runway.trim().toUpperCase();
+  if (!want) return 0;
+  const own = ownRunway(p);
+  if (own === want) return 3;
+  if (own && runwayMatches(own, want)) return 2;
+  if (!own) return 1;
+  return procedureRunways(p).some((code) => runwayMatches(code, want)) ? 1 : 0;
+}
+
+/**
+ * 同名的几行里挑用在这条跑道上的那一行。
+ *
+ * 选了跑道：最具体的那一行，并列时取先到的。没有一行用得上时为 null。
+ * 没选跑道：一行代表 —— 有不限跑道的那一行就用它，否则取第一行。它只是示意，界面要说明
+ * 选了跑道才按跑道画（`ProcedureOption.variants` 多于一行时）。和 can-efb-mobile 同一条规则。
+ */
+export function resolveVariant(
+  variants: Procedure[],
+  runway: string,
+): Procedure | null {
+  if (!runway.trim()) {
+    return variants.find(isAllRunways) ?? variants[0] ?? null;
+  }
+  let best: Procedure | null = null;
+  let bestScore = 0;
+  for (const p of variants) {
+    const score = variantSpecificity(p, runway);
+    if (score > bestScore) {
+      best = p;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+/** 选择器里的一项：一个名字，底下是它的全部跑道变体。 */
+export interface ProcedureOption {
+  /** `kind|label`，一个名字一个。 */
+  key: string;
+  kind: ProcedureKind;
+  name: string;
+  /** `procedureLabel`，也是存进本机选择的那个值。 */
+  label: string;
+  variants: Procedure[];
+  /** 按给定跑道解析出的那一行。没选跑道时是代表那一行，见 `resolveVariant`。 */
+  procedure: Procedure | null;
+  /** 这个名字写明服务的跑道，全部变体的并集，排好序。`anyRunway` 时界面只写「不限」。 */
+  runways: string[];
+  /** 有一行没写跑道（全部跑道）。 */
+  anyRunway: boolean;
+}
+
+/**
+ * 按类别和跑道列出程序，**一个名字一项**。
+ *
+ * 选了跑道时只留有一行用得上的名字，`procedure` 是最具体的那一行；没选时全部名字都
+ * 列，`procedure` 是代表那一行，`runways` 给界面当副标题。排序同 `pickProcedures`。
+ */
+export function procedureOptions(
+  list: Procedure[],
+  kind: ProcedureKind,
+  runway: string,
+): ProcedureOption[] {
+  const groups = new Map<string, Procedure[]>();
+  for (const p of list) {
+    if (p.kind !== kind) continue;
+    const label = procedureLabel(p);
+    const group = groups.get(label);
+    if (group) group.push(p);
+    else groups.set(label, [p]);
+  }
+  const out: ProcedureOption[] = [];
+  for (const [label, variants] of groups) {
+    const procedure = resolveVariant(variants, runway);
+    if (runway.trim() && !procedure) continue;
+    const codes = new Set<string>();
+    let anyRunway = false;
+    for (const p of variants) {
+      if (isAllRunways(p)) anyRunway = true;
+      const own = ownRunway(p);
+      if (own) codes.add(own);
+      for (const code of procedureRunways(p)) codes.add(code);
+    }
+    out.push({
+      key: `${kind}|${label}`,
+      kind,
+      name: variants[0].name,
+      label,
+      variants,
+      procedure,
+      runways: sortRunwayCodes(codes),
+      anyRunway,
+    });
+  }
+  return out.sort(
+    (a, b) =>
+      a.name.localeCompare(b.name) ||
+      (a.variants[0].variant ?? "").localeCompare(b.variants[0].variant ?? ""),
+  );
+}
+
+/**
+ * 按存的值找那一项：先比带变体的标签，再比名字 —— 航路串里只写名字。
+ */
+export function findProcedureOption(
+  options: ProcedureOption[],
+  selected: string,
+): ProcedureOption | null {
+  const want = selected.trim().toUpperCase();
+  if (!want) return null;
+  return (
+    options.find((o) => o.label.toUpperCase() === want) ??
+    options.find((o) => o.name.toUpperCase() === want) ??
+    null
+  );
+}
+
+/** 存的名字在这条跑道上解析成哪一行。 */
+export function resolveProcedure(
+  list: Procedure[],
+  kind: ProcedureKind,
+  runway: string,
+  selected: string,
+): Procedure | null {
+  return (
+    findProcedureOption(procedureOptions(list, kind, runway), selected)
+      ?.procedure ?? null
+  );
 }
 
 /**

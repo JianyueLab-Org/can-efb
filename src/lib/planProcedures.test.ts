@@ -160,3 +160,52 @@ describe("航路串里写着、本机没选的程序", () => {
     expect(idents(out)).toContain("AA131");
   });
 });
+
+/** Navigraph 一个名字按跑道一行。腿只取解析出的那一行，不跨行合并。 */
+describe("同名的跑道变体", () => {
+  const variant = (runway: string | null, first: string) => ({
+    kind: "sid" as const,
+    name: "BEKL3A",
+    runway,
+    runways: null,
+    chart: null,
+    variant: null,
+    points: [],
+    path: [leg(first, 0, 1), leg("BEKLA", 0, 2)],
+  });
+  const rjtt: AirportProcedures = {
+    ...dep,
+    icao: "RJTT",
+    procedures: [
+      variant("04", "V04"),
+      variant("16B", "V16B"),
+      variant("16L", "V16L"),
+      variant(null, "VALL"),
+    ],
+  };
+  const route: MapPoint[] = [
+    { ident: "RJTT", lat: 0, lon: 0, kind: "airport" },
+    { ident: "BEKLA", lat: 0, lon: 2, kind: "fix" },
+    { ident: "RJOO", lat: 0, lon: 3, kind: "airport" },
+  ];
+  const idents = (depRunway: string) =>
+    applySelectionTo(
+      route,
+      { ...EMPTY_SELECTION, sid: "BEKL3A", depRunway },
+      rjtt,
+      null,
+    )
+      .filter((p) => !p.shape && p.kind === "sid")
+      .map((p) => p.ident);
+
+  test("选了跑道时取最具体的那一行", () => {
+    expect(idents("16L")).toEqual(["V16L", "BEKLA"]);
+    expect(idents("16R")).toEqual(["V16B", "BEKLA"]);
+    expect(idents("04")).toEqual(["V04", "BEKLA"]);
+    expect(idents("34L")).toEqual(["VALL", "BEKLA"]);
+  });
+
+  test("没选跑道时画不限跑道的那一行", () => {
+    expect(idents("")).toEqual(["VALL", "BEKLA"]);
+  });
+});
