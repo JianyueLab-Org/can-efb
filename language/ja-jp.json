@@ -3,6 +3,50 @@
     "siteName": "CAN 電子フライトバッグ",
     "shortName": "EFB",
     "tagline": "Cerulean Aviation Network のパイロット向け電子フライトバッグ",
+    "frame": {
+      "skipToContent": "本文へスキップ",
+      "signIn": "ログイン",
+      "signOut": "ログアウト",
+      "signingOut": "ログアウト中…",
+      "signOutFailed": "ログアウトに失敗しました。もう一度お試しください。",
+      "openSidebar": "サイドバーを開く",
+      "closeSidebar": "サイドバーを閉じる",
+      "close": "閉じる",
+      "dismiss": "非表示にする",
+      "sidebar": "サイドバー",
+      "openUserMenu": "アカウントメニューを開く",
+      "openMenu": "メニューを開く",
+      "siteNavigation": "サイト内ナビゲーション",
+      "workspace": {
+        "label": "ワークスペース"
+      },
+      "search": {
+        "label": "クイックナビ",
+        "placeholder": "ページを検索…",
+        "noResults": "該当するページがありません"
+      },
+      "theme": {
+        "label": "外観",
+        "light": "ライト",
+        "dark": "ダーク",
+        "system": "システムに合わせる"
+      },
+      "language": {
+        "label": "言語を選択"
+      },
+      "rail": {
+        "collapse": "サイドバーを折りたたむ",
+        "expand": "サイドバーを展開する",
+        "me": "マイ"
+      },
+      "noAccess": {
+        "title": "このページへのアクセス権がありません",
+        "rating": "レーティング {required} 以上が必要です。",
+        "permission": "{name} 権限が必要です。",
+        "signedInAs": "{name}（#{id}）としてログイン中。",
+        "reachable": "利用できるサイト"
+      }
+    },
     "skipToContent": "本文へスキップ",
     "rail": {
       "label": "メインナビゲーション",

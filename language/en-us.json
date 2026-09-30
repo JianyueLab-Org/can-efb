@@ -3,6 +3,50 @@
     "siteName": "CAN Electronic Flight Bag",
     "shortName": "EFB",
     "tagline": "The pilot's electronic flight bag for Cerulean Aviation Network",
+    "frame": {
+      "skipToContent": "Skip to content",
+      "signIn": "Sign in",
+      "signOut": "Sign out",
+      "signingOut": "Signing out…",
+      "signOutFailed": "Sign-out failed. Try again.",
+      "openSidebar": "Open sidebar",
+      "closeSidebar": "Close sidebar",
+      "close": "Close",
+      "dismiss": "Dismiss",
+      "sidebar": "Sidebar",
+      "openUserMenu": "Open user menu",
+      "openMenu": "Open menu",
+      "siteNavigation": "Site navigation",
+      "workspace": {
+        "label": "Workspace"
+      },
+      "search": {
+        "label": "Quick nav",
+        "placeholder": "Jump to…",
+        "noResults": "No matching page"
+      },
+      "theme": {
+        "label": "Appearance",
+        "light": "Light",
+        "dark": "Dark",
+        "system": "Follow system"
+      },
+      "language": {
+        "label": "Select language"
+      },
+      "rail": {
+        "collapse": "Collapse sidebar",
+        "expand": "Expand sidebar",
+        "me": "Me"
+      },
+      "noAccess": {
+        "title": "You do not have access to this page",
+        "rating": "It needs rating {required} or above.",
+        "permission": "It needs the {name} permission.",
+        "signedInAs": "Signed in as {name} (#{id}).",
+        "reachable": "Sites you can use"
+      }
+    },
     "skipToContent": "Skip to content",
     "rail": {
       "label": "Main navigation",
