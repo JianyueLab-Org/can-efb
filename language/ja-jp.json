@@ -1,7 +1,6 @@
 {
   "efb": {
     "siteName": "CAN 電子フライトバッグ",
-    "shortName": "EFB",
     "tagline": "Cerulean Aviation Network のパイロット向け電子フライトバッグ",
     "frame": {
       "skipToContent": "本文へスキップ",
@@ -47,18 +46,6 @@
         "reachable": "利用できるサイト"
       }
     },
-    "skipToContent": "本文へスキップ",
-    "rail": {
-      "label": "メインナビゲーション",
-      "close": "ナビゲーションを閉じる",
-      "collapse": "サイドバーを折りたたむ",
-      "expand": "サイドバーを展開する"
-    },
-    "search": {
-      "label": "クイックナビ",
-      "placeholder": "ページを検索…",
-      "noResults": "該当するページがありません"
-    },
     "panel": {
       "collapse": "パネルを畳む",
       "expand": "パネルを開く",
@@ -68,13 +55,6 @@
         "half": "パネルは半分の高さです",
         "full": "パネルは全画面です"
       }
-    },
-    "account": {
-      "menu": "アカウントメニュー",
-      "signIn": "ログイン",
-      "signedOut": "未ログイン",
-      "signedOutHint": "ログインすると自分のフライトプランとログブックが表示されます",
-      "signOut": "ログアウト"
     },
     "sections": {
       "flight": "フライト",
@@ -86,9 +66,6 @@
       "route": "ルート",
       "airports": "空港",
       "settings": "設定"
-    },
-    "links": {
-      "label": "ほかのサイト"
     },
     "pages": {
       "dashboard": {

@@ -16,8 +16,6 @@ export type ShellMode = "desktop" | "tablet" | "phone";
 /** 页面声明的面板宽度。平板上 `wide` 由 CSS 退回 `standard`，这里不管。 */
 export type PanelWidth = "standard" | "wide";
 
-export type RailState = "collapsed" | "expanded";
-
 /** 面板在视口里的位置，就是 `getBoundingClientRect()` 的那四个数。 */
 export interface PanelRect {
   left: number;
@@ -54,20 +52,6 @@ export const MIN_VISIBLE_PX = 160;
 export function parseShellMode(raw: string): ShellMode {
   const value = raw.trim();
   return value === "desktop" || value === "tablet" ? value : "phone";
-}
-
-/**
- * 轨此刻到底是收着还是展开。
- *
- * `data-rail="auto"` 是「成员没选过」：RailScript 找不到存下来的值时写它，由 CSS
- * 按宽度给出 `--rail-auto`。成员一旦点过折叠钮，写进去的就是确定值，auto 不再参与。
- */
-export function effectiveRail(
-  dataRail: string | undefined,
-  autoValue: string,
-): RailState {
-  if (dataRail === "collapsed" || dataRail === "expanded") return dataRail;
-  return autoValue.trim() === "collapsed" ? "collapsed" : "expanded";
 }
 
 function cssTimeMs(raw: string | undefined): number {

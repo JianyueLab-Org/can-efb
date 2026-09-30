@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  effectiveRail,
   mapPaddingFor,
   MIN_VISIBLE_PX,
   PANEL_GAP_PX,
@@ -90,23 +89,6 @@ describe("parseShellMode", () => {
   test("认不得的一律当手机 —— 那是样式表里的起点", () => {
     expect(parseShellMode("")).toBe("phone");
     expect(parseShellMode("columns")).toBe("phone");
-  });
-});
-
-/**
- * `data-rail` 有三个值。`auto` 表示成员从没选过，由 CSS 按宽度决定：平板上收起，
- * 桌面上展开。判错的后果是轨的箭头朝向和实际宽度对不上。
- */
-describe("effectiveRail", () => {
-  test("成员选过的值原样生效", () => {
-    expect(effectiveRail("collapsed", "expanded")).toBe("collapsed");
-    expect(effectiveRail("expanded", "collapsed")).toBe("expanded");
-  });
-
-  test("auto 跟着 CSS 给的 --rail-auto 走", () => {
-    expect(effectiveRail("auto", " collapsed")).toBe("collapsed");
-    expect(effectiveRail("auto", "expanded")).toBe("expanded");
-    expect(effectiveRail(undefined, "")).toBe("expanded");
   });
 });
 

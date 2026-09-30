@@ -1,9 +1,9 @@
 /* ===========================================================================
    电子飞行包的样式表。
 
-   设计系统整体搬到了 can-ui —— 令牌、base 层、组件类、动效层都在那边一份，
-   这里只留下这行 import，以及下面 "can-efb only" 那一节：轨（rail）和正文列
-   共用的那几个变量，只有这个站有。
+   设计系统整体搬到了 can-ui —— 令牌、base 层、组件类、动效层、轨和手机标签栏
+   都在那边一份。这里只留下这行 import，以及下面 "can-efb only" 那一节：地图、
+   浮动面板和地图控件。
 
    原先这里有 1,081 行，前 968 行和 can-radar 逐行一致，全部交给 can-ui。
    本站独有的规则必须留在 import **之后**。
@@ -15,88 +15,9 @@
    can-efb only — 上面是 can-ui 的样式，从这里往下才是这个站自己的。
    =========================================================================== */
 
-/* 侧栏宽度是一个 CSS 变量，而不是两个 Tailwind 类。
-   
-   这个站没有站头，导航栏是唯一的外壳，而它可以折叠成一条图标轨。折叠状态要
-   同时改两个东西：轨自己的宽度，和正文那一列的左内边距。用类名做，就得让正
-   文知道轨的状态 —— 而轨是个 Vue 岛屿，正文是 Astro 渲染的静态 HTML，两者之
-   间没有响应式通道，只能把整页塞进岛屿里（那样每个页面都要为外壳付一次水合
-   代价）。变量把这条通道搬到了 CSS 里：岛屿只改 <html> 上的 data-rail，浏览
-   器负责其余。
-   
-   同样的理由决定了它必须由 RailScript.astro 在首屏绘制**之前**写好：折叠状态
-   存在 localStorage 里，等岛屿水合再读，用户会先看到一次展开的轨再看它收
-   起 —— 和主题闪烁一模一样的毛病，一模一样的解法。 */
-:root {
-  --rail-width: 17rem;
-  --rail-width-collapsed: 4.75rem;
-  --rail-current: var(--rail-width);
-  /* `data-rail="auto"` 时轨该是什么样。只在平板那一段翻成 collapsed。 */
-  --rail-auto: expanded;
-}
-:root[data-rail="collapsed"] {
-  --rail-current: var(--rail-width-collapsed);
-}
-
-/* 轨。手机上不显示（换成底部标签栏），768 起贴在左边。材质来自 `.glass`，这里
-   只收掉三边的边框和阴影：它贴着视口边，不是一张浮起来的卡片。 */
-.app-rail {
-  display: none;
-}
-@media (min-width: 768px) {
-  .app-rail {
-    position: fixed;
-    inset-block: 0;
-    left: 0;
-    z-index: 40;
-    display: flex;
-    flex-direction: column;
-    width: var(--rail-current);
-    transition: width 200ms ease;
-  }
-  .app-rail.glass {
-    border-width: 0 1px 0 0;
-    box-shadow: none;
-  }
-}
-
-/* 平板上成员没选过就收起。这一段是范围查询，因为「auto 在桌面上展开」不需要写：
-   那就是 `--rail-current` 的默认值。 */
-@media (min-width: 768px) and (max-width: 1151.98px) {
-  :root {
-    --rail-auto: collapsed;
-  }
-  :root[data-rail="auto"] {
-    --rail-current: var(--rail-width-collapsed);
-  }
-  :root[data-rail="auto"] .app-rail .rail-item {
-    justify-content: center;
-    padding-left: 0;
-    padding-right: 0;
-  }
-  :root[data-rail="auto"] .app-rail .rail-label {
-    display: none;
-  }
-}
-
-/* `.app-main-offset` 删掉了：它是**第一版外壳**（轨 + 一列居中正文）的东西。现在
-   地图铺满视口，面板（`.floating-panel`）自己按 `--rail-current` 让开轨。全仓没有
-   任何 .vue / .astro 还在用这个类 —— 留着只会让人以为正文列还有第二条排版通道。 */
-
-/* 折叠态下导航项只剩图标：居中成一格方块、文字让位。写成类而不是一串条件式
-   Tailwind，是因为同一组规则要作用在四处（主导航、跨站链接、品牌、轨脚的账户
-   与搜索），而它们的 DOM 形状并不相同。
-
-   选择器里保留 `.app-rail` 限定：data-rail 挂在 <html> 上，这一层让规则只作用于
-   轨本身，别处出现的 `.rail-*` 不受折叠态影响。 */
-:root[data-rail="collapsed"] .app-rail .rail-item {
-  justify-content: center;
-  padding-left: 0;
-  padding-right: 0;
-}
-:root[data-rail="collapsed"] .app-rail .rail-label {
-  display: none;
-}
+/* 轨和手机标签栏来自 can-ui 的 frame.css：`--rail-*`、`--tabbar-height`、
+   `.app-rail`、`.rail-item`、`.rail-label`、`.tab-bar`、`.tab-bar-item`。
+   这里不再定义它们。面板按 `--rail-current` 和 `--tabbar-height` 让位。 */
 
 /* 航路地图（RouteMap.vue）。
 
@@ -211,7 +132,6 @@
   --panel-standard: 26rem;
   --panel-wide: 44rem;
   --panel-collapsed: 3.25rem;
-  --tabbar-height: 4rem;
   /* 和 lib/sheet.ts 的 SHEET_PEEK_PX 同值：服务端先按它摆「收起」那一档。 */
   --sheet-peek: 72px;
 }
@@ -294,14 +214,6 @@
      手势、发 pointercancel，抽屉拖不动。拉满之后正文要滚，只有把手是 none。 */
   .floating-panel:not([data-sheet="full"]) {
     touch-action: none;
-  }
-}
-
-/* 只在手机上出现的东西（设置页里的退出登录、跨站链接）：轨在手机上换成了标签栏，
-   这几样没有别的家。 */
-@media (min-width: 768px) {
-  .phone-only {
-    display: none !important;
   }
 }
 
@@ -413,7 +325,7 @@
 }
 
 /* ---------------------------------------------------------------------------
-   玻璃材质。轨、面板、地图上的控件共用这一个类。
+   玻璃材质。面板和地图上的控件共用这一个类。轨和标签栏是 can-ui 的不透明底色（`bg-surface-sunken` / `bg-surface`）。
 
    取的是 can-ui 的材质令牌（`--material-regular` 那一组），深浅两套由令牌自己换，
    这里不另写颜色。退路有两条，都退回 can-ui 的实心浮层色：浏览器不支持
@@ -623,53 +535,6 @@
   border-radius: var(--radius-control);
   font-size: 0.75rem;
   color: var(--color-ink);
-}
-
-/* 手机的底部标签栏。轨在手机上整条换成它：五个导航项正好一行，拇指够得着。主题、
-   语言、账户、跨站链接在设置页的 `.phone-only` 那几块里。
-
-   它和抽屉共用 `--tabbar-height`：抽屉的 `bottom` 就是这个高度加安全区，所以收
-   到只剩把手时也露在标签栏上面，不会被它压住。 */
-.tab-bar {
-  position: fixed;
-  z-index: 40;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: calc(var(--tabbar-height) + env(safe-area-inset-bottom));
-  padding-bottom: env(safe-area-inset-bottom);
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
-}
-.tab-bar.glass {
-  border-width: 1px 0 0 0;
-  box-shadow: none;
-}
-/* 44px 是触控目标的下限。高度平时由 `--tabbar-height` 给足；下限写在这里，是为了
-   有人把标签栏调矮时按钮不跟着缩到按不准。 */
-.tab-bar-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.125rem;
-  min-width: 44px;
-  min-height: 44px;
-  font-size: 0.6875rem;
-  color: var(--color-muted);
-}
-.tab-bar-item[aria-current="page"] {
-  color: var(--color-can);
-}
-/* can-ui 的焦点环往外偏 2px；标签栏贴着视口底边，往外偏就被裁掉一截。收进来。 */
-.tab-bar-item:focus-visible {
-  outline-offset: -2px;
-}
-@media (min-width: 768px) {
-  .tab-bar {
-    display: none;
-  }
 }
 
 /* 表单两列排布（FieldGrid.vue）。按面板宽度判：standard 面板 26rem 恒为一列，wide
