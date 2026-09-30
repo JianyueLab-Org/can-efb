@@ -48,9 +48,10 @@ interface Allowed {
 }
 
 const ALLOW_LIST: Record<string, Allowed> = {
-  // 外壳：轨脚的账户区、退出按钮。
-  "auth/session": { methods: ["GET"], who: "AppRail / middleware" },
-  "auth/signout": { methods: ["POST"], who: "AppRail 退出登录" },
+  // 外壳。`auth/session` 没有浏览器调用方：中间件经 server/canApi.ts 直连 can-api。
+  "auth/session": { methods: ["GET"], who: "无浏览器调用方" },
+  // can-ui AccountMenu 的 SIGN_OUT_PATH。Set-Cookie 由下面的 copySetCookies 带回。
+  "auth/signout": { methods: ["POST"], who: "can-ui AccountMenu 退出登录" },
 
   // 概览、设置：成员自己的资料。
   "pilot/data": { methods: ["GET"], who: "Settings.vue / Dashboard.vue" },

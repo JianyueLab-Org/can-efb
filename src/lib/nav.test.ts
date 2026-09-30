@@ -1,34 +1,75 @@
 import { describe, expect, test } from "bun:test";
-import { buildCrossLinks } from "@/lib/nav";
+import { railTabs } from "@jianyuelab-org/can-ui/frame";
+import { buildNav, buildProfileItems } from "@/lib/nav";
 
 /**
- * 轨底的跨站链接从前是手抄的三条（主站、雷达、开发者中心）。现在来自 can-ui 的
- * `visibleSites`，所以这里验的是「接得对不对」：本站不列、每条都是外链、评级门
- * 槛真的传过去了。`isCurrentPath` 的测试跟着函数一起搬去了 can-ui 的
- * `src/nav.test.ts`。
+ * 导航是 can-ui 的 `NavItem[]`：有标题的一节是带 `children` 的组。轨、手机标签栏、
+ * 「我的」面板和 ⌘K 都从这一份长出来。手机标签栏只放 `phoneTab` 的三页，其余在
+ * 「我的」面板顶部。
  */
-
 const t = (key: string) => key;
-const hrefs = (rating?: number, signedIn = true) =>
-  buildCrossLinks(t, { locale: "zh-cn", rating, signedIn }).items.map(
-    (item) => item.href,
-  );
 
-describe("buildCrossLinks", () => {
-  test("不列 EFB 自己，每一条都是外链", () => {
-    const links = buildCrossLinks(t, { locale: "zh-cn", signedIn: true });
-    expect(links.items.some((item) => item.href.includes("efb."))).toBe(false);
-    expect(links.items.every((item) => item.external === true)).toBe(true);
+const hrefs = () =>
+  buildNav(t).flatMap((item) => [
+    ...(item.href ? [item.href] : []),
+    ...(item.children ?? []).map((child) => child.href),
+  ]);
+
+describe("buildNav", () => {
+  test("五个页面，顺序不变", () => {
+    expect(hrefs()).toEqual([
+      "/",
+      "/flightplan",
+      "/route",
+      "/airports",
+      "/settings",
+    ]);
   });
 
-  test("门户只画给教员", () => {
-    expect(hrefs(undefined).some((h) => h.includes("portal."))).toBe(false);
-    expect(hrefs(8).some((h) => h.includes("portal."))).toBe(true);
+  test("分组名来自 sections.*，链接名来自 nav.*", () => {
+    const nav = buildNav(t);
+    expect(nav.map((item) => item.name)).toEqual([
+      "nav.dashboard",
+      "sections.flight",
+      "sections.briefing",
+      "nav.settings",
+    ]);
+    expect(nav[1].href).toBeUndefined();
+    expect(nav[1].children?.map((child) => child.name)).toEqual([
+      "nav.flightplan",
+      "nav.route",
+    ]);
   });
 
-  test("标题来自本站词典，站名来自 can-ui", () => {
-    const links = buildCrossLinks(t, { locale: "zh-cn", signedIn: true });
-    expect(links.label).toBe("links.label");
-    expect(links.items.map((item) => item.name)).toContain("在线雷达");
+  test("每一项和每个子项都有图标", () => {
+    for (const item of buildNav(t)) {
+      expect(item.icon).toBeTruthy();
+      for (const child of item.children ?? []) expect(child.icon).toBeTruthy();
+    }
+  });
+
+  test("没有外链：跨站链接由外壳的 NetworkMenu 给", () => {
+    expect(hrefs().every((href) => href.startsWith("/"))).toBe(true);
+  });
+
+  test("手机标签：概览、飞行计划、航路；机场和设置进「我的」", () => {
+    const { tabs, overflow } = railTabs(buildNav(t));
+    expect(tabs).toEqual([
+      { name: "nav.dashboard", href: "/", icon: "squares2x2" },
+      { name: "nav.flightplan", href: "/flightplan", icon: "paperAirplane" },
+      { name: "nav.route", href: "/route", icon: "map" },
+    ]);
+    expect(overflow.map((link) => link.href)).toEqual([
+      "/airports",
+      "/settings",
+    ]);
+  });
+});
+
+describe("buildProfileItems", () => {
+  test("账户菜单里是设置", () => {
+    expect(buildProfileItems(t)).toEqual([
+      { name: "nav.settings", href: "/settings", icon: "cog6Tooth" },
+    ]);
   });
 });

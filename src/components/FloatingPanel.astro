@@ -7,7 +7,8 @@
  * 抽屉 —— 这些都写在 globals.css 里，这里只把声明挂到 `data-width` 上。
  *
  * **是 Astro 组件，不是 Vue 岛屿。** 里面装的是各页自己的岛屿，把整页塞进一个岛
- * 屿就是每一页都为外壳付一次水合代价（轨当初避开的正是这个）。折叠、拖动、把位置
+ * 屿就是每一页都为外壳付一次水合代价。它在 Frame 的默认插槽里，作为静态 HTML
+ * 传入，不随 Frame 水合。折叠、拖动、把位置
  * 告诉地图，都在 `lib/panelController.ts` 那段普通脚本里。
  *
  * `transition:name`：换页时新旧两张面板被当成同一个东西，视图过渡把宽度从旧的动到
@@ -45,9 +46,7 @@ const handle = handleState(initialSnap(width), {
 });
 ---
 
-<main
-  id="main-content"
-  tabindex="-1"
+<section
   class="floating-panel glass"
   data-floating-panel
   data-width={width}
@@ -101,7 +100,7 @@ const handle = handleState(initialSnap(width), {
       <BeianLine />
     </div>
   </div>
-</main>
+</section>
 
 <script>
   import { mountPanel, unmountPanel } from "@/lib/panelController";

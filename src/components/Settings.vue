@@ -9,28 +9,29 @@
  *    所以绑定成功后回显的值可能和输入的不一样，这是对的。
  * 3. **本机偏好** —— 主题、语言、侧栏、「不使用受限汇编」，全部只存在这台设备上。它们不值得占用
  *    can-api 的一张表，而且换一台设备本来就该重新选。
- * 4. **手机上的账户与跨站链接** —— 手机没有侧栏，退出登录、主题语言、去主站和
- *    别的卫星站的链接没有别的家，放在这一页最底下，只在手机上出现（`.phone-only`）。
+ *
+ * 跨站链接和退出登录在外壳里（can-ui 的 CanFrame）：桌面和平板在轨上，手机在底部
+ * 标签栏的「我的」里。这一页不重复。
  */
 import { onBeforeUnmount, onMounted, ref, useId, watch } from "vue";
-import { api, describeFailure, signOut } from "@/lib/canApi";
+import { api, describeFailure } from "@/lib/canApi";
 import { createTranslator } from "@/lib/i18n";
 import { hideNaip, setHideNaip } from "@/lib/naip";
-import { currentRail, setRail } from "@/lib/railState";
-import type { NavSection } from "@/lib/nav";
 import { Icon, ThemeLangControls } from "@jianyuelab-org/can-ui";
+import { currentRail, setRail } from "@jianyuelab-org/can-ui/frame";
 import PanelSection from "@/components/ui/PanelSection.vue";
 import StateCard from "@/components/ui/StateCard.vue";
 
 const props = defineProps<{
   messages: Record<string, unknown>;
+  /** 外壳文案（`efb.frame`），给主题语言那一行。 */
+  chrome: Record<string, unknown>;
   userName: string;
   userId: string;
   email: string;
   rating: number;
   /** 只决定「不使用受限汇编」那一行出不出，不是权限判断（can-db 那边是 cap）。 */
   aipAccess: number;
-  crossLinks: NavSection;
   locale: string;
 }>();
 const t = createTranslator(props.messages);
@@ -102,24 +103,11 @@ async function unlink() {
   notice.value = { kind: "ok", text: t("settings.simbrief.unlinked") };
 }
 
-/* ------------------------------------------------------------ 退出登录 */
-
-/**
- * 和轨上那颗按钮是同一件事（`lib/canApi.ts` 的 `signOut()`）：清 cookie 是
- * can-api 的活，跳转是我们的，**无论成败都跳**。手机上没有轨，这是唯一的入口。
- */
-const signingOut = ref(false);
-function handleSignOut() {
-  if (signingOut.value) return;
-  signingOut.value = true;
-  void signOut();
-}
-
 /* ------------------------------------------------------------ 本机偏好 */
 const railCollapsed = ref(false);
 const railLabelId = useId();
 
-// 和 AppRail 一样只写 data-rail、再由观察者读回来：轨上那颗按钮也会改它，
+// 只写 data-rail（can-ui 的 setRail），再由观察者读回来：轨上那颗按钮也会改它，
 // 这边的开关要跟着变，而不是停在进页面时读到的值上。
 let railObserver: MutationObserver | null = null;
 
@@ -272,7 +260,7 @@ onBeforeUnmount(() => {
               {{ t("settings.local.themeHint") }}
             </p>
           </div>
-          <ThemeLangControls :locale="locale" />
+          <ThemeLangControls :locale="locale" :messages="chrome" />
         </div>
       </div>
     </PanelSection>
@@ -358,39 +346,5 @@ onBeforeUnmount(() => {
         </button>
       </form>
     </PanelSection>
-
-    <!-- 手机专用：轨上那几样的家。平板和桌面上它们在轨里，这里不重复。 -->
-    <div class="phone-only space-y-8">
-      <PanelSection :title="crossLinks.label ?? ''">
-        <ul class="divide-y divide-subtle">
-          <li v-for="link in crossLinks.items" :key="link.href">
-            <a
-              :href="link.href"
-              class="flex items-center gap-3 py-3 text-sm text-ink"
-              :target="link.external ? '_blank' : undefined"
-              :rel="link.external ? 'noopener' : undefined"
-            >
-              <Icon :name="link.icon" class="size-5 text-muted" />
-              <span class="flex-1">{{ link.name }}</span>
-              <Icon
-                v-if="link.external"
-                name="arrowTopRight"
-                class="size-4 text-faint"
-              />
-            </a>
-          </li>
-        </ul>
-      </PanelSection>
-
-      <button
-        type="button"
-        class="btn btn-secondary w-full"
-        :disabled="signingOut"
-        @click="handleSignOut"
-      >
-        <Icon name="arrowRightOnRectangle" class="size-4" />
-        {{ t("account.signOut") }}
-      </button>
-    </div>
   </div>
 </template>
