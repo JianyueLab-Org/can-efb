@@ -119,7 +119,38 @@ const ALLOW_LIST: Record<string, Allowed> = {
   // 降水瓦片 `weather/precipitation/{z}/{x}/{y}` 不在这张表里：路径带坐标，精确匹配
   // 接不住。它有自己的一条窄路由 `weather/precipitation/[z]/[x]/[y].ts`，调用方是
   // RouteMap.vue 的降水图层。
+
+  // 通知铃（`Frame.vue` 的 `notifications`）。**不标 `cacheSeconds`**：答复因人
+  // 而异，要带 cookie。标记一条已读在 `ALLOW_PATTERNS`。
+  notifications: { methods: ["GET"], who: "CanFrame 通知铃：列表" },
+  "notifications/unread": { methods: ["GET"], who: "CanFrame 通知铃：未读数" },
+  "notifications/read-all": {
+    methods: ["POST"],
+    who: "CanFrame 通知铃：全部已读",
+  },
 };
+
+/**
+ * 带一个 id 的路径。正则收紧到数字 id，不带 `cacheSeconds`。
+ */
+const ALLOW_PATTERNS: Array<Allowed & { test: RegExp }> = [
+  {
+    test: /^notifications\/(member|broadcast)\/[0-9]{1,20}$/,
+    methods: ["PATCH"],
+    who: "CanFrame 通知铃：标记一条已读",
+  },
+];
+
+/**
+ * 一条路径放不放行 —— handler 和测试用同一个函数。精确表走 `lookupAllowed`
+ * （只认自己的键），再查模式。
+ */
+export function allowed(path: string): Allowed | undefined {
+  return (
+    lookupAllowed(ALLOW_LIST, path) ??
+    ALLOW_PATTERNS.find((entry) => entry.test.test(path))
+  );
+}
 
 /**
  * 上面两条缓存共用一份。500 条足够装下全站一段时间里真正在问的机场和航路，又不
@@ -146,7 +177,7 @@ const handler: APIRoute = async (context) => {
   // `ALLOW_LIST[rest]` 直接查会把 `toString` / `constructor` / `__proto__` 这
   // 类继承来的键当成命中，下面那道 404 放行、再下一行 `entry.methods` 抛
   // TypeError。理由和做法写在 `lib/allowList.ts` 顶上。
-  const entry = lookupAllowed(ALLOW_LIST, rest);
+  const entry = allowed(rest);
 
   if (!entry) {
     return Response.json(
@@ -255,4 +286,5 @@ const handler: APIRoute = async (context) => {
 
 export const GET = handler;
 export const POST = handler;
+export const PATCH = handler;
 export const DELETE = handler;
