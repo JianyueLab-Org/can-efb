@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
   composeRoutePoints,
+  findProcedureOption,
+  procedureKey,
+  procedureOptions,
+  resolveProcedure,
+  resolveVariant,
+  variantSpecificity,
   joinIdent,
   joinsRoute,
   missedApproachPoints,
@@ -1384,5 +1390,97 @@ describe("坐标相同的两个点只出一个标注", () => {
     expect(
       composeRoutePoints({ star, approach: app }).map((p) => p.ident),
     ).toEqual(["BACON", "CF22"]);
+  });
+});
+
+describe("跑道变体", () => {
+  // RJTT BEKL3A：Navigraph 按跑道一行，末行不限跑道。
+  const bekl = [
+    proc({ name: "BEKL3A", runway: "04", points: ["V04"] }),
+    proc({ name: "BEKL3A", runway: "34B", points: ["V34B"] }),
+    proc({ name: "BEKL3A", runway: "34R", points: ["V34R"] }),
+    proc({ name: "BEKL3A", runway: null, points: ["VALL"] }),
+  ];
+  // NAIP：一个名字一行，runway 是第一条，runways 是全部。
+  const naip = proc({ name: "IDKE5Y", runway: "01", runways: "01,19" });
+  const only = (p: Procedure | null) => p?.points[0] ?? null;
+
+  test("具体程度：同名 > B > 不限或列表里有", () => {
+    expect(variantSpecificity(bekl[2], "34R")).toBe(3);
+    expect(variantSpecificity(bekl[1], "34R")).toBe(2);
+    expect(variantSpecificity(bekl[1], "34C")).toBe(2);
+    expect(variantSpecificity(bekl[1], "34")).toBe(0);
+    expect(variantSpecificity(bekl[3], "34R")).toBe(1);
+    expect(variantSpecificity(bekl[0], "34R")).toBe(0);
+    expect(variantSpecificity(naip, "01")).toBe(3);
+    expect(variantSpecificity(naip, "19")).toBe(1);
+    expect(variantSpecificity(naip, "36")).toBe(0);
+  });
+
+  test("选了跑道时取最具体的那一行", () => {
+    expect(only(resolveVariant(bekl, "34R"))).toBe("V34R");
+    expect(only(resolveVariant(bekl, "34L"))).toBe("V34B");
+    expect(only(resolveVariant(bekl, "04"))).toBe("V04");
+    expect(only(resolveVariant(bekl, "16L"))).toBe("VALL");
+    expect(resolveVariant(bekl.slice(0, 3), "16L")).toBeNull();
+  });
+
+  test("并列时取先到的", () => {
+    const tied = [
+      proc({ runway: null, points: ["A"] }),
+      proc({ runway: null, points: ["B"] }),
+    ];
+    expect(only(resolveVariant(tied, "01"))).toBe("A");
+  });
+
+  test("没选跑道：有不限跑道的那一行就用它，否则第一行", () => {
+    expect(only(resolveVariant(bekl, ""))).toBe("VALL");
+    expect(only(resolveVariant(bekl.slice(0, 3), ""))).toBe("V04");
+    expect(resolveVariant([], "")).toBeNull();
+  });
+
+  test("一个名字一项，副标题是全部行的跑道", () => {
+    const list = [...bekl, naip, proc({ kind: "star", name: "BEKL3A" })];
+    const all = procedureOptions(list, "sid", "");
+    expect(all.map((o) => o.label)).toEqual(["BEKL3A", "IDKE5Y"]);
+    expect(all[0].variants).toHaveLength(4);
+    expect(all[0].anyRunway).toBe(true);
+    expect(all[0].runways).toEqual(["04", "34B", "34R"]);
+    expect(all[1].anyRunway).toBe(false);
+    expect(all[1].runways).toEqual(["01", "19"]);
+  });
+
+  test("选了跑道时只留用得上的名字", () => {
+    const list = [...bekl.slice(0, 3), naip];
+    expect(procedureOptions(list, "sid", "19").map((o) => o.label)).toEqual([
+      "IDKE5Y",
+    ]);
+    expect(procedureOptions(list, "sid", "34L").map((o) => o.label)).toEqual([
+      "BEKL3A",
+    ]);
+  });
+
+  test("换跑道重新解析；用不上时为 null", () => {
+    expect(only(resolveProcedure(bekl, "sid", "34R", "BEKL3A"))).toBe("V34R");
+    expect(only(resolveProcedure(bekl, "sid", "04", "BEKL3A"))).toBe("V04");
+    expect(
+      resolveProcedure(bekl.slice(0, 3), "sid", "16L", "BEKL3A"),
+    ).toBeNull();
+  });
+
+  test("按标签找，再按名字找", () => {
+    const apps = [
+      proc({ kind: "approach", name: "R01", variant: "y", runway: "01" }),
+      proc({ kind: "approach", name: "R01", variant: "z", runway: "01" }),
+    ];
+    const options = procedureOptions(apps, "approach", "01");
+    expect(options.map((o) => o.label)).toEqual(["R01-Y", "R01-Z"]);
+    expect(findProcedureOption(options, "R01-Z")?.label).toBe("R01-Z");
+    expect(findProcedureOption(options, "r01")?.label).toBe("R01-Y");
+    expect(findProcedureOption(options, "")).toBeNull();
+  });
+
+  test("同名的几行键各不相同", () => {
+    expect(new Set(bekl.map(procedureKey)).size).toBe(bekl.length);
   });
 });

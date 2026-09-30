@@ -18,8 +18,7 @@ import {
   composeRoutePoints,
   findRunway,
   loadAirportProcedures,
-  pickProcedures,
-  procedureLabel,
+  resolveProcedure,
   type AirportProcedures,
   type Procedure,
   type ProcedureKind,
@@ -29,6 +28,7 @@ import {
   type ProcedureSelection,
 } from "@/lib/procedureSelection";
 
+/** 存的名字按跑道解析成一行（见 `resolveProcedure`）。 */
 function pick(
   data: AirportProcedures | null,
   kind: ProcedureKind,
@@ -36,11 +36,7 @@ function pick(
   label: string,
 ): Procedure | null {
   if (!data || !label) return null;
-  return (
-    pickProcedures(data.procedures, kind, runway).find(
-      (p) => procedureLabel(p) === label,
-    ) ?? null
-  );
+  return resolveProcedure(data.procedures, kind, runway, label);
 }
 
 /**
@@ -51,7 +47,9 @@ function pick(
  * 而没在本机选过程序的成员（地图上已提交计划的默认样子）看到的就是它。找回程序本身，
  * 交给 `composeRoutePoints` 按跑道和接入点只取实际飞的那几段。
  *
- * 找不到（机场数据没取到、名字对不上）时给 null，resolve 那一段原样留着。
+ * 同名的几行按跑道解析，只用解析出的那一行（`resolveProcedure`）。找不到（机场数据没取到、
+ * 名字对不上、没选跑道而这个名字有好几行、没有一行用得上这条跑道）时给 null，resolve 那一段
+ * 原样留着。
  */
 function resolvedProcedure(
   data: AirportProcedures | null,
@@ -61,13 +59,7 @@ function resolvedProcedure(
 ): Procedure | null {
   const name = points.find((p) => p.kind === kind)?.via;
   if (!data || !name) return null;
-  return (
-    pickProcedures(data.procedures, kind, runway).find(
-      (p) => p.name === name,
-    ) ??
-    data.procedures.find((p) => p.kind === kind && p.name === name) ??
-    null
-  );
+  return resolveProcedure(data.procedures, kind, runway, name);
 }
 
 /** 机场磁差：can-db 给的，或由跑道估计。没有机场数据时为 null。 */
