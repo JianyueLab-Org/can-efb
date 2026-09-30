@@ -1,19 +1,50 @@
 {
   "efb": {
     "siteName": "CAN 电子飞行包",
-    "shortName": "EFB",
     "tagline": "Cerulean Aviation Network 的飞行员电子飞行包",
-    "skipToContent": "跳到主要内容",
-    "rail": {
-      "label": "主导航",
-      "close": "关闭导航",
-      "collapse": "收起侧栏",
-      "expand": "展开侧栏"
-    },
-    "search": {
-      "label": "快速跳转",
-      "placeholder": "跳转到…",
-      "noResults": "没有匹配的页面"
+    "frame": {
+      "skipToContent": "跳到主要内容",
+      "signIn": "登录",
+      "signOut": "退出登录",
+      "signingOut": "正在退出…",
+      "signOutFailed": "退出失败，请重试。",
+      "openSidebar": "打开侧栏",
+      "closeSidebar": "关闭侧栏",
+      "close": "关闭",
+      "dismiss": "关闭提示",
+      "sidebar": "侧栏",
+      "openUserMenu": "打开账户菜单",
+      "openMenu": "打开菜单",
+      "siteNavigation": "本站导航",
+      "workspace": {
+        "label": "工作区"
+      },
+      "search": {
+        "label": "快速跳转",
+        "placeholder": "跳转到…",
+        "noResults": "没有匹配的页面"
+      },
+      "theme": {
+        "label": "外观",
+        "light": "浅色",
+        "dark": "深色",
+        "system": "跟随系统"
+      },
+      "language": {
+        "label": "选择语言"
+      },
+      "rail": {
+        "collapse": "收起侧栏",
+        "expand": "展开侧栏",
+        "me": "我的"
+      },
+      "noAccess": {
+        "title": "你没有访问这一页的权限",
+        "rating": "需要评级 {required} 或以上。",
+        "permission": "需要 {name} 权限。",
+        "signedInAs": "当前登录：{name}（#{id}）。",
+        "reachable": "你可以使用的站点"
+      }
     },
     "panel": {
       "collapse": "收起面板",
@@ -25,13 +56,6 @@
         "full": "面板已拉满"
       }
     },
-    "account": {
-      "menu": "账户菜单",
-      "signIn": "登录",
-      "signedOut": "未登录",
-      "signedOutHint": "登录后才能看到你自己的飞行计划与日志",
-      "signOut": "退出登录"
-    },
     "sections": {
       "flight": "飞行",
       "briefing": "资料"
@@ -42,9 +66,6 @@
       "route": "航路",
       "airports": "机场",
       "settings": "设置"
-    },
-    "links": {
-      "label": "其他站点"
     },
     "pages": {
       "dashboard": {

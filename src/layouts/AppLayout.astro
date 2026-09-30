@@ -1,29 +1,27 @@
 ---
 /**
- * 外壳：**地图铺满视口，轨和面板浮在上面。** 没有站头，也不要加回来 —— 为什么见
- * AppRail.vue 顶上的注释。
+ * 外壳：**地图铺满视口，面板浮在上面。** 没有站头，也不要加回来。
  *
- * 这是第三版外壳。第二版是「轨 | 面板 | 地图」三栏，地图只拿到剩下那一截，而且
- * 1024–1152 之间得改走上下堆叠。现在地图永远是整个视口，面板是压在它上面的一张
- * 玻璃卡片，宽度由页面声明（`panel`）。地图从 `lib/mapBus.ts` 的 `panel:layout`
- * 知道面板盖住了哪一块，用 `setPadding` 把内容对到露出来的那一块中间。
+ * 轨、手机标签栏和「我的」面板是 can-ui 的 `CanFrame`（`layout="rail"`），经
+ * `components/Frame.vue` 传入。面板在 Frame 的默认插槽里，落在
+ * `<main id="main-content">` 之内。地图不进插槽：`transition:persist` 让它跨页面
+ * 存活，它排在 Frame 后面。
  *
- * 层次自下而上：MapStage → 面板 → 轨。DOM 里地图排在最后，是为了键盘顺序：跳过
- * 链接、轨、面板正文，最后才是地图上的控件。
+ * 层次自下而上：MapStage → 面板 → 轨。DOM 顺序：跳过链接、轨、标签栏、面板、地图。
  *
- * `client:load` 只给三样：轨（唯一的导航，手机上那条标签栏在水合之前按不动也要
- * 能跳页，所以里面全是 `<a>`）、地图（这块面积上没有任何服务端渲染的内容能先顶
- * 着）、以及每一页自己那一个主岛屿。
+ * `client:load` 给三样：Frame、地图、每一页自己的主岛屿。
  *
- * `messages` 只传 `efb` 这一本：岛屿的 props 会原样序列化进每个页面的 HTML。
+ * 岛屿只拿自己那一本：Frame 拿 `efb.frame`，地图拿翻好的字符串。岛屿的 props 会
+ * 原样序列化进每个页面的 HTML。
  */
 import BaseLayout from "@/layouts/BaseLayout.astro";
-import AppRail from "@/components/AppRail.vue";
+import Frame from "@/components/Frame.vue";
 import MapStage from "@/components/map/MapStage.vue";
 import FloatingPanel from "@/components/FloatingPanel.astro";
+import { originsFromEnv } from "@jianyuelab-org/can-ui/sites";
 import { getLocale, getMessages, useTranslations } from "@/lib/i18n";
-import { buildCrossLinks, buildNav } from "@/lib/nav";
-import { toEfbUser } from "@/lib/session";
+import { buildNav, buildProfileItems } from "@/lib/nav";
+import { toFrameUser } from "@/lib/session";
 import { signInUrl } from "@/lib/config";
 import type { PanelWidth } from "@/lib/panelLayout";
 
@@ -40,56 +38,50 @@ const locale = getLocale(Astro.cookies);
 const t = useTranslations(locale, "efb");
 
 // 中间件已经问过 can-api 了，这里只是取出来 —— 不要在页面里再解一次会话。
-const user = toEfbUser(Astro.locals.user);
-
-const sections = buildNav(t);
-const crossLinks = buildCrossLinks(t, {
-  locale,
-  rating: Astro.locals.user?.rating,
-  signedIn: !!Astro.locals.user,
-});
+const user = toFrameUser(Astro.locals.user);
 ---
 
 <BaseLayout title={title} description={description}>
-  <AppRail
-    sections={sections}
-    crossLinks={crossLinks}
-    pathname={Astro.url.pathname}
-    messages={getMessages(locale, "efb")}
+  <Frame
     locale={locale}
+    pathname={Astro.url.pathname}
+    nav={buildNav(t)}
     user={user}
-    signInHref={signInUrl()}
+    profileItems={buildProfileItems(t)}
+    signInHref={signInUrl(Astro.url)}
+    messages={getMessages(locale, "efb.frame")}
+    origins={originsFromEnv(import.meta.env)}
     client:load
-  />
-
-  <FloatingPanel
-    width={panel}
-    title={title}
-    description={description}
-    labels={{
-      collapse: t("panel.collapse"),
-      expand: t("panel.expand"),
-      handle: t("panel.handle"),
-      sheet: {
-        collapsed: t("panel.sheet.collapsed"),
-        half: t("panel.sheet.half"),
-        full: t("panel.sheet.full"),
-      },
-    }}
   >
-    <slot />
-  </FloatingPanel>
+    <FloatingPanel
+      width={panel}
+      title={title}
+      description={description}
+      labels={{
+        collapse: t("panel.collapse"),
+        expand: t("panel.expand"),
+        handle: t("panel.handle"),
+        sheet: {
+          collapsed: t("panel.sheet.collapsed"),
+          half: t("panel.sheet.half"),
+          full: t("panel.sheet.full"),
+        },
+      }}
+    >
+      <slot />
+    </FloatingPanel>
+  </Frame>
 
   {
     /*
       地图跨页面存活：`transition:persist` 让 Astro 在导航时保留这个岛屿的实例。
-      没有它，每换一页地图都要重新初始化、底图重新下载一遍 —— 在平板上那是一次
-      肉眼可见的白闪，而地图是这一版外壳里唯一从不改变的东西。
+      没有它，每换一页地图都要重新初始化、底图重新下载一遍。它不进 Frame 的插槽：
+      插槽里的东西每页随新文档换掉。
     */
   }
   <MapStage
     label={t("route.map.label")}
-    cid={user?.id ?? null}
+    cid={Astro.locals.user?.username ?? null}
     t={{
       denied: t("map.denied"),
       emptyNavaids: t("map.emptyLayer.navaids"),

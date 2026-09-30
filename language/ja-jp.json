@@ -1,19 +1,50 @@
 {
   "efb": {
     "siteName": "CAN 電子フライトバッグ",
-    "shortName": "EFB",
     "tagline": "Cerulean Aviation Network のパイロット向け電子フライトバッグ",
-    "skipToContent": "本文へスキップ",
-    "rail": {
-      "label": "メインナビゲーション",
-      "close": "ナビゲーションを閉じる",
-      "collapse": "サイドバーを折りたたむ",
-      "expand": "サイドバーを展開する"
-    },
-    "search": {
-      "label": "クイックナビ",
-      "placeholder": "ページを検索…",
-      "noResults": "該当するページがありません"
+    "frame": {
+      "skipToContent": "本文へスキップ",
+      "signIn": "ログイン",
+      "signOut": "ログアウト",
+      "signingOut": "ログアウト中…",
+      "signOutFailed": "ログアウトに失敗しました。もう一度お試しください。",
+      "openSidebar": "サイドバーを開く",
+      "closeSidebar": "サイドバーを閉じる",
+      "close": "閉じる",
+      "dismiss": "非表示にする",
+      "sidebar": "サイドバー",
+      "openUserMenu": "アカウントメニューを開く",
+      "openMenu": "メニューを開く",
+      "siteNavigation": "サイト内ナビゲーション",
+      "workspace": {
+        "label": "ワークスペース"
+      },
+      "search": {
+        "label": "クイックナビ",
+        "placeholder": "ページを検索…",
+        "noResults": "該当するページがありません"
+      },
+      "theme": {
+        "label": "外観",
+        "light": "ライト",
+        "dark": "ダーク",
+        "system": "システムに合わせる"
+      },
+      "language": {
+        "label": "言語を選択"
+      },
+      "rail": {
+        "collapse": "サイドバーを折りたたむ",
+        "expand": "サイドバーを展開する",
+        "me": "マイ"
+      },
+      "noAccess": {
+        "title": "このページへのアクセス権がありません",
+        "rating": "レーティング {required} 以上が必要です。",
+        "permission": "{name} 権限が必要です。",
+        "signedInAs": "{name}（#{id}）としてログイン中。",
+        "reachable": "利用できるサイト"
+      }
     },
     "panel": {
       "collapse": "パネルを畳む",
@@ -25,13 +56,6 @@
         "full": "パネルは全画面です"
       }
     },
-    "account": {
-      "menu": "アカウントメニュー",
-      "signIn": "ログイン",
-      "signedOut": "未ログイン",
-      "signedOutHint": "ログインすると自分のフライトプランとログブックが表示されます",
-      "signOut": "ログアウト"
-    },
     "sections": {
       "flight": "フライト",
       "briefing": "ブリーフィング"
@@ -42,9 +66,6 @@
       "route": "ルート",
       "airports": "空港",
       "settings": "設定"
-    },
-    "links": {
-      "label": "ほかのサイト"
     },
     "pages": {
       "dashboard": {

@@ -1,19 +1,50 @@
 {
   "efb": {
     "siteName": "CAN 電子飛行包",
-    "shortName": "EFB",
     "tagline": "Cerulean Aviation Network 的飛行員電子飛行包",
-    "skipToContent": "跳到主要內容",
-    "rail": {
-      "label": "主導覽",
-      "close": "關閉導覽",
-      "collapse": "收合側欄",
-      "expand": "展開側欄"
-    },
-    "search": {
-      "label": "快速跳轉",
-      "placeholder": "跳轉到…",
-      "noResults": "沒有符合的頁面"
+    "frame": {
+      "skipToContent": "跳到主要內容",
+      "signIn": "登入",
+      "signOut": "登出",
+      "signingOut": "正在登出…",
+      "signOutFailed": "登出失敗，請重試。",
+      "openSidebar": "開啟側欄",
+      "closeSidebar": "關閉側欄",
+      "close": "關閉",
+      "dismiss": "關閉提示",
+      "sidebar": "側欄",
+      "openUserMenu": "開啟帳戶選單",
+      "openMenu": "開啟選單",
+      "siteNavigation": "本站導覽",
+      "workspace": {
+        "label": "工作區"
+      },
+      "search": {
+        "label": "快速跳轉",
+        "placeholder": "跳轉到…",
+        "noResults": "沒有符合的頁面"
+      },
+      "theme": {
+        "label": "外觀",
+        "light": "淺色",
+        "dark": "深色",
+        "system": "跟隨系統"
+      },
+      "language": {
+        "label": "選擇語言"
+      },
+      "rail": {
+        "collapse": "收合側欄",
+        "expand": "展開側欄",
+        "me": "我的"
+      },
+      "noAccess": {
+        "title": "你沒有存取這一頁的權限",
+        "rating": "需要評級 {required} 或以上。",
+        "permission": "需要 {name} 權限。",
+        "signedInAs": "目前登入：{name}（#{id}）。",
+        "reachable": "你可以使用的站台"
+      }
     },
     "panel": {
       "collapse": "收起面板",
@@ -25,13 +56,6 @@
         "full": "面板已拉滿"
       }
     },
-    "account": {
-      "menu": "帳戶選單",
-      "signIn": "登入",
-      "signedOut": "未登入",
-      "signedOutHint": "登入後才能看到你自己的飛行計畫與日誌",
-      "signOut": "登出"
-    },
     "sections": {
       "flight": "飛行",
       "briefing": "資料"
@@ -42,9 +66,6 @@
       "route": "航路",
       "airports": "機場",
       "settings": "設定"
-    },
-    "links": {
-      "label": "其他站台"
     },
     "pages": {
       "dashboard": {

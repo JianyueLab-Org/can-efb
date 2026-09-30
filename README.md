@@ -22,13 +22,14 @@ bun install
 bun run dev        # http://localhost:4324
 ```
 
-| 命令              | 作用                           |
-| ----------------- | ------------------------------ |
-| `bun run dev`     | 开发服务器（:4324）            |
-| `bun run build`   | 构建到 `./dist/`               |
-| `bun run preview` | 本地预览构建产物（:4324）      |
-| `bun run lint`    | 格式检查 + 类型检查（CI 的门） |
-| `bun run format`  | prettier 格式化                |
+| 命令                  | 作用                                     |
+| --------------------- | ---------------------------------------- |
+| `bun run dev`         | 开发服务器（:4324）                      |
+| `bun run build`       | 构建到 `./dist/`                         |
+| `bun run preview`     | 本地预览构建产物（:4324）                |
+| `bun run lint`        | 格式检查 + 类型检查 + 测试（CI 的门）    |
+| `bun run check:pages` | can-ui 登记的本站路由都在 `src/pages` 下 |
+| `bun run format`      | prettier 格式化                          |
 
 本地跑 `dev` / `preview` 时把 origin 一起给上，否则浏览器发出的写请求一律 403：
 
@@ -44,17 +45,17 @@ PUBLIC_ORIGIN=http://localhost:4324 bun run preview
 
 ## 布局：一条侧栏，没有站头
 
-这是这个站最需要先知道的一件事 —— **它没有顶栏**。品牌、⌘K 快速跳转、主题、语
-言、账户全部在左侧那条轨里；轨可以折叠成一列图标。**手机（<768px）上没有轨**，
-换成底部标签栏：五个导航项一行。页面内容是浮在地图上的三档底部抽屉。
+外壳是 can-ui 的 `CanFrame`（`layout="rail"`），由 `src/components/Frame.vue` 接入。
+**它没有顶栏**：品牌、跨站菜单、⌘K、主题、语言、账户全部在左侧那条轨里；轨可以
+折叠成一列图标。**手机（<768px）上没有轨**，换成底部标签栏：概览、飞行计划、航路、
+⌘K、「我的」。「我的」打开底部面板：机场、设置，然后跨站菜单、主题语言、账户。页面内容是浮在地图上的面板，手机上
+是三档底部抽屉。
 
-为什么这么设计、以及折叠状态为什么存在 `<html data-rail>` 上而不是组件里，写在
-[`AGENTS.md`](./AGENTS.md) 和 `src/components/AppRail.vue` 的注释里。**不要加回
-顶栏。**
+折叠状态存在 `<html data-rail>` 上，见 [`AGENTS.md`](./AGENTS.md)。**不要加回顶栏。**
 
 ## 目录
 
-外壳是一张铺满窗口的地图，轨和面板浮在上面。
+外壳是一张铺满窗口的地图，面板浮在上面。
 
 ```
 deploy/k8s.yaml        jyl-tyo 上的部署（无 Secret）
@@ -63,17 +64,17 @@ scripts/               类型检查、词典检查、地图样式检查、底图
 src/
 ├── basemap/           随站发的底图和情报区边界
 ├── components/
-│   ├── AppRail        轨；手机上换成底部标签栏
+│   ├── Frame          can-ui 的 CanFrame（rail）：轨、手机标签栏、⌘K、账户
 │   ├── FloatingPanel  浮在地图上的面板；手机上是三档底部抽屉
 │   ├── map/           常驻地图：MapStage、RouteMap（MapLibre，从不 SSR）、MapControls、各 use*Layer
 │   ├── ui/            StateCard、PanelSection、Field、FieldGrid
 │   ├── flightplan/    飞行计划页
 │   ├── Dashboard      概览 · RouteTabs 航路 · Airports 机场 · Settings 设置
 │   ├── PageHeader     面板里的页面标题区（不是站头）
-│   └── *Script        无闪烁的轨初始化
+│   └── PersistHtmlState 客户端导航时保住 <html> 上的主题和 data-rail
 ├── layouts/
 │   ├── BaseLayout     <head> 和首屏脚本，不带外壳
-│   └── AppLayout      地图 + 轨 + 面板，页面都用这个
+│   └── AppLayout      Frame（面板在插槽里）+ 地图，页面都用这个
 ├── lib/               纯逻辑和它们的测试；mapBus 是面板到地图的通道
 ├── server/            SSR 调 can-api / can-db，转发 Cookie
 ├── middleware.ts      整站登录门
@@ -85,7 +86,7 @@ src/
 ```
 
 加一个页面：`src/lib/nav.ts` 加一行，四本词典各加标题和说明，`src/pages/` 加一
-个文件。侧栏和快速跳转会一起长出来。
+个文件。轨、手机标签栏和 ⌘K 会一起长出来。
 
 更深的约定、哪些文件是从兄弟站同步来的、以及还没做的事，见
 [`AGENTS.md`](./AGENTS.md)。

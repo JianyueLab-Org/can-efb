@@ -2,18 +2,14 @@
 /**
  * 页面外框 —— `<head>`、两个首屏脚本、`<body>`，仅此而已。
  *
- * 和 can-web / can-dev / can-radar 的 BaseLayout 是同一份形状，差别只有两处，
- * 都是这个站没有站头带来的：多了一个 RailScript（侧栏折叠状态要在首屏之前定
- * 下来），少了 `floatingControls` 那个开关（主题和语言在轨里，不在右下角的浮
- * 动药丸上，所以这里没有第二个位置需要开关）。
+ * 两个首屏脚本都来自 can-ui：`ThemeScript`（主题）和 `RailScript`（轨的折叠状态，
+ * 写 `<html data-rail>`，存储键 `efb.rail`）。
  *
- * 外壳不在这一层。要外壳的页面用 AppLayout；这一层留给以后**不要**外壳的页面
- * —— 登录回跳、打印视图、全屏航图。can-dev 把站头塞进外框里，后来又拆了出来，
- * 这里直接从拆开的形状起步。
+ * 外壳不在这一层。要外壳的页面用 AppLayout；这一层留给**不要**外壳的页面。
  */
 import "@/styles/globals.css";
 import ThemeScript from "@jianyuelab-org/can-ui/components/ThemeScript.astro";
-import RailScript from "@/components/RailScript.astro";
+import RailScript from "@jianyuelab-org/can-ui/components/RailScript.astro";
 import PersistHtmlState from "@/components/PersistHtmlState.astro";
 import { ClientRouter } from "astro:transitions";
 import { getLocale, useTranslations } from "@/lib/i18n";
@@ -37,9 +33,8 @@ const fullTitle = title ? `${title} · ${t("siteName")}` : t("siteName");
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     {
-      /* public/ 里现在只有 Astro 模板留下的 favicon。三个兄弟站还引用
-        favicon-32.png / apple-touch-icon.png / icon-512.png —— 品牌资源到位
-        之后把那三行一起补上，现在指过去只会是三个 404。 */
+      /* public/ 里现在只有 favicon.svg。品牌资源到位之后再补 favicon-32.png /
+        apple-touch-icon.png / icon-512.png，现在指过去只会是三个 404。 */
     }
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>{fullTitle}</title>
@@ -54,16 +49,11 @@ const fullTitle = title ? `${title} · ${t("siteName")}` : t("siteName");
     <RailScript />
     {
       /*
-      只为一件事而来：`transition:persist` 要靠它才生效，而地图必须跨页面
-      存活（AppLayout 里写了为什么）。副作用是导航变成客户端接管的 —— 两个
-      首屏脚本因此要经得起重复执行，ThemeScript 和 RailScript 都是幂等的
-      写法，所以这一步是安全的。
-    */
-    }
-    {
-      /*
-      必须和 ClientRouter 成对存在：那个东西会连 <html> 上的属性一起换掉，
-      而主题和轨的折叠状态正好写在那里。理由写在组件里。
+      ClientRouter 为地图的 `transition:persist` 而来。导航由客户端接管，两个首屏
+      脚本因此要经得起重复执行；ThemeScript 和 RailScript 都是幂等的。
+
+      PersistHtmlState 必须和 ClientRouter 成对存在：换页时 <html> 上的属性会被
+      换掉，而主题和 data-rail 正好写在那里。
     */
     }
     <PersistHtmlState />

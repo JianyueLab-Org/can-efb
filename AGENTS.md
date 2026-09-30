@@ -32,8 +32,9 @@ cookie 转发回去。哪天有人要在这里加 Secret，先确认那件事不
 
 ## 外壳：地图铺满，面板浮在上面
 
-外壳是**一张铺满窗口的地图**，轨和面板都是浮在它上面的玻璃（`.glass`，材质取
-can-ui 的 `--material-regular` / `--material-blur-regular`）。以前是**轨 | 面板 |
+外壳是**一张铺满窗口的地图**，面板是浮在它上面的玻璃（`.glass`，材质取 can-ui 的
+`--material-regular` / `--material-blur-regular`）；轨是 can-ui 的不透明
+`bg-surface-sunken`，贴在左边。以前是**轨 | 面板 |
 地图**三栏，地图只拿剩下的宽度 —— 1280 上四成，1024 上比轨还窄。现在地图永远是整
 个窗口，面板挡住的那一块用**内边距**让出来：
 
@@ -73,7 +74,7 @@ can-ui 的 `--material-regular` / `--material-blur-regular`）。以前是**轨 
 
 768 和 1152 **只写在 `globals.css` 的媒体查询里**。JS 要知道当前排布就读
 `--shell-mode`（`parseShellMode`），要知道轨的默认就读 `--rail-auto`
-（`effectiveRail`）—— 不写 `matchMedia`。以前 RouteMap 自己写过一份
+（can-ui 的 `effectiveRail`）—— 不写 `matchMedia`。以前 RouteMap 自己写过一份
 `matchMedia("(min-width: 1024px)")`，改断点时两份分叉，那是没人查得到的毛病。
 
 手机的抽屉按 can-ui 的 `projectToDetent` 吸附到三档之一，拖动时越界有阻尼
@@ -87,55 +88,45 @@ can-ui 的 `--material-regular` / `--material-blur-regular`）。以前是**轨 
 
 ## 这个站没有站头，这是整个布局的前提
 
-**不要加回顶栏。** 凡是会被放进顶栏的东西 —— 品牌、⌘K 快速跳转、主题、语言、
-账户 —— 都在左侧那条轨里（`src/components/AppRail.vue`）。
+**不要加回顶栏。** 外壳是 can-ui 的 `CanFrame`，`layout="rail"`，由
+`src/components/Frame.vue` 传入导航、成员、外壳文案和各站地址。品牌、跨站菜单
+（`NetworkMenu`）、⌘K、主题、语言、账户和退出登录都在左侧那条轨里。
 
-理由：EFB 是在飞行途中看的，屏幕多半是横放的平板或者副屏，**竖直方向是最紧张
-的资源**。一条 64px 的顶栏在 1280×800 上吃掉 8% 的高度，而它装的每一样东西在
-侧栏里都放得下 —— 侧栏紧张的是水平方向，而那正是这条轨可以收成一列图标的原因。
+理由：EFB 在飞行途中看，屏幕多半是横放的平板或副屏，竖直方向最紧张。
 
-由此带来三个后果，都在 AppRail 里解决了，改动之前先读那里的注释：
+- **手机（<768px）没有轨**，换成底部标签栏：标了 `phoneTab` 的三页（概览、飞行计划、
+  航路），然后 ⌘K，最后「我的」。「我的」打开底部面板：顶部是其余本站页面（机场、设置），
+  然后跨站菜单、主题语言、账户。
+- **⌘K** 是 can-ui 的 `CommandPalette`：本站页面在前，别的站的页面按站分组在后。
+- **退出登录**是 can-ui 的 `AccountMenu`：POST 本站 `/api/v1/auth/signout`，反代原样
+  带回 can-api 的 `Set-Cookie`，然后去 can-web 的 `/`（`afterSignOut="web"`）。
+- 账户菜单里退出登录上面是「设置」（`buildProfileItems`）。
+- 设置页保留主题语言那一行和「默认收起侧栏」开关，不放跨站链接和退出按钮。
 
-1. **手机上没有轨**，换成底部标签栏：五个导航项一行，拇指够得着。主题、语言、账
-   户和跨站链接在设置页最底下（`.phone-only`），那是它们在手机上唯一的家。
-2. **⌘K 快速跳转**不能跟着顶栏一起消失，它现在是轨里品牌下面的第一件东西，折
-   叠态退化成一个放大镜方块。
-3. **主题 / 语言 / 账户在轨脚**，靠 `mt-auto` 撑下去而不是绝对定位 —— 导航长到
-   要滚动时它得跟着滚走，而不是盖住最后一个链接。
+`FloatingPanel.astro` 在 `CanFrame` 的默认插槽里，即 `<main id="main-content">` 之内；
+它自己是 `<section>`。它渲染的 `<header>`（`PageHeader.astro`）是**页面级**的标题区，
+不是站头。地图不在插槽里：它靠 `transition:persist` 跨页面存活，排在 `Frame` 后面。
 
-页面的标题和说明由 `FloatingPanel.astro` 用 `PageHeader.astro` 渲染，页面只传
-`title` / `description`。它渲染的 `<header>` 是**页面级**的标题区，不是站头，两者
-不要混为一谈。
+### 折叠状态在 `<html data-rail>` 上
 
-### 折叠状态为什么不在组件的 state 里
+轨在 17rem 和 4.75rem 之间折叠。`data-rail` 三个值：`expanded`、`collapsed`、`auto`。
+`auto` 是没存过偏好：桌面展开，平板（768–1151px）收起，由 CSS 给出 `--rail-auto`。
 
-轨可以在 17rem 和 4.75rem 之间折叠。`data-rail` 有三个值：`expanded`、`collapsed`、
-`auto`。`auto` 是**没存过偏好**：桌面展开、平板（768–1151px）收起，由 CSS 在媒体
-查询里给 `--rail-auto` 赋值。JS 要知道此刻实际是哪一种，用 `lib/panelLayout.ts`
-的 `effectiveRail(data-rail, --rail-auto)`，不自己写断点。手机上没有轨，换成底部
-标签栏。
+全部来自 can-ui：
 
-折叠要同时改两个东西：轨自己的宽度，和正文那一列的左内边距。而正文是 Astro 渲
-染的静态 HTML，和 AppRail 这个 Vue 岛屿之间**没有响应式通道** —— 用 props 传就
-得把整页塞进岛屿，那样每个页面都要为外壳付一次水合代价。
+- `@jianyuelab-org/can-ui/components/RailScript.astro` —— 首屏之前从 localStorage 的
+  `efb.rail` 读出、写到 `data-rail`。在 `BaseLayout.astro` 的 `<head>` 里，紧跟
+  `ThemeScript`。
+- `@jianyuelab-org/can-ui/styles` 的 `frame.css` —— `--rail-width`、
+  `--rail-width-collapsed`、`--rail-current`、`--rail-auto`、`--tabbar-height`、
+  `.app-rail`、`.rail-item`、`.rail-label`、`.tab-bar`、`.tab-bar-item`。本站
+  `globals.css` 不定义它们。
+- `currentRail()` / `setRail()`（`@jianyuelab-org/can-ui/frame`）—— 读写 `data-rail`。`CanFrame` 的折叠钮
+  和设置页的开关都用它们。
 
-所以状态存在 `<html data-rail>` 上，两边都从同一个 CSS 变量取值：
-
-- `src/components/RailScript.astro` —— 首屏绘制**之前**从 localStorage 读出来写
-  好，没存过就写 `auto`。晚一步就是布局跳动：正文会横向平移 12rem，和主题闪烁是
-  同一类毛病。
-- `src/styles/globals.css` 末尾的 `can-efb only` 一节 —— `--rail-current`、
-  `.app-rail`，以及折叠态下的 `.rail-item` / `.rail-label`。给轨让位的是
-  `.floating-panel` 自己按 `--rail-current` 让开，不是一个专门的外壳类。（这里
-  以前还列着 `.app-main-offset`，那是**第一版外壳**的类，三栏外壳上线后就没有
-  使用者了，已经删掉；全仓没有任何 `.vue` / `.astro` 还在用它。）
-- `AppRail` 挂载时把 `data-rail` **读回来**当作初始值，而不是第二次去读
-  localStorage：两处各判断一次就会有两个可能不一致的答案。
-- 之后它用 `MutationObserver` **一直跟着** `data-rail`，设置页那个开关也一样。
-  两处都只写 `data-rail`，不互相改对方的 state —— `data-rail` 是唯一的来源。
-
-那两条折叠规则的选择器里保留 `.app-rail` 限定：`data-rail` 挂在 `<html>` 上，这一层
-让规则只作用于轨本身，别处出现的 `.rail-*` 不受折叠态影响。
+本站只读这些值：`.floating-panel` 按 `--rail-current` 和 `--tabbar-height` 让位；
+`lib/panelController.ts` 观察 `data-rail`；`PersistHtmlState.astro` 在客户端导航时把
+`data-rail` 抄到新文档上。
 
 ## 数据：全部经由 can-api，浏览器只打同源
 
@@ -220,7 +211,6 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 
 | 文件                       | 说明                                                                                                                                                                         |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/lib/i18n.ts`          | 除了只加载一个 `efb` 命名空间，其余逐字相同                                                                                                                                  |
 | `src/styles/globals.css`   | 设计系统来自 `@jianyuelab-org/can-ui/styles`（一行 import）；本站新增的在其后 `can-efb only` 一节                                                                            |
 | `src/lib/geo.ts`           | `distanceNm` / `greatCircle` / `arc` 逐字取自 can-radar 的 `radar.ts` 与 `RadarMap.vue`                                                                                      |
 | `src/lib/atc.ts`           | `FACILITY_COLORS` / `facilityRank` / `stationAirport` / `parseFeedTime` 逐字取自 can-radar 的 `radar.ts`；`groupControllers` 是它 `RadarMap.vue` 里 `groupStations` 的列表版 |
@@ -234,6 +224,10 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 （`components/ui/Icon.vue`、`components/ui/ThemeLangControls.vue`、
 `components/ThemeScript.astro`、`lib/useOverlay.ts`）已经删掉，四个都改成从
 `@jianyuelab-org/can-ui` 引入，`icons.ts` 那份键表也随 `Icon` 一起删了。
+
+同样删掉的：`AppRail.vue`、`SidebarNav.vue`、`RailScript.astro`、`lib/railState.ts`、
+本站的 ⌘K 和 i18n 实现。改用 can-ui 的 `CanFrame`、`RailScript`、`currentRail` /
+`setRail` 和 `createSiteI18n`。
 
 `globals.css` 按「上游部分在前、本站部分在末尾单独一节」切开，就是为了同步时可以
 整段替换上半截。
@@ -323,7 +317,7 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 偏好键叫 `atcLive` 而不是 `atc`，是为了不和空域那三个开关里的 `ctr`/`app` 混：那三
 个画的是**空域划分**（静态资料），这一个画的是**谁在线**（实时）。
 
-**这个站自己的**：外壳（`AppRail.vue`、`SidebarNav.vue`、`RailScript.astro`、
+**这个站自己的**：外壳（`Frame.vue`，包 can-ui 的 `CanFrame`；
 `FloatingPanel.astro` + `lib/panelController.ts`、两个 layout、`PageHeader.astro`）、
 数据层（`lib/canApi.ts`、`server/canApi.ts`、`lib/config.ts`、`lib/session.ts`、
 `middleware.ts`、`pages/api/v1/[...path].ts`、`pages/api/db/[...path].ts`）、页面
@@ -350,10 +344,6 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 
 守法仍然是同一条：`MapStage` 用 `defineAsyncComponent` 加一个 `mounted` 守着。
 静态 import 它、或者去掉那个 `v-if`，**每一个**页面都会 500 —— 不再只是 `/route`。
-
-`SidebarNav.vue` 虽然形状来自 can-web，但把可折叠的 `children` 换成了**扁平分
-节** —— 理由见 `src/lib/nav.ts`：轨能收成图标态，而手风琴在图标态下没有讲得通
-的交互（点一个图标是展开还是跳转？）。
 
 ### 降水图层（`useWeatherLayer`）
 
@@ -694,22 +684,31 @@ can-db 存原文，它那条迁移写明了理由：解码要判 A/B/+/- 那套�
 ## 导航是一份数据
 
 加一个页面 = 在 `src/lib/nav.ts` 里加一行 + 在四本词典里加两条文案 +
-`src/pages/` 下加一个文件。侧栏和 ⌘K 一起长，不需要分别改。
+`src/pages/` 下加一个文件。轨、手机标签栏和 ⌘K 一起长。
 
-`nav.ts` 里写的是 i18n 的**键**，文案在 `buildNav(t)` 里解析 —— 岛屿拿到的必须
-是已经翻好的字符串。
+`buildNav(t)` 返回 can-ui 的 `NavItem[]`：有标题的一节是带 `children` 的组。
+`phoneTab: true` 的页进手机标签栏（组里组外都可以标，最多三页，现在是概览、飞行计划、
+航路），其余在「我的」面板顶部。
+`nav.ts` 里写 i18n 的**键**，文案在 `buildNav` 里解析。
+
+⌘K 里别的站的页面来自 can-ui 的 `SITE_PAGES`。本站在那里登记了 `/`、`/flightplan`、
+`/route`、`/airports`。改这四个路由之一，先改 can-ui 的 `sitePages.ts`，否则
+`check:pages` 红。
 
 ## i18n
 
 四种语言：`zh-cn`（默认）、`zh-tw`、`en-us`、`ja-jp`，词典在根目录 `language/`。
-cookie 名是 **`NEXT_LOCALE`**，Next.js 时代留下来的；四个站共用一个父域，所以在
-主站上选的语言到这里仍然有效 —— 那正是它值得保留原名的原因。
+cookie 名是 **`NEXT_LOCALE`**，全网共用一个父域，主站上选的语言在这里仍然有效。
 
-只有一个命名空间 `efb`：这个站不共享站头页脚（它根本没有），所以从 can-web 镜
-像 `header`/`footer` 的规矩在这里不适用。
+`src/lib/i18n.ts` 只有四个 JSON import 和一次 `createSiteI18n` 调用（can-ui）。缺键
+回退到 zh-cn。
 
-传进岛屿的是 `getMessages(locale, "efb")` 这一本，不是整本词典 —— 岛屿的 props
-会原样序列化进每个页面的 HTML。
+词典只有一个顶层命名空间 `efb`。外壳文案在 `efb.frame`，键名照 can-ui 的
+`CHROME_MESSAGES`（含 `rail.*`、`noAccess.*`、`search.*`）。`src/lib/i18n.test.ts`
+检查四本词典都翻齐了 `CHROME_MESSAGES` 的每个键；can-ui 加键时它红。
+
+传进岛屿的是 `getMessages(locale, "efb")` 或 `getMessages(locale, "efb.frame")`，
+不是整本词典 —— 岛屿的 props 会原样序列化进每个页面的 HTML。
 
 ## 没有占位页面
 
@@ -785,7 +784,7 @@ FlightPlan、Airports、AirportDetail、ProcedurePicker、RouteGenerator、
 1. ~~**上线**~~ —— **已经上线了。** `efb.ceruleanavi.net` 解析、`/healthz` 回
    200、根路径按预期 302 去主站登录页。这一条以前写着"至今不解析"，是旧的。
 2. **品牌资源**。`public/favicon.svg` 现在是一块写着 EFB 的品牌色方牌，占位而
-   已；轨里那块也是。正式标识到位后连同 `apple-touch-icon.png` /
+   已。正式标识到位后连同 `apple-touch-icon.png` /
    `icon-512.png` 一起补进 `BaseLayout.astro`。正式 logo 不能用
    `logo-full.png` —— 那张图上写的是旧名字。
 3. ~~**登录后跳回 EFB**~~ —— **做完了。** can-web 那边加了显式白名单，这个域在
@@ -803,6 +802,7 @@ bun run lint         # format:check + astro check + vue-tsc + check:i18n + check
 bun run test         # 只跑测试
 bun run check:i18n   # 查 t("…") 的键在不在词典里，以及四本词典对不对得齐
 bun run check:style  # 两套主题的地图样式过 MapLibre 校验器
+bun run check:pages  # can-ui 的 SITE_PAGES 里登记的本站路由都在 src/pages 下（CI 一步）
 bun run build
 PUBLIC_ORIGIN=http://localhost:4324 bun run preview   # 预览构建产物，前缀别省
 ```
@@ -844,15 +844,9 @@ PUBLIC_ORIGIN=http://localhost:4324 bun run preview   # 预览构建产物，前
 它只认**字面量**的键，拼出来的（`t(\`nav.${key}\`)`）查不了 —— 强行查会逼着大家把
 动态键写成一长串 if。所以它的承诺是"写死的键不会挂"，不是"所有键都不会挂"。
 
-**它还查四本词典的键对不对得齐，而这一半守的是另外三种语言。** 一开始以为"别的语
-言缺键会回退到中文"，**那是错的** —— `useTranslations` 里是
-`typeof value === "string" ? … : key`，**没有任何跨语言回退**。所以一个键只加进
-zh-cn，英文、繁体、日文三个站当场开始把键名画到屏幕上，和上面那种坏法一模一样，
-只是**中文用户永远看不到**，于是没人会报。
-
-也就是说「先加中文，翻译以后再补」不是欠一笔债，是当场就坏。四本今天是齐的（各
-275 个键），这道闸让它保持齐。多出来的键也报：那多半是改键名时漏改了一本，只查
-"缺"会看到一边缺一边多却只报一半。
+**它还查四本词典的键对不对得齐。** `createSiteI18n` 缺键时回退到 zh-cn，所以漏翻的
+键在英文、繁体、日文页面上显示中文。中文用户看不到，没人会报。这道闸让它在提交前
+就红。多出来的键也报：那多半是改键名时漏改了一本。
 
 **预览构建产物时 `PUBLIC_ORIGIN` 不能省。** 写操作要比对 Origin 头，比对的
 对象是 `lib/config.ts` 里的 `origin()`，它兜底成 `https://efb.ceruleanavi.net` ——
