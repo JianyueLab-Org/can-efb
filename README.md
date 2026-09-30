@@ -55,7 +55,7 @@ PUBLIC_ORIGIN=http://localhost:4324 bun run preview
 
 ## 目录
 
-外壳是一张铺满窗口的地图，轨和面板浮在上面。
+外壳是一张铺满窗口的地图，面板浮在上面。
 
 ```
 deploy/k8s.yaml        jyl-tyo 上的部署（无 Secret）
