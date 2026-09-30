@@ -16,6 +16,7 @@
     "typecheck": "astro check && node ./scripts/typecheck-vue.mjs",
     "check:style": "bun run scripts/check-style.mjs",
     "check:i18n": "node ./scripts/check-i18n-keys.mjs",
+    "check:pages": "can-ui-check-pages efb",
     "test": "bun test",
     "lint": "bun run format:check && bun run typecheck && bun run check:i18n && bun run check:style && bun test"
   },
