@@ -100,6 +100,9 @@ cookie 转发回去。哪天有人要在这里加 Secret，先确认那件事不
 - **⌘K** 是 can-ui 的 `CommandPalette`：本站页面在前，别的站的页面按站分组在后。
 - **退出登录**是 can-ui 的 `AccountMenu`：POST 本站 `/api/v1/auth/signout`，反代原样
   带回 can-api 的 `Set-Cookie`，然后去 can-web 的 `/`（`afterSignOut="web"`）。
+- **通知铃**是 can-ui 的 `NotificationBell`（`Frame.vue` 的 `notifications`）：轨上一行，
+  手机上在「我的」面板第一行。同源 `/api/v1/notifications…`，反代的 `ALLOW_LIST` /
+  `ALLOW_PATTERNS` 里各有条目，都不带 `cacheSeconds` —— `ResponseCache` 不碰它们。
 - 账户菜单里退出登录上面是「设置」（`buildProfileItems`）。
 - 设置页保留主题语言那一行和「默认收起侧栏」开关，不放跨站链接和退出按钮。
 

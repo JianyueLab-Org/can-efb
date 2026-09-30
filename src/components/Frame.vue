@@ -42,6 +42,7 @@ defineProps<{
     :pathname="pathname"
     :nav="nav"
     :user="user"
+    notifications
     :profile-items="profileItems"
     :sign-in-href="signInHref"
     after-sign-out="web"

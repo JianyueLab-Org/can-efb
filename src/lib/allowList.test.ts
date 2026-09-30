@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { allowed } from "../pages/api/v1/[...path]";
 import { lookupAllowed } from "./allowList";
 
 /**
@@ -64,5 +65,42 @@ describe("lookupAllowed", () => {
       expect(respond(key)).toBe(404);
     }
     expect(respond("metar")).toBe(200);
+  });
+});
+
+describe("通知铃", () => {
+  const BELL: Array<[string, string[]]> = [
+    ["notifications", ["GET"]],
+    ["notifications/unread", ["GET"]],
+    ["notifications/read-all", ["POST"]],
+    ["notifications/member/1", ["PATCH"]],
+    ["notifications/broadcast/12345678901234567890", ["PATCH"]],
+  ];
+
+  test("五条都在，方法对得上，不进 ResponseCache", () => {
+    for (const [path, methods] of BELL) {
+      const entry = allowed(path);
+      expect(entry?.methods).toEqual(methods);
+      expect(entry?.who).toContain("通知铃");
+      // 标了 cacheSeconds 的路径进进程内缓存、且不转发 cookie —— 一个人的
+      // 未读数会被发给下一个人。
+      expect(entry?.cacheSeconds).toBeUndefined();
+    }
+  });
+
+  test.each([
+    "notifications/member",
+    "notifications/member/abc",
+    "notifications/member/1/read",
+    "notifications/other/1",
+    "notifications/broadcast/123456789012345678901",
+    "notifications/unread/x",
+    "notifications/../pilot/data",
+  ])("%s 不在名单上", (path) => {
+    expect(allowed(path)).toBeUndefined();
+  });
+
+  test.each(INHERITED)("继承来的 %s 仍然不算命中", (key) => {
+    expect(allowed(key)).toBeUndefined();
   });
 });
