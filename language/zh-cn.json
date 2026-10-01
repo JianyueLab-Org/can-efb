@@ -463,6 +463,27 @@
         "runways": "跑道",
         "noRunways": "资料库里这个机场没有跑道数据。",
         "runwaysFailed": "没能读取跑道 —— 这不代表没有。"
+      },
+      "charts": {
+        "unconfigured": {
+          "title": "航图文件存储还没有接上",
+          "body": "航行资料库那边没有配置航图存储。这是部署问题，不是权限问题。"
+        },
+        "viewer": {
+          "toolbar": "航图工具",
+          "close": "关闭航图",
+          "zoomIn": "放大",
+          "zoomOut": "缩小",
+          "fit": "整页",
+          "rotate": "旋转 90°",
+          "night": "夜间模式",
+          "prevPage": "上一页",
+          "nextPage": "下一页",
+          "page": "{page} / {total}",
+          "loading": "正在打开航图…",
+          "failed": "没能打开这张航图。",
+          "notFound": "这张航图已经不在资料库里了。"
+        }
       }
     }
   }

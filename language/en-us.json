@@ -463,6 +463,27 @@
         "runways": "Runways",
         "noRunways": "The database has no runways for this airport.",
         "runwaysFailed": "Couldn't load the runways — that doesn't mean there are none."
+      },
+      "charts": {
+        "unconfigured": {
+          "title": "Chart storage is not connected",
+          "body": "The aeronautical database has no chart storage configured. This is a deployment problem, not a permissions one."
+        },
+        "viewer": {
+          "toolbar": "Chart tools",
+          "close": "Close chart",
+          "zoomIn": "Zoom in",
+          "zoomOut": "Zoom out",
+          "fit": "Fit page",
+          "rotate": "Rotate 90°",
+          "night": "Night mode",
+          "prevPage": "Previous page",
+          "nextPage": "Next page",
+          "page": "{page} / {total}",
+          "loading": "Opening chart…",
+          "failed": "Couldn't open this chart.",
+          "notFound": "This chart is no longer in the database."
+        }
       }
     }
   }

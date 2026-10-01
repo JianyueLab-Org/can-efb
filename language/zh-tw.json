@@ -463,6 +463,27 @@
         "runways": "跑道",
         "noRunways": "資料庫裡這個機場沒有跑道資料。",
         "runwaysFailed": "沒能讀取跑道 —— 這不代表沒有。"
+      },
+      "charts": {
+        "unconfigured": {
+          "title": "航圖檔案儲存還沒有接上",
+          "body": "航行資料庫那邊沒有設定航圖儲存。這是部署問題，不是權限問題。"
+        },
+        "viewer": {
+          "toolbar": "航圖工具",
+          "close": "關閉航圖",
+          "zoomIn": "放大",
+          "zoomOut": "縮小",
+          "fit": "整頁",
+          "rotate": "旋轉 90°",
+          "night": "夜間模式",
+          "prevPage": "上一頁",
+          "nextPage": "下一頁",
+          "page": "{page} / {total}",
+          "loading": "正在開啟航圖…",
+          "failed": "沒能開啟這張航圖。",
+          "notFound": "這張航圖已經不在資料庫裡了。"
+        }
       }
     }
   }
