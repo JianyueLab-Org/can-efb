@@ -41,6 +41,7 @@ import {
   renderScale,
   stepZoom,
   viewerPlacement,
+  viewerShortcut,
   wheelZoom,
   wrapFocusIndex,
   type ChartEntry,
@@ -117,6 +118,12 @@ async function closeDocument() {
   currentPage = null;
   const old = doc.value;
   doc.value = null;
+  // 释放画布的后备存储（iOS Safari 对画布总量有上限），也不让上一张图留在加载提示后面。
+  if (canvas.value) {
+    canvas.value.width = 0;
+    canvas.value.height = 0;
+  }
+  cssSize.value = { width: 0, height: 0 };
   if (old) await old.loadingTask.destroy().catch(() => undefined);
 }
 
@@ -388,12 +395,11 @@ function onKey(event: KeyboardEvent) {
   } else if (event.key === "Escape") {
     event.preventDefault();
     emit("close");
-  } else if (event.key === "+" || event.key === "=") {
-    setZoom(stepZoom(zoom.value, 1));
-  } else if (event.key === "-") {
-    setZoom(stepZoom(zoom.value, -1));
-  } else if (event.key === "0") {
-    fit();
+  } else {
+    const action = viewerShortcut(event.key, event);
+    if (action === "zoomIn") setZoom(stepZoom(zoom.value, 1));
+    else if (action === "zoomOut") setZoom(stepZoom(zoom.value, -1));
+    else if (action === "fit") fit();
   }
 }
 

@@ -193,7 +193,11 @@ function closeViewer() {
   <StateCard
     v-else-if="state.kind === 'empty'"
     kind="empty"
-    :title="t('airports.charts.empty.title')"
+    :title="
+      emptyBody === 'needsAccess'
+        ? t('airports.charts.empty.needsAccessTitle')
+        : t('airports.charts.empty.title')
+    "
     :body="
       emptyBody === 'needsAccess'
         ? t('airports.charts.empty.needsAccess')

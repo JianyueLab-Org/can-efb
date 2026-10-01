@@ -206,8 +206,10 @@ const handler: APIRoute = async (context) => {
     if (value) out.set(name, value);
   }
 
-  /* 缓存。**can-db 一个 Cache-Control 都不发**（核对过它的源码），所以浏览器对这
-     几百 KB 的航路网没有任何缓存依据，每次整页刷新都要重新下载一遍。
+  /* 缓存。can-db 的航路网、机场这几条路由**不发 Cache-Control**（核对过它的源
+     码），所以浏览器对这几百 KB 的航路网没有任何缓存依据，每次整页刷新都要重新
+     下载一遍。航图 PDF 那条路由发 `private, max-age=86400`，上面的头循环原样带回，
+     下面的 `!out.has("cache-control")` 不会覆盖它。
 
      在代理这一层补上，理由和 can-radar 给 METAR 补五分钟缓存是同一条：上游没说，
      而我们知道这份数据多久变一次。

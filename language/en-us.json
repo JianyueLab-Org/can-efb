@@ -477,6 +477,7 @@
         "failed": "Couldn't load the charts — that doesn't mean there are none.",
         "empty": {
           "title": "No charts for this airport",
+          "needsAccessTitle": "Charts need tier 3",
           "needsAccess": "Charts come from the NAIP compilation and need aeronautical database tier 3 (restricted call).",
           "noCharts": "There are no charts for this airport."
         },

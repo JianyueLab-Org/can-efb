@@ -317,3 +317,20 @@ export function wrapFocusIndex(
   if (!backwards && current === count - 1) return 0;
   return null;
 }
+
+export type ViewerShortcut = "zoomIn" | "zoomOut" | "fit";
+
+/**
+ * 查看器的键盘缩放：+ / = 放大，- 缩小，0 整页。带 Ctrl / Cmd / Alt 的不认 ——
+ * 那是浏览器自己的页面缩放，两边一起动会缩放两次。
+ */
+export function viewerShortcut(
+  key: string,
+  mods: { ctrlKey: boolean; metaKey: boolean; altKey: boolean },
+): ViewerShortcut | null {
+  if (mods.ctrlKey || mods.metaKey || mods.altKey) return null;
+  if (key === "+" || key === "=") return "zoomIn";
+  if (key === "-") return "zoomOut";
+  if (key === "0") return "fit";
+  return null;
+}

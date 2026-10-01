@@ -6,6 +6,7 @@ import {
   CHART_FILE_PATTERN,
   CHART_INDEX_PATTERN,
   chartsEmptyBody,
+  viewerShortcut,
   wrapFocusIndex,
   chartChips,
   chartFilePath,
@@ -490,5 +491,24 @@ describe("wrapFocusIndex", () => {
 
   test("没有可聚焦元素时交给浏览器", () => {
     expect(wrapFocusIndex(-1, 0, false)).toBeNull();
+  });
+});
+
+describe("viewerShortcut", () => {
+  const none = { ctrlKey: false, metaKey: false, altKey: false };
+
+  test("+ = - 0 对应放大、缩小、整页", () => {
+    expect(viewerShortcut("+", none)).toBe("zoomIn");
+    expect(viewerShortcut("=", none)).toBe("zoomIn");
+    expect(viewerShortcut("-", none)).toBe("zoomOut");
+    expect(viewerShortcut("0", none)).toBe("fit");
+    expect(viewerShortcut("a", none)).toBeNull();
+  });
+
+  test("带 Ctrl / Cmd / Alt 的不认，留给浏览器缩放", () => {
+    for (const mod of ["ctrlKey", "metaKey", "altKey"] as const) {
+      expect(viewerShortcut("=", { ...none, [mod]: true })).toBeNull();
+      expect(viewerShortcut("0", { ...none, [mod]: true })).toBeNull();
+    }
   });
 });

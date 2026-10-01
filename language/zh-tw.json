@@ -477,6 +477,7 @@
         "failed": "沒能讀取航圖 —— 這不代表沒有。",
         "empty": {
           "title": "這個機場沒有可看的航圖",
+          "needsAccessTitle": "看航圖需要 3 級權限",
           "needsAccess": "航圖來自 NAIP 彙編，需要航行資料庫 3 級（受限可調用）權限。",
           "noCharts": "這個機場沒有航圖。"
         },

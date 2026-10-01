@@ -477,6 +477,7 @@
         "failed": "没能读取航图 —— 这不代表没有。",
         "empty": {
           "title": "这个机场没有可看的航图",
+          "needsAccessTitle": "看航图需要 3 级权限",
           "needsAccess": "航图来自 NAIP 汇编，要航行资料库 3 级（受限可调用）权限。",
           "noCharts": "这个机场没有航图。"
         },
