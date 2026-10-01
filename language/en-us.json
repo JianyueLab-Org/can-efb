@@ -462,9 +462,28 @@
         "position": "Position",
         "runways": "Runways",
         "noRunways": "The database has no runways for this airport.",
-        "runwaysFailed": "Couldn't load the runways — that doesn't mean there are none."
+        "runwaysFailed": "Couldn't load the runways — that doesn't mean there are none.",
+        "tabs": {
+          "label": "Airport details",
+          "info": "Info",
+          "charts": "Charts"
+        }
       },
       "charts": {
+        "categories": "Chart categories",
+        "search": "Search Charts",
+        "none": "No matching charts.",
+        "sup": "SUP",
+        "failed": "Couldn't load the charts — that doesn't mean there are none.",
+        "empty": {
+          "title": "No charts for this airport",
+          "body": "Charts come from the NAIP compilation and need aeronautical database tier 3 (restricted call)."
+        },
+        "hidden": {
+          "title": "The restricted compilation is hidden",
+          "body": "Charts come from the NAIP compilation, and \"Hide the restricted compilation\" is on in Settings. Turn it off to see them.",
+          "action": "Open Settings"
+        },
         "unconfigured": {
           "title": "Chart storage is not connected",
           "body": "The aeronautical database has no chart storage configured. This is a deployment problem, not a permissions one."

@@ -10,8 +10,11 @@
  * `v-else-if="selected"`），切换不导航、不刷新页面 —— 读屏软件不会自己发现内容
  * 换了。焦点移到这个 `h2`（`tabindex="-1"` 让它可以接焦点但不进 Tab 顺序）才会把
  * 机场代号读出来，这是选中一个结果之后**唯一**会被读屏用户感知到的信号。
+ *
+ * 信息 / 航图两个标签用 can-ui 的 Segmented，选中那一段填品牌蓝（globals.css 的
+ * .airport-tabs）。
  */
-import { onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { createTranslator } from "@/lib/i18n";
 import {
   fetchAirportProcedures,
@@ -25,15 +28,29 @@ import {
 } from "@/lib/requestState";
 import StateCard from "@/components/ui/StateCard.vue";
 import PanelSection from "@/components/ui/PanelSection.vue";
-import { Icon } from "@jianyuelab-org/can-ui";
+import { Icon, Segmented } from "@jianyuelab-org/can-ui";
+import AirportCharts from "./AirportCharts.vue";
 import type { AirportRow as Airport } from "@/lib/airports";
 
 const props = defineProps<{
   airport: Airport;
+  aipAccess: number;
   messages: Record<string, unknown>;
 }>();
 const emit = defineEmits<{ back: [] }>();
 const t = createTranslator(props.messages);
+
+type DetailTab = "info" | "charts";
+const tab = ref<DetailTab>("info");
+/** 航图第一次切过去才取，之后 v-show 保留（列表、搜索词、打开着的查看器都在）。 */
+const chartsOpened = ref(false);
+watch(tab, (value) => {
+  if (value === "charts") chartsOpened.value = true;
+});
+const tabs = computed(() => [
+  { value: "info" as const, label: t("airports.detail.tabs.info") },
+  { value: "charts" as const, label: t("airports.detail.tabs.charts") },
+]);
 
 const runways = ref<RequestState<string[]>>(LOADING);
 const heading = ref<HTMLHeadingElement | null>(null);
@@ -81,70 +98,88 @@ watch(() => props.airport.icao, loadRunways);
       </p>
     </header>
 
-    <dl class="grid grid-cols-2 gap-3 text-sm">
-      <div v-if="airport.fir">
-        <dt class="text-xs uppercase tracking-wide text-faint">FIR</dt>
-        <dd class="font-mono text-ink">{{ airport.fir }}</dd>
-      </div>
-      <div v-if="airport.elev !== null">
-        <dt class="text-xs uppercase tracking-wide text-faint">
-          {{ t("airports.elev") }}
-        </dt>
-        <dd class="font-mono text-ink">{{ airport.elev }} ft</dd>
-      </div>
-      <div>
-        <dt class="text-xs uppercase tracking-wide text-faint">
-          {{ t("airports.detail.position") }}
-        </dt>
-        <dd class="font-mono text-xs text-ink">
-          {{ airport.lat.toFixed(4) }}, {{ airport.lon.toFixed(4) }}
-        </dd>
-      </div>
-      <div>
-        <dt class="text-xs uppercase tracking-wide text-faint">
-          {{ t("airports.stands") }}
-        </dt>
-        <dd class="font-mono text-ink">{{ airport.stands }}</dd>
-      </div>
-    </dl>
+    <Segmented
+      v-model="tab"
+      :segments="tabs"
+      :label="t('airports.detail.tabs.label')"
+      block
+      class="airport-tabs"
+    />
 
-    <PanelSection :title="t('airports.detail.runways')" :level="3">
-      <StateCard
-        v-if="runways.kind === 'loading'"
-        kind="loading"
-        :title="t('common.loading')"
-        compact
+    <div v-show="tab === 'info'" class="space-y-5">
+      <dl class="grid grid-cols-2 gap-3 text-sm">
+        <div v-if="airport.fir">
+          <dt class="text-xs uppercase tracking-wide text-faint">FIR</dt>
+          <dd class="font-mono text-ink">{{ airport.fir }}</dd>
+        </div>
+        <div v-if="airport.elev !== null">
+          <dt class="text-xs uppercase tracking-wide text-faint">
+            {{ t("airports.elev") }}
+          </dt>
+          <dd class="font-mono text-ink">{{ airport.elev }} ft</dd>
+        </div>
+        <div>
+          <dt class="text-xs uppercase tracking-wide text-faint">
+            {{ t("airports.detail.position") }}
+          </dt>
+          <dd class="font-mono text-xs text-ink">
+            {{ airport.lat.toFixed(4) }}, {{ airport.lon.toFixed(4) }}
+          </dd>
+        </div>
+        <div>
+          <dt class="text-xs uppercase tracking-wide text-faint">
+            {{ t("airports.stands") }}
+          </dt>
+          <dd class="font-mono text-ink">{{ airport.stands }}</dd>
+        </div>
+      </dl>
+
+      <PanelSection :title="t('airports.detail.runways')" :level="3">
+        <StateCard
+          v-if="runways.kind === 'loading'"
+          kind="loading"
+          :title="t('common.loading')"
+          compact
+        />
+        <StateCard
+          v-else-if="runways.kind === 'forbidden'"
+          kind="forbidden"
+          :title="t('airports.denied.title')"
+          :body="t('airports.denied.body')"
+          compact
+        />
+        <StateCard
+          v-else-if="runways.kind === 'error'"
+          kind="error"
+          :title="t('airports.detail.runwaysFailed')"
+          :retry-label="t('common.retry')"
+          compact
+          @retry="loadRunways"
+        />
+        <StateCard
+          v-else-if="runways.kind === 'empty'"
+          kind="empty"
+          :title="t('airports.detail.noRunways')"
+          compact
+        />
+        <ul v-else class="flex flex-wrap gap-2">
+          <li
+            v-for="rwy in runways.data"
+            :key="rwy"
+            class="rounded-control border border-subtle px-2 py-1 font-mono text-sm text-ink"
+          >
+            {{ rwy }}
+          </li>
+        </ul>
+      </PanelSection>
+    </div>
+
+    <div v-if="chartsOpened" v-show="tab === 'charts'">
+      <AirportCharts
+        :icao="airport.icao"
+        :aip-access="aipAccess"
+        :messages="messages"
       />
-      <StateCard
-        v-else-if="runways.kind === 'forbidden'"
-        kind="forbidden"
-        :title="t('airports.denied.title')"
-        :body="t('airports.denied.body')"
-        compact
-      />
-      <StateCard
-        v-else-if="runways.kind === 'error'"
-        kind="error"
-        :title="t('airports.detail.runwaysFailed')"
-        :retry-label="t('common.retry')"
-        compact
-        @retry="loadRunways"
-      />
-      <StateCard
-        v-else-if="runways.kind === 'empty'"
-        kind="empty"
-        :title="t('airports.detail.noRunways')"
-        compact
-      />
-      <ul v-else class="flex flex-wrap gap-2">
-        <li
-          v-for="rwy in runways.data"
-          :key="rwy"
-          class="rounded-control border border-subtle px-2 py-1 font-mono text-sm text-ink"
-        >
-          {{ rwy }}
-        </li>
-      </ul>
-    </PanelSection>
+    </div>
   </div>
 </template>

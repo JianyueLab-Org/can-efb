@@ -637,3 +637,14 @@
 .chart-viewer-scroller[data-night="true"] .chart-viewer-canvas {
   filter: invert(1) hue-rotate(180deg);
 }
+
+/* 机场详情的「信息 / 航图」：选中那一段填品牌蓝，白字。用 --color-can-700，
+   白字对比度 6.4:1（--color-can 只有 3.3:1）。can-ui 的样式在 @layer components
+   里，这里不分层，所以压得过。 */
+.airport-tabs .segmented-indicator {
+  background-color: var(--color-can-700);
+  box-shadow: none;
+}
+.airport-tabs .segmented-item[data-selected="true"] {
+  color: #ffffff;
+}
