@@ -462,7 +462,49 @@
         "position": "Position",
         "runways": "Runways",
         "noRunways": "The database has no runways for this airport.",
-        "runwaysFailed": "Couldn't load the runways — that doesn't mean there are none."
+        "runwaysFailed": "Couldn't load the runways — that doesn't mean there are none.",
+        "tabs": {
+          "label": "Airport details",
+          "info": "Info",
+          "charts": "Charts"
+        }
+      },
+      "charts": {
+        "categories": "Chart categories",
+        "search": "Search Charts",
+        "none": "No matching charts.",
+        "sup": "SUP",
+        "failed": "Couldn't load the charts — that doesn't mean there are none.",
+        "empty": {
+          "title": "No charts for this airport",
+          "needsAccessTitle": "Charts need tier 3",
+          "needsAccess": "Charts come from the NAIP compilation and need aeronautical database tier 3 (restricted call).",
+          "noCharts": "There are no charts for this airport."
+        },
+        "hidden": {
+          "title": "The restricted compilation is hidden",
+          "body": "Charts come from the NAIP compilation, and \"Hide the restricted compilation\" is on in Settings. Turn it off to see them.",
+          "action": "Open Settings"
+        },
+        "unconfigured": {
+          "title": "Chart storage is not connected",
+          "body": "The aeronautical database has no chart storage configured. This is a deployment problem, not a permissions one."
+        },
+        "viewer": {
+          "toolbar": "Chart tools",
+          "close": "Close chart",
+          "zoomIn": "Zoom in",
+          "zoomOut": "Zoom out",
+          "fit": "Fit page",
+          "rotate": "Rotate 90°",
+          "night": "Night mode",
+          "prevPage": "Previous page",
+          "nextPage": "Next page",
+          "page": "{page} / {total}",
+          "loading": "Opening chart…",
+          "failed": "Couldn't open this chart.",
+          "notFound": "This chart is no longer in the database."
+        }
       }
     }
   }

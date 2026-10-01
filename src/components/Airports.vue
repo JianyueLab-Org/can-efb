@@ -27,6 +27,7 @@ import type { AirportRow as Airport } from "@/lib/airports";
 
 const props = defineProps<{
   initial: RequestState<Airport[]>;
+  aipAccess: number;
   messages: Record<string, unknown>;
 }>();
 const t = createTranslator(props.messages);
@@ -199,6 +200,7 @@ function show(airport: Airport) {
   <AirportDetail
     v-else-if="selected"
     :airport="selected"
+    :aip-access="aipAccess"
     :messages="messages"
     @back="back"
   />

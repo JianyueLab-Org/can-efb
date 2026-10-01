@@ -42,6 +42,7 @@ const initial = fromDbResponse(
 <AppLayout title={title} description={description}>
   <Airports
     initial={initial}
+    aipAccess={Astro.locals.user?.aipAccess ?? 0}
     messages={getMessages(locale, "efb")}
     client:load
   />
