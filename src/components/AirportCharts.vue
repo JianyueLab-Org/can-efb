@@ -205,8 +205,7 @@ function togglePinned(chart: ChartEntry) {
 }
 
 function pinLabel(chart: ChartEntry): string {
-  const pinned = isPinned(chart.id, auto.value, stored.value);
-  return `${t(pinned ? "airports.charts.pins.unpin" : "airports.charts.pins.pin")} ${chart.name}`;
+  return `${t("airports.charts.pins.pin")} ${chart.name}`;
 }
 
 onMounted(() => {

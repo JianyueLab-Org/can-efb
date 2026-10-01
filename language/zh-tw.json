@@ -513,7 +513,6 @@
           "arrival": "落地",
           "alternate": "備降",
           "pin": "釘選",
-          "unpin": "取消釘選",
           "auto": "自動",
           "pinnedNone": "還沒有釘選的航圖。",
           "all": "全部航圖（{count}）",

@@ -9,13 +9,13 @@ defineProps<{
   pinned: boolean;
   /** 计划和程序选择自动挑中的。 */
   auto: boolean;
-  labels: { auto: string; pin: string; unpin: string };
+  labels: { auto: string; pin: string };
 }>();
 const emit = defineEmits<{ open: []; toggle: [] }>();
 </script>
 
 <template>
-  <li class="flex items-stretch gap-1">
+  <li class="flex items-stretch gap-1" :data-chart="chart.id">
     <button type="button" class="map-chart-pin-row" @click="emit('open')">
       <span
         class="w-10 shrink-0 font-mono text-xs font-semibold"
@@ -36,7 +36,7 @@ const emit = defineEmits<{ open: []; toggle: [] }>();
     </button>
     <ChartPinButton
       :pinned="pinned"
-      :label="`${pinned ? labels.unpin : labels.pin} ${chart.name}`"
+      :label="`${labels.pin} ${chart.name}`"
       @toggle="emit('toggle')"
     />
   </li>

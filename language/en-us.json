@@ -513,7 +513,6 @@
           "arrival": "Arrival",
           "alternate": "Alternate",
           "pin": "Pin",
-          "unpin": "Unpin",
           "auto": "Auto",
           "pinnedNone": "No pinned charts yet.",
           "all": "All charts ({count})",

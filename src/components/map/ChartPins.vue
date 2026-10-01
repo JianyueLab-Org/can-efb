@@ -4,8 +4,8 @@
  * 折起来的全部航图。点一行打开 ChartViewer。
  *
  * 规则在 `lib/chartPins.ts`。第一次打开才取数，地图挂载时什么都不取。开着时计划、
- * 程序选择、「不使用受限汇编」一变就重取；钉住变了只重读本机存储，不重取。关着时
- * 这些事件只记一笔，下次打开再取。
+ * 「不使用受限汇编」一变就重取；程序选择、钉住变了只重读本机存储，不重取。关着时
+ * 计划和「不使用受限汇编」的变化只记一笔，下次打开再取。
  *
  * 每个机场的状态各管各的：一个机场没取到不影响另外两个，重试也只重试它。
  */
@@ -77,7 +77,6 @@ const ROLE_LABEL: Record<PinRole, string> = {
 const ROW_LABELS = {
   auto: t("airports.charts.pins.auto"),
   pin: t("airports.charts.pins.pin"),
-  unpin: t("airports.charts.pins.unpin"),
 };
 
 type PlanState =
@@ -92,6 +91,7 @@ const selection = ref<ProcedureSelection>({ ...EMPTY_SELECTION });
 const stored = ref<StoredPins>(EMPTY_PINS);
 const selected = ref<ChartEntry | null>(null);
 const closeButton = ref<HTMLButtonElement | null>(null);
+const sectionRef = ref<HTMLElement | null>(null);
 /** 打开查看器之前焦点在哪儿，关掉时回去。 */
 let returnFocus: HTMLElement | null = null;
 let loaded = false;
@@ -163,7 +163,7 @@ function retry(airport: PlanAirport) {
   void loadAirport(airport, seq);
 }
 
-/** 计划、程序选择、「不使用受限汇编」变了。 */
+/** 计划、「不使用受限汇编」变了。 */
 function onSourceChange() {
   if (props.open) void load();
   else if (loaded) stale = true;
@@ -194,10 +194,21 @@ const emptyReason = computed(() =>
 );
 const emptyBody = computed(() => chartsEmptyBody(props.aipAccess));
 
-function toggle(chart: ChartEntry, auto: ReadonlySet<number>) {
+function toggle(chart: ChartEntry, auto: ReadonlySet<number>, role: PinRole) {
   if (plan.value.kind !== "plan") return;
   const { departure, arrival } = plan.value.plan;
   writePins(departure, arrival, togglePin(stored.value, chart.id, auto));
+  // 钉住列表里的那一行被取消后会消失，焦点落到 body：挪到「全部航图」里同一张的按钮，
+  // 没展开就挪到该机场的标题
+  void nextTick(() => {
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    const group = sectionRef.value?.querySelector(`[data-role="${role}"]`);
+    const own = group?.querySelector<HTMLElement>(
+      `details[open] [data-chart="${chart.id}"] button[aria-pressed]`,
+    );
+    (own ?? group?.querySelector<HTMLElement>("h3"))?.focus();
+  });
 }
 
 function openChart(chart: ChartEntry) {
@@ -229,7 +240,7 @@ watch(
 );
 watch(hideNaip, onSourceChange);
 
-/** Esc 关弹出层。查看器开着时 Esc 是查看器的。捕获阶段先于查看器的处理，此时 `selected` 还在。 */
+/** Esc 关弹出层，只管弹出层里的按键。查看器开着时 Esc 是查看器的。 */
 function onKeydown(event: KeyboardEvent) {
   if (event.key !== "Escape" || !props.open || selected.value) return;
   emit("close");
@@ -237,15 +248,13 @@ function onKeydown(event: KeyboardEvent) {
 
 onMounted(() => {
   window.addEventListener(PLAN_CHANGED_EVENT, onSourceChange);
-  window.addEventListener(PROCEDURES_CHANGED_EVENT, onSourceChange);
+  window.addEventListener(PROCEDURES_CHANGED_EVENT, rereadLocal);
   window.addEventListener(CHART_PINS_CHANGED_EVENT, rereadLocal);
-  document.addEventListener("keydown", onKeydown, true);
 });
 onBeforeUnmount(() => {
   window.removeEventListener(PLAN_CHANGED_EVENT, onSourceChange);
-  window.removeEventListener(PROCEDURES_CHANGED_EVENT, onSourceChange);
+  window.removeEventListener(PROCEDURES_CHANGED_EVENT, rereadLocal);
   window.removeEventListener(CHART_PINS_CHANGED_EVENT, rereadLocal);
-  document.removeEventListener("keydown", onKeydown, true);
 });
 </script>
 
@@ -253,9 +262,11 @@ onBeforeUnmount(() => {
   <section
     v-show="open"
     id="map-chart-pins"
+    ref="sectionRef"
     class="map-chart-pins glass"
     role="dialog"
     :aria-label="t('airports.charts.pins.title')"
+    @keydown="onKeydown"
   >
     <header class="map-chart-pins-bar">
       <h2 class="text-sm font-semibold text-ink">
@@ -302,10 +313,12 @@ onBeforeUnmount(() => {
         <section
           v-for="g in groups"
           :key="g.role"
+          :data-role="g.role"
           class="flex flex-col gap-2"
           :aria-label="`${ROLE_LABEL[g.role]} ${g.icao}`"
         >
           <h3
+            tabindex="-1"
             class="flex items-baseline gap-2 text-xs font-semibold text-muted"
           >
             <span>{{ ROLE_LABEL[g.role] }}</span>
@@ -392,7 +405,7 @@ onBeforeUnmount(() => {
                 :auto="g.auto.has(c.id)"
                 :labels="ROW_LABELS"
                 @open="openChart(c)"
-                @toggle="toggle(c, g.auto)"
+                @toggle="toggle(c, g.auto, g.role)"
               />
             </ul>
             <details class="map-chart-pins-all">
@@ -408,7 +421,7 @@ onBeforeUnmount(() => {
                   :auto="g.auto.has(c.id)"
                   :labels="ROW_LABELS"
                   @open="openChart(c)"
-                  @toggle="toggle(c, g.auto)"
+                  @toggle="toggle(c, g.auto, g.role)"
                 />
               </ul>
             </details>

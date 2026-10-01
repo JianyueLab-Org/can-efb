@@ -4,7 +4,7 @@ import { Icon } from "@jianyuelab-org/can-ui";
 
 defineProps<{
   pinned: boolean;
-  /** 已翻译，带航图名：「取消钉住 ILSDMEyRWY16L」。 */
+  /** 已翻译，带航图名：「钉住 ILSDMEyRWY16L」，状态由 aria-pressed 表达。 */
   label: string;
 }>();
 const emit = defineEmits<{ toggle: [] }>();
