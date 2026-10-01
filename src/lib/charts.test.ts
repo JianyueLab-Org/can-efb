@@ -2,6 +2,11 @@ import { describe, expect, test } from "bun:test";
 import type { PanelLayout, ShellMode } from "@/lib/panelLayout";
 import {
   anchoredScroll,
+  AIP_RESTRICTED_CALL,
+  CHART_FILE_PATTERN,
+  CHART_INDEX_PATTERN,
+  chartsEmptyBody,
+  wrapFocusIndex,
   chartChips,
   chartFilePath,
   chartIndexPath,
@@ -391,5 +396,99 @@ describe("fileFailure", () => {
     expect(fileFailure(503)).toBe("error");
     expect(fileFailure(500)).toBe("error");
     expect(fileFailure(0)).toBe("error");
+  });
+});
+
+describe("allowlist patterns", () => {
+  test("索引：四个字母，大小写都收", () => {
+    expect(CHART_INDEX_PATTERN.test("aip/airports/ZSSS/charts")).toBe(true);
+    expect(CHART_INDEX_PATTERN.test("aip/airports/zsss/charts")).toBe(true);
+  });
+
+  test("索引：别的形状都不收", () => {
+    for (const bad of [
+      "aip/airports/ZSS/charts",
+      "aip/airports/ZSSSS/charts",
+      "aip/airports/ZSSS/charts/",
+      "aip/airports/ZSSS/charts/x",
+      "aip/airports/ZSSS/charts\n",
+      "aip/airports/ZS1S/charts",
+      "aip/airports/../charts",
+      "aip/airports/ZSSS/chart",
+      "xaip/airports/ZSSS/charts",
+    ]) {
+      expect(CHART_INDEX_PATTERN.test(bad)).toBe(false);
+    }
+  });
+
+  test("文件：正整数 id", () => {
+    expect(CHART_FILE_PATTERN.test("aip/charts/1/file")).toBe(true);
+    expect(CHART_FILE_PATTERN.test("aip/charts/42/file")).toBe(true);
+    expect(CHART_FILE_PATTERN.test("aip/charts/9223372036854775807/file")).toBe(
+      true,
+    );
+  });
+
+  test("文件：别的形状都不收", () => {
+    for (const bad of [
+      "aip/charts/abc/file",
+      "aip/charts/0/file",
+      "aip/charts/01/file",
+      "aip/charts/-1/file",
+      "aip/charts/1.5/file",
+      "aip/charts/../file",
+      "aip/charts/1/file/",
+      "aip/charts/1/file/../..",
+      "aip/charts/1/file\n",
+      "aip/charts/1/",
+      "aip/charts//file",
+      "aip/charts/12345678901234567890/file",
+      "aip/charts/١/file",
+    ]) {
+      expect(CHART_FILE_PATTERN.test(bad)).toBe(false);
+    }
+  });
+});
+
+describe("边界输入", () => {
+  test("wheelZoom 的 deltaY 不是有限数时保持当前缩放", () => {
+    expect(wheelZoom(2, Number.NaN)).toBe(2);
+    expect(wheelZoom(2, Number.POSITIVE_INFINITY)).toBe(2);
+  });
+
+  test("renderScale 的 dpr 不可用时按 1", () => {
+    expect(renderScale(1.5, 0, 600, 800)).toBe(1.5);
+    expect(renderScale(1.5, -2, 600, 800)).toBe(1.5);
+    expect(renderScale(1.5, Number.NaN, 600, 800)).toBe(1.5);
+  });
+});
+
+describe("chartsEmptyBody", () => {
+  test("3 级以下说需要 3 级，3 级起说这个机场没有", () => {
+    expect(chartsEmptyBody(0)).toBe("needsAccess");
+    expect(chartsEmptyBody(AIP_RESTRICTED_CALL - 1)).toBe("needsAccess");
+    expect(chartsEmptyBody(AIP_RESTRICTED_CALL)).toBe("noCharts");
+    expect(chartsEmptyBody(4)).toBe("noCharts");
+  });
+});
+
+describe("wrapFocusIndex", () => {
+  test("最后一个再 Tab 回第一个，第一个再 Shift+Tab 到最后一个", () => {
+    expect(wrapFocusIndex(2, 3, false)).toBe(0);
+    expect(wrapFocusIndex(0, 3, true)).toBe(2);
+  });
+
+  test("中间的交给浏览器", () => {
+    expect(wrapFocusIndex(1, 3, false)).toBeNull();
+    expect(wrapFocusIndex(1, 3, true)).toBeNull();
+  });
+
+  test("焦点不在容器里时拉进来", () => {
+    expect(wrapFocusIndex(-1, 3, false)).toBe(0);
+    expect(wrapFocusIndex(-1, 3, true)).toBe(2);
+  });
+
+  test("没有可聚焦元素时交给浏览器", () => {
+    expect(wrapFocusIndex(-1, 0, false)).toBeNull();
   });
 });

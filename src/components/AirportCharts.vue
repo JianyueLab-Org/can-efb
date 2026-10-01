@@ -16,6 +16,7 @@ import { LOADING } from "@/lib/requestState";
 import {
   chartChips,
   chartIndexPath,
+  chartsEmptyBody,
   chartsEmptyReason,
   chartsState,
   defaultChip,
@@ -27,11 +28,16 @@ import {
   type ChartsState,
 } from "@/lib/charts";
 
-const props = defineProps<{
-  icao: string;
-  aipAccess: number;
-  messages: Record<string, unknown>;
-}>();
+const props = withDefaults(
+  defineProps<{
+    icao: string;
+    aipAccess: number;
+    /** 航图标签是不是当前标签。切走时关掉查看器。 */
+    active?: boolean;
+    messages: Record<string, unknown>;
+  }>(),
+  { active: true },
+);
 const t = createTranslator(props.messages);
 
 /** 参考截图的配色。选中是实心胶囊。 */
@@ -106,6 +112,12 @@ async function load() {
 onMounted(load);
 watch(() => props.icao, load);
 watch(hideNaip, load);
+watch(
+  () => props.active,
+  (on) => {
+    if (!on) selected.value = null;
+  },
+);
 
 const index = computed(() =>
   state.value.kind === "data" ? state.value.data : null,
@@ -118,6 +130,7 @@ const visible = computed(() =>
 const emptyReason = computed(() =>
   chartsEmptyReason(hideNaip.value, props.aipAccess),
 );
+const emptyBody = computed(() => chartsEmptyBody(props.aipAccess));
 
 function openChart(chart: ChartEntry) {
   selected.value = chart;
@@ -181,7 +194,11 @@ function closeViewer() {
     v-else-if="state.kind === 'empty'"
     kind="empty"
     :title="t('airports.charts.empty.title')"
-    :body="t('airports.charts.empty.body')"
+    :body="
+      emptyBody === 'needsAccess'
+        ? t('airports.charts.empty.needsAccess')
+        : t('airports.charts.empty.noCharts')
+    "
     compact
   />
 

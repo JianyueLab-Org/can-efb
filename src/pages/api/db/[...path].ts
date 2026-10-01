@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { lookupAllowed } from "@/lib/allowList";
+import { CHART_FILE_PATTERN, CHART_INDEX_PATTERN } from "@/lib/charts";
 import { CAN_DB_ORIGIN } from "@/lib/config";
 import { fetchHeadersWithin } from "@/server/upstreamFetch";
 
@@ -127,7 +128,7 @@ const ALLOW_PATTERNS: { pattern: RegExp; entry: Allowed }[] = [
   },
   {
     /* 一个机场的航图索引。形状和上面两条一样收死：一段四个字母，然后 /charts。 */
-    pattern: /^aip\/airports\/[A-Za-z]{4}\/charts$/,
+    pattern: CHART_INDEX_PATTERN,
     entry: {
       methods: ["GET"],
       who: "AirportDetail.vue 的航图标签（AirportCharts.vue）",
@@ -138,7 +139,7 @@ const ALLOW_PATTERNS: { pattern: RegExp; entry: Allowed }[] = [
      *
      * 长度和文件名原样带回：长度让浏览器知道文件多大，文件名在另存时用。缓存头
      * 用 can-db 自己给的（`private, max-age=86400`），见下面缓存那一段。 */
-    pattern: /^aip\/charts\/[1-9]\d{0,18}\/file$/,
+    pattern: CHART_FILE_PATTERN,
     entry: {
       methods: ["GET"],
       who: "AirportDetail.vue 的航图标签（ChartViewer.vue 取 PDF）",

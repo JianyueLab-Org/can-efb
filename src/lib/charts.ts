@@ -151,6 +151,14 @@ export function filterCharts(
     );
 }
 
+/**
+ * 反代白名单里的两条航图路径（`pages/api/db/[...path].ts`）。放在这里是为了能测：
+ * 收得死不死，靠 `charts.test.ts` 钉住，不靠肉眼。
+ */
+export const CHART_INDEX_PATTERN = /^aip\/airports\/[A-Za-z]{4}\/charts$/;
+/** id 是 can-db 的 bigint 主键：正整数，不带前导零，最多 19 位。 */
+export const CHART_FILE_PATTERN = /^aip\/charts\/[1-9]\d{0,18}\/file$/;
+
 /** `dbFetch` 用的路径（`/api/db/` 之后那一段）。 */
 export function chartIndexPath(icao: string): string {
   return `aip/airports/${icao.trim().toUpperCase()}/charts`;
@@ -216,6 +224,7 @@ export function stepZoom(z: number, direction: 1 | -1): number {
 
 /** 滚轮：指数比例，正 deltaY（往下）缩小。触控板捏合也走这里（ctrl+wheel）。 */
 export function wheelZoom(z: number, deltaY: number): number {
+  if (!Number.isFinite(deltaY)) return clampZoom(z);
   return clampZoom(z * Math.exp(-deltaY * 0.002));
 }
 
@@ -260,7 +269,7 @@ export function renderScale(
   pageHeight: number,
   maxPixels: number = MAX_CANVAS_PIXELS,
 ): number {
-  const wanted = cssScale * dpr;
+  const wanted = cssScale * (Number.isFinite(dpr) && dpr > 0 ? dpr : 1);
   const area = pageWidth * pageHeight;
   if (area <= 0 || area * wanted * wanted <= maxPixels) return wanted;
   return Math.sqrt(maxPixels / area);
@@ -284,4 +293,27 @@ export function fileFailure(
   if (status === 404) return "notFound";
   if (status === 503 && errorCode === CHARTS_UNAVAILABLE) return "unconfigured";
   return "error";
+}
+
+/**
+ * 空列表的正文。3 级以下是没权限看 NAIP 航图；3 级起是这个机场确实没有。
+ */
+export function chartsEmptyBody(aipAccess: number): "needsAccess" | "noCharts" {
+  return aipAccess < AIP_RESTRICTED_CALL ? "needsAccess" : "noCharts";
+}
+
+/**
+ * Tab / Shift+Tab 在一个有 `count` 个可聚焦元素的容器里循环：`current` 是当前
+ * 聚焦元素的下标（不在容器里是 -1）。回 null 表示交给浏览器按默认走。
+ */
+export function wrapFocusIndex(
+  current: number,
+  count: number,
+  backwards: boolean,
+): number | null {
+  if (count <= 0) return null;
+  if (current < 0) return backwards ? count - 1 : 0;
+  if (backwards && current === 0) return count - 1;
+  if (!backwards && current === count - 1) return 0;
+  return null;
 }

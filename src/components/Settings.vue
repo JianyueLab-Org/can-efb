@@ -15,6 +15,7 @@
  */
 import { onBeforeUnmount, onMounted, ref, useId, watch } from "vue";
 import { api, describeFailure } from "@/lib/canApi";
+import { AIP_RESTRICTED_CALL } from "@/lib/charts";
 import { createTranslator } from "@/lib/i18n";
 import { hideNaip, setHideNaip } from "@/lib/naip";
 import { Icon, ThemeLangControls } from "@jianyuelab-org/can-ui";
@@ -128,7 +129,6 @@ function toggleRail(next: boolean) {
  * 前后对不上。初值取默认（开），和服务端渲染的一致。之后跟着它走，别的标签页改了这
  * 里也变。
  */
-const AIP_RESTRICTED_CALL = 3;
 const canHideNaip = props.aipAccess >= AIP_RESTRICTED_CALL;
 const naipHidden = ref(true);
 const naipLabelId = useId();

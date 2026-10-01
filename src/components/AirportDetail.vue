@@ -14,7 +14,7 @@
  * 信息 / 航图两个标签用 can-ui 的 Segmented，选中那一段填品牌蓝（globals.css 的
  * .airport-tabs）。
  */
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, useId, watch } from "vue";
 import { createTranslator } from "@/lib/i18n";
 import {
   fetchAirportProcedures,
@@ -47,6 +47,19 @@ const chartsOpened = ref(false);
 watch(tab, (value) => {
   if (value === "charts") chartsOpened.value = true;
 });
+const uid = useId();
+const tabsEl = ref<{ $el: HTMLElement } | null>(null);
+const tabId = (value: DetailTab) => `${uid}-tab-${value}`;
+const panelId = (value: DetailTab) => `${uid}-panel-${value}`;
+/** Segmented 不给标签设 id / aria-controls，挂载后按顺序（信息、航图）补上。 */
+function wireTabs() {
+  const els = tabsEl.value?.$el.querySelectorAll<HTMLElement>('[role="tab"]');
+  const order: DetailTab[] = ["info", "charts"];
+  els?.forEach((el, i) => {
+    el.id = tabId(order[i]);
+    el.setAttribute("aria-controls", panelId(order[i]));
+  });
+}
 const tabs = computed(() => [
   { value: "info" as const, label: t("airports.detail.tabs.info") },
   { value: "charts" as const, label: t("airports.detail.tabs.charts") },
@@ -73,6 +86,7 @@ async function loadRunways() {
 
 onMounted(() => {
   void loadRunways();
+  wireTabs();
   heading.value?.focus();
 });
 watch(() => props.airport.icao, loadRunways);
@@ -99,6 +113,7 @@ watch(() => props.airport.icao, loadRunways);
     </header>
 
     <Segmented
+      ref="tabsEl"
       v-model="tab"
       :segments="tabs"
       :label="t('airports.detail.tabs.label')"
@@ -106,7 +121,13 @@ watch(() => props.airport.icao, loadRunways);
       class="airport-tabs"
     />
 
-    <div v-show="tab === 'info'" class="space-y-5">
+    <div
+      v-show="tab === 'info'"
+      :id="panelId('info')"
+      role="tabpanel"
+      :aria-labelledby="tabId('info')"
+      class="space-y-5"
+    >
       <dl class="grid grid-cols-2 gap-3 text-sm">
         <div v-if="airport.fir">
           <dt class="text-xs uppercase tracking-wide text-faint">FIR</dt>
@@ -174,10 +195,17 @@ watch(() => props.airport.icao, loadRunways);
       </PanelSection>
     </div>
 
-    <div v-if="chartsOpened" v-show="tab === 'charts'">
+    <div
+      v-if="chartsOpened"
+      v-show="tab === 'charts'"
+      :id="panelId('charts')"
+      role="tabpanel"
+      :aria-labelledby="tabId('charts')"
+    >
       <AirportCharts
         :icao="airport.icao"
         :aip-access="aipAccess"
+        :active="tab === 'charts'"
         :messages="messages"
       />
     </div>

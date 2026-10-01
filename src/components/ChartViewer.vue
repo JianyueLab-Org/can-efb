@@ -6,8 +6,8 @@
  * 按面板此刻的矩形算（mapBus 的 panel:layout）。盖满时是对话框，贴在旁边时只是
  * 一块区域 —— 面板还能继续选别的航图。
  *
- * 缩放：滚轮、触控板捏合（浏览器报成带 ctrlKey 的 wheel）、两指捏合、按钮。拖动
- * 平移。缩放先改画布的 CSS 尺寸（立刻有反馈），停 150 ms 再按新倍率重画（变清晰）。
+ * 缩放：ctrl+滚轮（触控板捏合，浏览器报成带 ctrlKey 的 wheel）、两指捏合、按钮、
+ * 键盘 + / - / 0。普通滚轮滚动，拖动平移。缩放先改画布的 CSS 尺寸（立刻有反馈），停 150 ms 再按新倍率重画（变清晰）。
  * 夜间模式是把画布反色再转 180° 色相，颜色编码的色相不变。
  */
 import {
@@ -42,6 +42,7 @@ import {
   stepZoom,
   viewerPlacement,
   wheelZoom,
+  wrapFocusIndex,
   type ChartEntry,
   type FileFailure,
   type Rotation,
@@ -92,6 +93,7 @@ let loadSeq = 0;
 let lastLayout: PanelLayout | null = null;
 let unsubscribeLayout: (() => void) | null = null;
 let resizeObserver: ResizeObserver | null = null;
+let opener: HTMLElement | null = null;
 
 watch(night, (on) => {
   try {
@@ -143,8 +145,15 @@ async function open() {
       loadPdfJs(),
       response.arrayBuffer(),
     ]);
-    const loaded = await pdfjs.getDocument({ data: new Uint8Array(bytes) })
-      .promise;
+    // 失败时也要销毁加载任务：每个任务带一个专用 worker，只有 destroy() 才会收掉。
+    const task = pdfjs.getDocument({ data: new Uint8Array(bytes) });
+    let loaded: PdfDocument;
+    try {
+      loaded = await task.promise;
+    } catch (error) {
+      void task.destroy();
+      throw error;
+    }
     if (seq !== loadSeq) {
       void loaded.loadingTask.destroy();
       return;
@@ -277,7 +286,13 @@ function goPage(delta: 1 | -1) {
   void showPage();
 }
 
+/**
+ * 只有 ctrl+滚轮（触控板捏合，浏览器报成带 ctrlKey 的 wheel）缩放；普通滚轮
+ * 留给浏览器，在放大后的航图上滚动。
+ */
 function onWheel(event: WheelEvent) {
+  if (!event.ctrlKey) return;
+  event.preventDefault();
   const box = scroller.value;
   if (!box) return;
   const rect = box.getBoundingClientRect();
@@ -338,8 +353,39 @@ function onPointerUp(event: PointerEvent) {
   startGesture();
 }
 
+const FOCUSABLE =
+  'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function focusables(): HTMLElement[] {
+  return root.value
+    ? [...root.value.querySelectorAll<HTMLElement>(FOCUSABLE)]
+    : [];
+}
+
+/** 盖满时是模态：Tab 在里面循环。 */
+function trapTab(event: KeyboardEvent) {
+  if (placement.value.mode !== "overlay") return;
+  const items = focusables();
+  const index = items.indexOf(document.activeElement as HTMLElement);
+  const next = wrapFocusIndex(index, items.length, event.shiftKey);
+  if (next === null) return;
+  event.preventDefault();
+  items[next].focus();
+}
+
+/** 盖满时焦点跑到了外面（点了背后的东西、脚本抢焦点）：拉回来。 */
+function keepFocusInside(event: FocusEvent) {
+  if (placement.value.mode !== "overlay") return;
+  const target = event.target as Node | null;
+  if (target && root.value && !root.value.contains(target)) {
+    root.value.focus();
+  }
+}
+
 function onKey(event: KeyboardEvent) {
-  if (event.key === "Escape") {
+  if (event.key === "Tab") {
+    trapTab(event);
+  } else if (event.key === "Escape") {
     event.preventDefault();
     emit("close");
   } else if (event.key === "+" || event.key === "=") {
@@ -372,6 +418,11 @@ onMounted(() => {
     });
     resizeObserver.observe(scroller.value);
   }
+  opener =
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+  document.addEventListener("focusin", keepFocusInside);
   root.value?.focus();
   void open();
 });
@@ -380,6 +431,10 @@ onBeforeUnmount(() => {
   loadSeq += 1;
   unsubscribeLayout?.();
   window.removeEventListener("resize", place);
+  document.removeEventListener("focusin", keepFocusInside);
+  // 焦点回到打开它的那个控件（它还在文档里的话）。
+  if (opener?.isConnected) opener.focus();
+  opener = null;
   resizeObserver?.disconnect();
   if (renderTimer) clearTimeout(renderTimer);
   void closeDocument();
@@ -525,7 +580,7 @@ onBeforeUnmount(() => {
           ref="scroller"
           class="chart-viewer-scroller"
           :data-night="night ? 'true' : 'false'"
-          @wheel.prevent="onWheel"
+          @wheel="onWheel"
           @pointerdown="onPointerDown"
           @pointermove="onPointerMove"
           @pointerup="onPointerUp"
