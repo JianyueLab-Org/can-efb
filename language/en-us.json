@@ -504,6 +504,23 @@
           "loading": "Opening chart…",
           "failed": "Couldn't open this chart.",
           "notFound": "This chart is no longer in the database."
+        },
+        "pins": {
+          "button": "Charts",
+          "title": "Charts for this flight",
+          "close": "Close chart list",
+          "departure": "Departure",
+          "arrival": "Arrival",
+          "alternate": "Alternate",
+          "pin": "Pin",
+          "unpin": "Unpin",
+          "auto": "Auto",
+          "pinnedNone": "No pinned charts yet.",
+          "all": "All charts ({count})",
+          "unmatched": "No chart matched {procedure}; pick one from the list below.",
+          "noPlan": "No flight plan filed. Pinned charts follow the flight plan.",
+          "noPlanAction": "File a flight plan",
+          "planFailed": "Could not read the flight plan. That does not mean there is none."
         }
       }
     }

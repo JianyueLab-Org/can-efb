@@ -504,6 +504,23 @@
           "loading": "正在打开航图…",
           "failed": "没能打开这张航图。",
           "notFound": "这张航图已经不在资料库里了。"
+        },
+        "pins": {
+          "button": "航图",
+          "title": "本次飞行的航图",
+          "close": "关闭航图列表",
+          "departure": "起飞",
+          "arrival": "落地",
+          "alternate": "备降",
+          "pin": "钉住",
+          "unpin": "取消钉住",
+          "auto": "自动",
+          "pinnedNone": "还没有钉住的航图。",
+          "all": "全部航图（{count}）",
+          "unmatched": "没有匹配 {procedure} 的航图，请从下面的列表里选。",
+          "noPlan": "还没有提交飞行计划。钉住的航图跟着计划走。",
+          "noPlanAction": "去提交飞行计划",
+          "planFailed": "没能读取飞行计划 —— 这不代表没有。"
         }
       }
     }
