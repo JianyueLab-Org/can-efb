@@ -1,14 +1,26 @@
 import { describe, expect, test } from "bun:test";
+import type { PanelLayout, ShellMode } from "@/lib/panelLayout";
 import {
+  anchoredScroll,
   chartChips,
   chartFilePath,
   chartIndexPath,
   chartsEmptyReason,
   chartsState,
   errorCodeOf,
+  clampPage,
+  clampZoom,
   defaultChip,
+  fileFailure,
   filterCharts,
+  MAX_CANVAS_PIXELS,
+  nextRotation,
   parseChartIndex,
+  pinchZoom,
+  renderScale,
+  stepZoom,
+  viewerPlacement,
+  wheelZoom,
   type ChartEntry,
 } from "@/lib/charts";
 
@@ -262,5 +274,122 @@ describe("errorCodeOf", () => {
     expect(errorCodeOf("x")).toBeNull();
     expect(errorCodeOf({ error: 1 })).toBeNull();
     expect(errorCodeOf({})).toBeNull();
+  });
+});
+
+function layout(mode: ShellMode, right: number): PanelLayout {
+  return {
+    mode,
+    collapsed: false,
+    rect: { left: 64, top: 12, right, bottom: 800 },
+  };
+}
+
+describe("viewerPlacement", () => {
+  test("还不知道面板在哪时盖满", () => {
+    expect(viewerPlacement(null, 1440)).toEqual({ mode: "overlay" });
+  });
+
+  test("手机上盖满", () => {
+    expect(viewerPlacement(layout("phone", 390), 390)).toEqual({
+      mode: "overlay",
+    });
+  });
+
+  test("桌面上贴在面板右边，隔一道留白", () => {
+    expect(viewerPlacement(layout("desktop", 476), 1440)).toEqual({
+      mode: "beside",
+      left: 488,
+    });
+  });
+
+  test("面板折叠时跟着往左", () => {
+    expect(viewerPlacement(layout("desktop", 116), 1280)).toEqual({
+      mode: "beside",
+      left: 128,
+    });
+  });
+
+  test("旁边放不下就盖满", () => {
+    expect(viewerPlacement(layout("tablet", 470), 900)).toEqual({
+      mode: "overlay",
+    });
+  });
+});
+
+describe("zoom", () => {
+  test("clampZoom 夹在范围里，非数字回 1", () => {
+    expect(clampZoom(0.1)).toBe(0.25);
+    expect(clampZoom(20)).toBe(8);
+    expect(clampZoom(2)).toBe(2);
+    expect(clampZoom(Number.NaN)).toBe(1);
+  });
+
+  test("stepZoom 一档乘除 1.25，到顶不动", () => {
+    expect(stepZoom(1, 1)).toBe(1.25);
+    expect(stepZoom(1, -1)).toBe(0.8);
+    expect(stepZoom(8, 1)).toBe(8);
+  });
+
+  test("wheelZoom 往上滚放大，往下滚缩小，不滚不变", () => {
+    expect(wheelZoom(1, -100)).toBeGreaterThan(1);
+    expect(wheelZoom(1, 100)).toBeLessThan(1);
+    expect(wheelZoom(1, 0)).toBe(1);
+    expect(wheelZoom(8, -1000)).toBe(8);
+  });
+
+  test("pinchZoom 按两指距离之比", () => {
+    expect(pinchZoom(1, 100, 200)).toBe(2);
+    expect(pinchZoom(2, 0, 50)).toBe(2);
+  });
+
+  test("anchoredScroll 让锚点下的内容不动", () => {
+    expect(anchoredScroll(100, 50, 2)).toBe(250);
+    expect(anchoredScroll(0, 0, 3)).toBe(0);
+  });
+});
+
+describe("nextRotation", () => {
+  test("每次 90°，转满一圈回 0", () => {
+    expect(nextRotation(0)).toBe(90);
+    expect(nextRotation(90)).toBe(180);
+    expect(nextRotation(180)).toBe(270);
+    expect(nextRotation(270)).toBe(0);
+  });
+});
+
+describe("renderScale", () => {
+  test("像素数够用时是 CSS 倍率乘设备像素比", () => {
+    expect(renderScale(1.5, 2, 600, 800)).toBe(3);
+  });
+
+  test("超过画布上限时压到上限以内", () => {
+    const scale = renderScale(4, 3, 600, 800);
+    expect(scale).toBeCloseTo(Math.sqrt(MAX_CANVAS_PIXELS / 480_000), 6);
+    expect(600 * scale * 800 * scale).toBeLessThanOrEqual(
+      MAX_CANVAS_PIXELS + 1,
+    );
+  });
+});
+
+describe("clampPage", () => {
+  test("夹在 1..total", () => {
+    expect(clampPage(0, 3)).toBe(1);
+    expect(clampPage(5, 3)).toBe(3);
+    expect(clampPage(2, 3)).toBe(2);
+    expect(clampPage(1, 0)).toBe(1);
+  });
+});
+
+describe("fileFailure", () => {
+  test("按状态码分类", () => {
+    expect(fileFailure(401)).toBe("forbidden");
+    expect(fileFailure(403)).toBe("forbidden");
+    expect(fileFailure(404)).toBe("notFound");
+    expect(fileFailure(503, "charts_unavailable")).toBe("unconfigured");
+    expect(fileFailure(503, "upstream_unavailable")).toBe("error");
+    expect(fileFailure(503)).toBe("error");
+    expect(fileFailure(500)).toBe("error");
+    expect(fileFailure(0)).toBe("error");
   });
 });
