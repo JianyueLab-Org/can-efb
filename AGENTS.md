@@ -723,6 +723,26 @@ NAIP 终端区航图的 PDF，机场详情的一个标签，不是单独的页�
   （`.airport-tabs`）。
 - 纯逻辑全在 `lib/charts.ts`，测试在 `lib/charts.test.ts`。
 
+### 航图钉住（`lib/chartPins.ts` + `map/ChartPins.vue`）
+
+- 地图上的「航图」按钮打开弹出层：飞行计划的起飞、落地、备降三个机场，钉住的在前，
+  后面是折起来的全部航图。没有备降就没有那一组。没有计划时一句话加去 `/flightplan` 的链接。
+- 自动钉住：起飞、落地是 TAXI 里的 `机场图`、`停机位置图`，备降只有 `机场图`。选了程序
+  （`lib/procedureSelection.ts`）时加上匹配的 SID、STAR、APP。
+- SID / STAR：标签第一个数字前的字母是定位点，航图名括号里含它（子串）；选了跑道时跑道在
+  `RWY` 后面那一串里。`AND` 会命中 `BKANDSASAN`，这是已知局限，自动钉住带「自动」标记，可取消。
+- 进近：首字母定类型（I = ILS；R = RNP / RNAV 开头且不含 ILS；D、V = VOR；N = NDB；
+  L = LOC），跑道完全一致，`-Y` / `-Z` 对 `RWY` 前的小写字母，标签不带变体时不查。
+- 选了程序却没中：说「没有匹配 {procedure} 的航图」，不安静地少一张。
+- 存储：localStorage `efb:chart-pins:{DEP}-{ARR}`，`{ pinned, unpinned }`，元素是航图 id。
+  结果 = 自动 + `pinned` − `unpinned`。改了发 `efb:chart-pins-changed`。读不出来当空的。
+  索引里没有的 id 不显示。
+- 第一次打开才取数。开着时计划、程序选择、「不使用受限汇编」变了重取；钉住变了只重读存储。
+  三个机场各自的状态和重试，互不影响。
+- 机场详情的航图标签：这个机场在计划里时每行多一颗钉住按钮，写同一份存储；不在计划里没有。
+- 查看器还是 `ChartViewer.vue`，位置照 `viewerPlacement`（贴面板右边或盖满），会盖住弹出层；
+  Esc 在查看器里只关查看器，不连带关弹出层；关掉后焦点回到打开它的那一行。
+
 ## 导航是一份数据
 
 加一个页面 = 在 `src/lib/nav.ts` 里加一行 + 在四本词典里加两条文案 +

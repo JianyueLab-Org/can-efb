@@ -68,7 +68,7 @@ Known limitation: fix matching is a substring test on concatenated names. `AND` 
 ## Pin storage
 
 - Key: `efb:chart-pins:{DEP}-{ARR}` in localStorage, next to `efb:procedures:`.
-- Value: `{ pinned: string[], unpinned: string[] }`. Entries are chart ids.
+- Value: `{ pinned: number[], unpinned: number[] }`. Entries are chart ids.
 - Result: auto matches, plus `pinned`, minus `unpinned`.
 - Pinning an auto chart that was unpinned removes it from `unpinned`. Unpinning a manual pin removes it from `pinned`.
 - A change dispatches `efb:chart-pins-changed` on `window`. Listeners re-read storage.
