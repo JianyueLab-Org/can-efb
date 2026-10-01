@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 压在地图上的那几样东西：图层菜单、两条提示、没取到的那一层和它的重试、「定位
- * 到我」。
+ * 到我」、「航图」按钮。
  *
  * 放在地图上而不是面板里：地图跨页面常驻，面板每换一页整个换掉 —— 开关跟着面板
  * 走的话，切一页图层状态就没人管了。
@@ -33,6 +33,8 @@ const props = defineProps<{
     chart: string;
     chartHigh: string;
     chartLow: string;
+    /** 「航图」按钮。 */
+    charts: string;
   };
   on: Record<LayerToggle, boolean>;
   /** 当前航图：管航路、航路点和禁区一族画哪些。 */
@@ -48,6 +50,8 @@ const props = defineProps<{
   view3d: boolean;
   /** 倾斜时图上有没有航线高度剖面。有就说一句那是估算。 */
   profileShown: boolean;
+  /** 航图弹出层开着。 */
+  chartsOpen: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -56,6 +60,7 @@ const emit = defineEmits<{
   retry: [LayerId];
   locate: [];
   view3d: [];
+  charts: [];
 }>();
 
 /** 菜单里的顺序，和原来那一排按钮一致。 */
@@ -79,6 +84,13 @@ const menuOpen = ref(false);
 const root = ref<HTMLElement | null>(null);
 const trigger = ref<HTMLButtonElement | null>(null);
 const menu = ref<HTMLElement | null>(null);
+const chartsTrigger = ref<HTMLButtonElement | null>(null);
+
+/** 弹出层关掉后焦点回到按钮（MapStage 调）。 */
+function focusCharts() {
+  chartsTrigger.value?.focus();
+}
+defineExpose({ focusCharts });
 
 /** 打开时焦点落到第一个能按的开关上；Esc 关掉时回到按钮（见 onKeydown）。 */
 async function toggleMenu() {
@@ -247,6 +259,19 @@ onBeforeUnmount(() => {
         @click="emit('view3d')"
       >
         {{ text.view3d }}
+      </button>
+      <!-- 本次飞行的航图（`ChartPins.vue`，由 MapStage 挂）。 -->
+      <button
+        ref="chartsTrigger"
+        type="button"
+        class="map-charts-trigger glass"
+        :class="chartsOpen ? 'is-on' : ''"
+        :aria-expanded="chartsOpen"
+        aria-controls="map-chart-pins"
+        @click="emit('charts')"
+      >
+        <Icon name="documentText" class="size-4" />
+        <span>{{ text.charts }}</span>
       </button>
     </div>
   </div>
