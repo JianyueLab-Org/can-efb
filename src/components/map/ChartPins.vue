@@ -229,7 +229,7 @@ watch(
 );
 watch(hideNaip, onSourceChange);
 
-/** Esc 关弹出层。查看器开着时 Esc 是查看器的。 */
+/** Esc 关弹出层。查看器开着时 Esc 是查看器的。捕获阶段先于查看器的处理，此时 `selected` 还在。 */
 function onKeydown(event: KeyboardEvent) {
   if (event.key !== "Escape" || !props.open || selected.value) return;
   emit("close");
@@ -239,13 +239,13 @@ onMounted(() => {
   window.addEventListener(PLAN_CHANGED_EVENT, onSourceChange);
   window.addEventListener(PROCEDURES_CHANGED_EVENT, onSourceChange);
   window.addEventListener(CHART_PINS_CHANGED_EVENT, rereadLocal);
-  document.addEventListener("keydown", onKeydown);
+  document.addEventListener("keydown", onKeydown, true);
 });
 onBeforeUnmount(() => {
   window.removeEventListener(PLAN_CHANGED_EVENT, onSourceChange);
   window.removeEventListener(PROCEDURES_CHANGED_EVENT, onSourceChange);
   window.removeEventListener(CHART_PINS_CHANGED_EVENT, rereadLocal);
-  document.removeEventListener("keydown", onKeydown);
+  document.removeEventListener("keydown", onKeydown, true);
 });
 </script>
 
