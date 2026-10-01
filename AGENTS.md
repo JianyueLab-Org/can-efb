@@ -157,8 +157,8 @@ cookie 转发回去。哪天有人要在这里加 Secret，先确认那件事不
 - **十分钟而不是一天** —— 数据一个 AIRAC 周期才变，按内容算能缓存很久，但**重导是
   随时可能发生的**（此刻正好欠着一次）。缓存久了，修好之后成员还会继续看那张旧图。
 - **`Vary: Cookie`** —— 每一个成功响应都带，不只本层补缓存头的那些。同一台设备上换人
-  登录，会话 cookie 变了，缓存就不认上一个人的受限资料。航图 PDF 用 can-db 自己的
-  `private, max-age=86400`，一天里最要它。「不使用受限汇编」的两种状态 URL 不同
+  登录，会话 cookie 变了，缓存就不认上一个人的受限资料。机场航图 PDF 用 can-db 自己
+  的 `private, max-age=86400`。「不使用受限汇编」的两种状态 URL 不同
   （`unrestricted=1`），本来就是两个缓存条目。
 
 只给成功的响应加：给 401 或 502 加缓存，等于让一次权限变更或一次上游抖动被记住十分
@@ -688,13 +688,15 @@ can-db 存原文，它那条迁移写明了理由：解码要判 A/B/+/- 那套�
 「填入飞行计划」交的是改写后那串 —— 换了跑道和程序却填进去一条旧的，是这个功能
 最容易犯的错，而它一路到管制员那边才看得出来。
 
-## 航图（`lib/charts.ts` + `AirportCharts.vue` + `ChartViewer.vue`）
+## 机场航图（PDF）（`lib/charts.ts` + `AirportCharts.vue` + `ChartViewer.vue`）
 
-机场详情的一个标签，不是单独的页面。没有 `/charts`。
+NAIP 终端区航图的 PDF，机场详情的一个标签，不是单独的页面。没有 `/charts`。
+地图上的 IFR 高 / 低空航图层是另一回事，见〈航图样式〉。
 
 - 数据：can-db `aip/airports/{icao}/charts`（索引）和 `aip/charts/{id}/file`（PDF）。
-  反代白名单两条正则，文件那条带回 `content-length`、`content-disposition`，缓存头用
-  can-db 的。
+  反代白名单两条正则（`CHART_INDEX_PATTERN`、`CHART_FILE_PATTERN`，在
+  `lib/charts.ts`，`charts.test.ts` 钉住）。文件那条带回 `content-length`、
+  `content-disposition`，缓存头用 can-db 的。
 - 只有 NAIP 终端区航图（`dataset.min_access >= 3`）。3 级以下拿到空列表。
 - 「不使用受限汇编」开着时列表也是空的：`dbFetch` 带 `unrestricted=1`，级别压到 2。
   3 级起这时显示「受限汇编已隐藏」和去设置的链接（`chartsEmptyReason`）。
@@ -702,17 +704,22 @@ can-db 存原文，它那条迁移写明了理由：解码要判 A/B/+/- 那套�
   别的行丢掉。没有航图的类别禁用，默认选第一个非空的。
 - 搜索跨类别匹配名称和页码，不分大小写，结果按类别顺序排。
 - 状态：读取中、没权限（401/403）、错误（带重试）、存储没配置、空。503 看响应体：
-  只有 `error === "charts_unavailable"` 是存储没配置；别的 503（如
-  `upstream_unavailable`）是错误，可以重试。`chartsState` 和 `fileFailure` 的最后一个
-  参数是 `errorCodeOf(body)`。
+  `error === "charts_unavailable"` 是存储没配置；别的 503（如
+  `upstream_unavailable`）是错误。`chartsState` 和 `fileFailure` 的最后一个参数是
+  `errorCodeOf(body)`。
+- 空列表的正文按 `aipAccess`（`chartsEmptyBody`）：低于 3 级是
+  `empty.needsAccess`，3 级起是 `empty.noCharts`。
+- 切到「信息」标签会关掉查看器（`AirportCharts` 的 `active`）。两个面板有
+  `tabpanel` 角色和 `aria-controls` / `aria-labelledby`。盖满时的查看器是模态：Tab
+  在里面循环，关闭后焦点回到打开它的控件。
 - 查看器：`pdfjs-dist`（devDependency，Vite 打进前端），第一次打开才 `import()`，
   worker 由 Vite 以 `?url` 打包。平板和桌面贴在面板右边（`viewerPlacement`，右边不足
   480 px 时盖满），手机盖满。z-index 45，在 can-ui 的对话框和命令面板（50）之下。
   缩放是相对整页的倍数（0.25–8），先改 CSS 尺寸，150 ms 后重画；画布像素压在
-  4096² 以内（iOS 上限）。夜间模式是反色加 180° 色相，存在 localStorage
+  4096² 以内（iOS 上限）。ctrl+滚轮（触控板捏合）、两指捏合、按钮、键盘 + / - / 0
+  缩放；普通滚轮滚动。夜间模式是反色加 180° 色相，存在 localStorage
   `efb.chartNight`。
-- 配色：STAR 绿、APP 橙、TAXI 蓝、SID 粉、REF 紫，选中是实心胶囊（白字，用 -600/-700
-  档保证对比度）。信息 / 航图用 can-ui 的 `Segmented`，选中段填 `--color-can-700`
+- 配色：STAR 绿、APP 橙、TAXI 蓝、SID 粉、REF 紫，选中是实心胶囊（白字，-600/-700 档）。信息 / 航图用 can-ui 的 `Segmented`，选中段填 `--color-can-700`
   （`.airport-tabs`）。
 - 纯逻辑全在 `lib/charts.ts`，测试在 `lib/charts.test.ts`。
 
@@ -750,7 +757,7 @@ cookie 名是 **`NEXT_LOCALE`**，全网共用一个父域，主站上选的语�
 **这一节以前列着四个，现在一个都没有。** `Placeholder.astro` 连同 `efb.placeholder.*`
 一起删了。三条各有各的结局，记下来：
 
-- **航图** —— 做了，是机场详情的一个标签，数据来自 can-db。见〈航图〉。
+- **航图** —— 做了，是机场详情的一个标签，数据来自 can-db。见〈机场航图（PDF）〉。
 - **机场 `/airports`** —— 做了，数据来自 can-db。
 - **性能 / 检查单** —— 删了。要机型手册数据、要按机型逐条录入，两样都不存在。
 
