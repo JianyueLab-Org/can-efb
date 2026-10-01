@@ -3,6 +3,7 @@ import { defineConfig } from "astro/config";
 import node from "@astrojs/node";
 import vue from "@astrojs/vue";
 import tailwindcss from "@tailwindcss/vite";
+import { minifyJsonAssets } from "./scripts/vite-minify-json.mjs";
 
 /**
  * 电子飞行包（EFB）。和 can-web / can-dev / can-radar 同一套形状：Astro SSR
@@ -26,7 +27,7 @@ export default defineConfig({
   integrations: [vue()],
   security: { checkOrigin: false },
   vite: {
-    plugins: [tailwindcss()],
+    plugins: [tailwindcss(), minifyJsonAssets()],
 
     /**
      * can-ui 发的是**源码**（`.vue` / `.ts` / `.css`）而不是构建产物。代价是必须

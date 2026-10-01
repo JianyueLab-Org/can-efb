@@ -55,15 +55,23 @@ async function fetchCollection(url: string): Promise<FeatureCollection> {
   return (await response.json()) as FeatureCollection;
 }
 
-async function loadBoundaryIndex(): Promise<BoundaryIndex | null> {
-  if (!boundaryIndex) {
-    const [collection] = await Promise.all([
-      fetchCollection(BOUNDARIES_URL).catch(() => null),
-      loadFirs(),
-    ]);
+let boundaryRequest: Promise<BoundaryIndex | null> | null = null;
+
+/**
+ * 同一时刻只取一份：打开管制层时先行预取，和第一份 datafeed 并行，`refreshLive`
+ * 随后来要时接住同一个请求。失败清掉请求，下一轮再试。
+ */
+function loadBoundaryIndex(): Promise<BoundaryIndex | null> {
+  if (boundaryIndex) return Promise.resolve(boundaryIndex);
+  boundaryRequest ??= Promise.all([
+    fetchCollection(BOUNDARIES_URL).catch(() => null),
+    loadFirs(),
+  ]).then(([collection]) => {
+    boundaryRequest = null;
     if (collection) boundaryIndex = indexBoundaries(collection);
-  }
-  return boundaryIndex;
+    return boundaryIndex;
+  });
+  return boundaryRequest;
 }
 
 /** 2.7 MB，只在有进近在线（或 Covering 名字要它）时才取。 */
@@ -361,6 +369,8 @@ export function useTrafficLayer(options: {
     flag.value = next;
     prefs[which === "traffic" ? "traffic" : "atcLive"] = next;
     writePrefs(prefs);
+    // 管制几何不等 datafeed 回来再取。
+    if (next && which === "atc") void loadBoundaryIndex();
 
     if (!next) {
       // 关掉的那一层清干净。自己那架跟着机组走 —— 它是机组的一员，而且只看管制的时
@@ -425,7 +435,10 @@ export function useTrafficLayer(options: {
   function start(saved: LayerPrefs) {
     document.addEventListener("visibilitychange", onVisible);
     if (saved.traffic) showTraffic.value = true;
-    if (saved.atcLive) showAtc.value = true;
+    if (saved.atcLive) {
+      showAtc.value = true;
+      void loadBoundaryIndex();
+    }
     if (liveOn.value) {
       void refreshLive();
       liveTimer = setInterval(() => void refreshLive(), LIVE_INTERVAL_MS);
