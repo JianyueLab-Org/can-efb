@@ -31,6 +31,8 @@ interface Allowed {
   methods: string[];
   /** 谁在用它 —— 没有这一句，以后没人敢删任何一条。 */
   who: string;
+  /** 除 `PASS_THROUGH` 之外，这一条还要原样带回的响应头。 */
+  passThrough?: string[];
 }
 
 const ALLOW_LIST: Record<string, Allowed> = {
@@ -123,6 +125,26 @@ const ALLOW_PATTERNS: { pattern: RegExp; entry: Allowed }[] = [
       who: "lib/procedures.ts：进离场程序选择器、机场详情的跑道",
     },
   },
+  {
+    /* 一个机场的航图索引。形状和上面两条一样收死：一段四个字母，然后 /charts。 */
+    pattern: /^aip\/airports\/[A-Za-z]{4}\/charts$/,
+    entry: {
+      methods: ["GET"],
+      who: "AirportDetail.vue 的航图标签（AirportCharts.vue）",
+    },
+  },
+  {
+    /* 一张航图的 PDF。id 是 can-db 的 bigint 主键，只收正整数。
+     *
+     * 长度和文件名原样带回：长度让浏览器知道文件多大，文件名在另存时用。缓存头
+     * 用 can-db 自己给的（`private, max-age=86400`），见下面缓存那一段。 */
+    pattern: /^aip\/charts\/[1-9]\d{0,18}\/file$/,
+    entry: {
+      methods: ["GET"],
+      who: "AirportDetail.vue 的航图标签（ChartViewer.vue 取 PDF）",
+      passThrough: ["content-length", "content-disposition"],
+    },
+  },
 ];
 
 const PASS_THROUGH = ["content-type", "cache-control"];
@@ -174,7 +196,11 @@ const handler: APIRoute = async (context) => {
   }
 
   const out = new Headers();
-  for (const name of PASS_THROUGH) {
+  for (const name of [...PASS_THROUGH, ...(entry.passThrough ?? [])]) {
+    // fetch 会自动解压；解压之后的长度不是上游声明的那个，带回去浏览器会截断。
+    if (name === "content-length" && upstream.headers.has("content-encoding")) {
+      continue;
+    }
     const value = upstream.headers.get(name);
     if (value) out.set(name, value);
   }
@@ -202,12 +228,13 @@ const handler: APIRoute = async (context) => {
      十分钟。 */
   if (upstream.ok && !out.has("cache-control")) {
     out.set("cache-control", "private, max-age=600");
-    /* **按 cookie 分开存。** `private` 挡住了共享缓存，挡不住同一台设备上换人：3 级
-       成员退出、1 级成员在同一个浏览器里登录，十分钟内同一个 URL 会直接拿到上一个人
-       的受限资料。会话 cookie 换了，缓存就不认。「不使用受限汇编」开着时 URL 多一个
-       `unrestricted=1`，两种状态本来就是两个缓存条目。 */
-    out.set("vary", "cookie");
   }
+  /* **按 cookie 分开存。** `private` 挡住了共享缓存，挡不住同一台设备上换人：3 级
+     成员退出、1 级成员在同一个浏览器里登录，缓存期内同一个 URL 会直接拿到上一个人
+     的受限资料。会话 cookie 换了，缓存就不认。can-db 自己发缓存头的那几条（航图
+     PDF，一天）同样要它，所以不只跟着本层补的那个头走。「不使用受限汇编」开着时
+     URL 多一个 `unrestricted=1`，两种状态本来就是两个缓存条目。 */
+  if (upstream.ok) out.set("vary", "cookie");
 
   return new Response(upstream.body, { status: upstream.status, headers: out });
 };
