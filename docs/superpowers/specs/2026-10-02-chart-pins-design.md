@@ -89,13 +89,13 @@ Known limitation: fix matching is a substring test on concatenated names. `AND` 
 - Groups in order: departure, arrival, alternate. A missing alternate has no group.
 - Each group lists pinned charts first. A collapsed "All charts (N)" list follows, sorted by category.
 - Each row: category tag, name, page, "auto" mark when matched automatically, pin button.
-- Clicking a row opens `ChartViewer.vue`. Placement follows `viewerPlacement`: full screen on phones, beside the popover on wider screens.
+- Clicking a row opens `ChartViewer.vue`. The unchanged `ChartViewer.vue` places itself: full screen on phones, beside the panel on wider screens, covering the popover.
 - No flight plan: one sentence and a link to `/flightplan`.
 
 ## Loading
 
 - First load happens when the popover first opens. Nothing loads with the map.
-- While the popover is open, it reloads on `efb:plan-changed`, `PROCEDURES_CHANGED_EVENT` and `hideNaip` changes. `efb:chart-pins-changed` re-merges without refetching.
+- While the popover is open, it reloads on `efb:plan-changed` and `hideNaip` changes. `PROCEDURES_CHANGED_EVENT` and `efb:chart-pins-changed` re-merge without refetching.
 - The plan comes from `loadFlightPlan()`.
 - The three indexes are fetched in parallel with `dbFetch`. PDFs are fetched only when a chart is opened.
 
