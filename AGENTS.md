@@ -5,8 +5,8 @@
 ## 这是什么
 
 **can-efb** —— Cerulean Aviation Network 的**电子飞行包**（Electronic Flight
-Bag），给飞行员在飞行前和飞行途中用的那一套东西：飞行计划、航路、航图、机场、
-气象、性能配载、检查单、日志。
+Bag），给飞行员在飞行前和飞行途中用的那一套东西：飞行计划、航路、机场与航图、
+气象。
 
 它是这个网络里**第四个** Astro 站，形状和前三个（can-web / can-dev /
 can-radar）刻意保持一致 —— Astro SSR（standalone Node 适配器）+ Vue 岛屿 +
@@ -19,11 +19,8 @@ Tailwind v4，Bun 装包。开发端口 **4324**（4321 can-web、4322 can-dev�
 commit 指针 —— 根仓库只记录指针，指向一个没推过的 SHA 会让别人克隆出坏掉的树。
 
 **已经接上 can-api**（会话、飞行计划读/交/撤 + SimBrief 导入、飞行统计、METAR、
-航路展开）**和 can-db**（机场、航路网、导航台、空域、Grid MORA），加上 can-fsd 的
+航路展开）**和 can-db**（机场、航图、航路网、导航台、空域、Grid MORA），加上 can-fsd 的
 实时 datafeed（在线管制、在线航班、自己那架飞机）。
-
-**没有航图页面**，因为那是有版权的数据，网络里没有任何一处提供它；性能和检查单
-两页也删了，不是占着。详见〈没有占位页面〉。
 
 和 can-dev / can-radar 一样，这个站**一行数据库凭据都不该有**，而且比它们更进
 一步：**一个 Secret 都没有**。can-dev 要注册 OAuth 应用、要 client secret 和
@@ -159,8 +156,10 @@ cookie 转发回去。哪天有人要在这里加 Secret，先确认那件事不
   绕过去。
 - **十分钟而不是一天** —— 数据一个 AIRAC 周期才变，按内容算能缓存很久，但**重导是
   随时可能发生的**（此刻正好欠着一次）。缓存久了，修好之后成员还会继续看那张旧图。
-- **`Vary: Cookie`** —— 同一台设备上换人登录，会话 cookie 变了，缓存就不认上一个人的
-  受限资料。「不使用受限汇编」的两种状态 URL 不同（`unrestricted=1`），本来就是两个条目。
+- **`Vary: Cookie`** —— 每一个成功响应都带，不只本层补缓存头的那些。同一台设备上换人
+  登录，会话 cookie 变了，缓存就不认上一个人的受限资料。航图 PDF 用 can-db 自己的
+  `private, max-age=86400`，一天里最要它。「不使用受限汇编」的两种状态 URL 不同
+  （`unrestricted=1`），本来就是两个缓存条目。
 
 只给成功的响应加：给 401 或 502 加缓存，等于让一次权限变更或一次上游抖动被记住十分
 钟。这和 can-radar 给 METAR 补五分钟是同一条思路 —— 上游没说，而我们知道它多久变。
@@ -689,6 +688,34 @@ can-db 存原文，它那条迁移写明了理由：解码要判 A/B/+/- 那套�
 「填入飞行计划」交的是改写后那串 —— 换了跑道和程序却填进去一条旧的，是这个功能
 最容易犯的错，而它一路到管制员那边才看得出来。
 
+## 航图（`lib/charts.ts` + `AirportCharts.vue` + `ChartViewer.vue`）
+
+机场详情的一个标签，不是单独的页面。没有 `/charts`。
+
+- 数据：can-db `aip/airports/{icao}/charts`（索引）和 `aip/charts/{id}/file`（PDF）。
+  反代白名单两条正则，文件那条带回 `content-length`、`content-disposition`，缓存头用
+  can-db 的。
+- 只有 NAIP 终端区航图（`dataset.min_access >= 3`）。3 级以下拿到空列表。
+- 「不使用受限汇编」开着时列表也是空的：`dbFetch` 带 `unrestricted=1`，级别压到 2。
+  3 级起这时显示「受限汇编已隐藏」和去设置的链接（`chartsEmptyReason`）。
+- 类别 STAR、APP、TAXI、SID、REF，顺序固定。类别由 can-db 导入时映射，这里只认这五个，
+  别的行丢掉。没有航图的类别禁用，默认选第一个非空的。
+- 搜索跨类别匹配名称和页码，不分大小写，结果按类别顺序排。
+- 状态：读取中、没权限（401/403）、错误（带重试）、存储没配置、空。503 看响应体：
+  只有 `error === "charts_unavailable"` 是存储没配置；别的 503（如
+  `upstream_unavailable`）是错误，可以重试。`chartsState` 和 `fileFailure` 的最后一个
+  参数是 `errorCodeOf(body)`。
+- 查看器：`pdfjs-dist`（devDependency，Vite 打进前端），第一次打开才 `import()`，
+  worker 由 Vite 以 `?url` 打包。平板和桌面贴在面板右边（`viewerPlacement`，右边不足
+  480 px 时盖满），手机盖满。z-index 45，在 can-ui 的对话框和命令面板（50）之下。
+  缩放是相对整页的倍数（0.25–8），先改 CSS 尺寸，150 ms 后重画；画布像素压在
+  4096² 以内（iOS 上限）。夜间模式是反色加 180° 色相，存在 localStorage
+  `efb.chartNight`。
+- 配色：STAR 绿、APP 橙、TAXI 蓝、SID 粉、REF 紫，选中是实心胶囊（白字，用 -600/-700
+  档保证对比度）。信息 / 航图用 can-ui 的 `Segmented`，选中段填 `--color-can-700`
+  （`.airport-tabs`）。
+- 纯逻辑全在 `lib/charts.ts`，测试在 `lib/charts.test.ts`。
+
 ## 导航是一份数据
 
 加一个页面 = 在 `src/lib/nav.ts` 里加一行 + 在四本词典里加两条文案 +
@@ -723,8 +750,7 @@ cookie 名是 **`NEXT_LOCALE`**，全网共用一个父域，主站上选的语�
 **这一节以前列着四个，现在一个都没有。** `Placeholder.astro` 连同 `efb.placeholder.*`
 一起删了。三条各有各的结局，记下来：
 
-- **航图 `/charts`** —— 没有页面、没有入口。有版权的数据，网络里没有任何一处提供
-  它；要么授权，要么自建图源，那之前不摆一个打不开的入口。
+- **航图** —— 做了，是机场详情的一个标签，数据来自 can-db。见〈航图〉。
 - **机场 `/airports`** —— 做了，数据来自 can-db。
 - **性能 / 检查单** —— 删了。要机型手册数据、要按机型逐条录入，两样都不存在。
 
@@ -784,7 +810,7 @@ cookie 名是 **`NEXT_LOCALE`**，全网共用一个父域，主站上选的语�
 染统一交给 `StateCard`。can-api 的失败一律是 `error`；can-db 的 401/403 是
 `forbidden` —— 说的是没有权限，不是故障，判定只有一处：`isForbiddenStatus`。
 `empty` 只在读到了、确实没有时用，读失败落进这里就是上面那句假话。Dashboard、
-FlightPlan、Airports、AirportDetail、ProcedurePicker、RouteGenerator、
+FlightPlan、Airports、AirportDetail、AirportCharts、ProcedurePicker、RouteGenerator、
 `routePreview` 都走这条路，没有第二种画法。
 
 ## 还没做的事（按该做的顺序）
