@@ -12,6 +12,7 @@
  * - `useRouteLayer`   航路：面板推来的点、已提交的计划、航路网上点亮的那几段
  * - `useWeatherLayer` 降水瓦片：开关、偏好、刷新、失败
  * - `MapControls.vue` 图层菜单、提示、重试、「定位到我」
+ * - ChartPins.vue      本次飞行的航图，地图上的「航图」按钮打开
  *
  * 横向依赖有两条。一条是航路网：登记处开关它，航路层要在它变了之后重算高亮。所以这
  * 份 ref 由这里持有，两边都拿到它，登记处在原来调 `refreshHighlight()` 的地方调
@@ -39,6 +40,7 @@ import {
 } from "vue";
 import type { FeatureCollection } from "geojson";
 import MapControls from "@/components/map/MapControls.vue";
+import ChartPins from "@/components/map/ChartPins.vue";
 import AtcDetails, {
   type AtcDetailsText,
 } from "@/components/map/AtcDetails.vue";
@@ -70,6 +72,10 @@ const props = defineProps<{
   label: string;
   /** 自己的 CAN ID。没登录是 null。见 useTrafficLayer：按 CID 认自己。 */
   cid: string | null;
+  /** 航行资料库级别。航图弹出层的空状态按它说话。 */
+  aipAccess: number;
+  /** 航图弹出层和查看器要的那几本词典（AppLayout 挑好）。 */
+  chartMessages: Record<string, unknown>;
   /** 十个图层开关的文案，已翻译。 */
   layerLabels: Record<LayerToggle, string>;
   /** 图层相关的几句话，已翻译。`planOnMap` 带 `{from}` / `{to}`，`layerFailed` 带 `{layer}`。 */
@@ -89,6 +95,8 @@ const props = defineProps<{
     chart: string;
     chartHigh: string;
     chartLow: string;
+    /** 地图上的「航图」按钮。 */
+    charts: string;
     /** 降水图例两端：小雨、大雨。 */
     weatherLight: string;
     weatherHeavy: string;
@@ -160,6 +168,15 @@ const view3d = ref(false);
 const profileShown = computed(
   () => cruiseFt.value != null && points.value.length > 1,
 );
+
+/** 航图弹出层。第一次打开才取数（见 ChartPins.vue）。 */
+const chartsOpen = ref(false);
+const controls = ref<InstanceType<typeof MapControls> | null>(null);
+
+function closeCharts() {
+  chartsOpen.value = false;
+  controls.value?.focusCharts();
+}
 const { shownFixes, airports, runways, navaids, firs, mora, airspaces } = chart;
 const ifrChart = chart.chart;
 const { ground, groundAttribution } = groundLayer;
@@ -359,6 +376,7 @@ onBeforeUnmount(() => {
     <div v-else class="surface-grid h-full"></div>
 
     <MapControls
+      ref="controls"
       :labels="layerLabels"
       :text="{
         menu: t.layersMenu,
@@ -372,6 +390,7 @@ onBeforeUnmount(() => {
         chart: t.chart,
         chartHigh: t.chartHigh,
         chartLow: t.chartLow,
+        charts: t.charts,
       }"
       :on="layerState"
       :chart="ifrChart"
@@ -382,7 +401,9 @@ onBeforeUnmount(() => {
       :own="ownButton"
       :view3d="view3d"
       :profile-shown="profileShown"
+      :charts-open="chartsOpen"
       @view3d="view3d = !view3d"
+      @charts="chartsOpen = !chartsOpen"
       @toggle="onToggle"
       @chart="chart.setChart"
       @retry="onRetry"
@@ -403,6 +424,12 @@ onBeforeUnmount(() => {
         :text="t.pilot"
         @close="onSelect(null)"
         @locate="locatePilot"
+      />
+      <ChartPins
+        :open="chartsOpen"
+        :aip-access="aipAccess"
+        :messages="chartMessages"
+        @close="closeCharts"
       />
     </div>
   </section>

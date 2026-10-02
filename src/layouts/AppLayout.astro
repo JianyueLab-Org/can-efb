@@ -82,6 +82,14 @@ const user = toFrameUser(Astro.locals.user);
   <MapStage
     label={t("route.map.label")}
     cid={Astro.locals.user?.username ?? null}
+    aipAccess={Astro.locals.user?.aipAccess ?? 0}
+    chartMessages={{
+      common: { loading: t("common.loading"), retry: t("common.retry") },
+      airports: {
+        denied: getMessages(locale, "efb.airports.denied"),
+        charts: getMessages(locale, "efb.airports.charts"),
+      },
+    }}
     t={{
       denied: t("map.denied"),
       emptyNavaids: t("map.emptyLayer.navaids"),
@@ -96,6 +104,7 @@ const user = toFrameUser(Astro.locals.user);
       chart: t("map.chart.label"),
       chartHigh: t("map.chart.high"),
       chartLow: t("map.chart.low"),
+      charts: t("airports.charts.pins.button"),
       weatherLight: t("map.weather.light"),
       weatherHeavy: t("map.weather.heavy"),
       atc: {

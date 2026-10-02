@@ -504,6 +504,22 @@
           "loading": "正在開啟航圖…",
           "failed": "沒能開啟這張航圖。",
           "notFound": "這張航圖已經不在資料庫裡了。"
+        },
+        "pins": {
+          "button": "航圖",
+          "title": "本次飛行的航圖",
+          "close": "關閉航圖清單",
+          "departure": "起飛",
+          "arrival": "落地",
+          "alternate": "備降",
+          "pin": "釘選",
+          "auto": "自動",
+          "pinnedNone": "還沒有釘選的航圖。",
+          "all": "全部航圖（{count}）",
+          "unmatched": "沒有符合 {procedure} 的航圖，請從下面的清單裡選。",
+          "noPlan": "還沒有提交飛行計畫。釘選的航圖跟著計畫走。",
+          "noPlanAction": "去提交飛行計畫",
+          "planFailed": "沒能讀取飛行計畫 —— 這不代表沒有。"
         }
       }
     }

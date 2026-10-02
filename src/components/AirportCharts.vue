@@ -5,11 +5,44 @@
  * 数据是 can-db 的 `aip/airports/{icao}/charts`，走 `dbFetch`（「不使用受限汇编」
  * 开着时带 `unrestricted=1`）。航图全是 NAIP，所以那个开关开着时 3 级起的成员会
  * 拿到空列表 —— 那时说「被隐藏了」，不说「没有」（`chartsEmptyReason`）。
+ *
+ * 计划里的机场（起飞、落地、备降）每行多一颗钉住按钮，和地图的航图弹出层写同一份存储
+ * （lib/chartPins.ts）。别的机场没有：钉住按起降机场对存。
  */
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 import { Icon } from "@jianyuelab-org/can-ui";
 import StateCard from "@/components/ui/StateCard.vue";
 import ChartViewer from "./ChartViewer.vue";
+import ChartPinButton from "./ChartPinButton.vue";
+import { CHART_TAG_CLASS } from "./chartTags";
+import { PLAN_CHANGED_EVENT } from "@/lib/mapBus";
+import { loadFlightPlan } from "@/lib/planStore";
+import {
+  EMPTY_SELECTION,
+  PROCEDURES_CHANGED_EVENT,
+  readSelection,
+  type ProcedureSelection,
+} from "@/lib/procedureSelection";
+import {
+  autoPins,
+  CHART_PINS_CHANGED_EVENT,
+  EMPTY_PINS,
+  isPinned,
+  readPins,
+  readPlan,
+  roleOf,
+  togglePin,
+  writePins,
+  type PinPlan,
+  type StoredPins,
+} from "@/lib/chartPins";
 import { createTranslator } from "@/lib/i18n";
 import { dbFetch, hideNaip } from "@/lib/naip";
 import { LOADING } from "@/lib/requestState";
@@ -62,14 +95,6 @@ const CHIP_CLASS: Record<ChartCategory, { idle: string; active: string }> = {
     idle: "border-violet-500/50 text-violet-700 dark:text-violet-300",
     active: "border-violet-600 bg-violet-600 text-white",
   },
-};
-
-const TAG_CLASS: Record<ChartCategory, string> = {
-  STAR: "text-emerald-700 dark:text-emerald-300",
-  APP: "text-orange-700 dark:text-orange-300",
-  TAXI: "text-blue-700 dark:text-blue-300",
-  SID: "text-pink-700 dark:text-pink-300",
-  REF: "text-violet-700 dark:text-violet-300",
 };
 
 const state = ref<ChartsState>(LOADING);
@@ -131,6 +156,69 @@ const emptyReason = computed(() =>
   chartsEmptyReason(hideNaip.value, props.aipAccess),
 );
 const emptyBody = computed(() => chartsEmptyBody(props.aipAccess));
+
+// ------------------------------------------------------------------ 钉住
+
+const pinPlan = ref<PinPlan | null>(null);
+const selection = ref<ProcedureSelection>({ ...EMPTY_SELECTION });
+const stored = ref<StoredPins>(EMPTY_PINS);
+let planSeq = 0;
+
+/** 这个机场在计划里是哪一个。不在计划里就没有钉住按钮。 */
+const role = computed(() =>
+  pinPlan.value ? roleOf(pinPlan.value, props.icao) : null,
+);
+const auto = computed(() =>
+  role.value && index.value
+    ? autoPins(index.value.charts, role.value, selection.value)
+    : new Set<number>(),
+);
+
+function rereadPins() {
+  const p = pinPlan.value;
+  if (!p) return;
+  selection.value = readSelection(p.departure, p.arrival);
+  stored.value = readPins(p.departure, p.arrival);
+}
+
+/** 读不到计划就当没有：钉住按钮不出现，航图照常能看。 */
+async function loadPinPlan() {
+  const mine = ++planSeq;
+  const result = await loadFlightPlan<{
+    departure?: string;
+    arrival?: string;
+    alternate?: string;
+  }>().catch(() => null);
+  if (mine !== planSeq) return;
+  pinPlan.value = result?.ok ? readPlan(result.data) : null;
+  rereadPins();
+}
+
+function togglePinned(chart: ChartEntry) {
+  const p = pinPlan.value;
+  if (!p) return;
+  writePins(
+    p.departure,
+    p.arrival,
+    togglePin(stored.value, chart.id, auto.value),
+  );
+}
+
+function pinLabel(chart: ChartEntry): string {
+  return `${t("airports.charts.pins.pin")} ${chart.name}`;
+}
+
+onMounted(() => {
+  void loadPinPlan();
+  window.addEventListener(PLAN_CHANGED_EVENT, loadPinPlan);
+  window.addEventListener(PROCEDURES_CHANGED_EVENT, rereadPins);
+  window.addEventListener(CHART_PINS_CHANGED_EVENT, rereadPins);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener(PLAN_CHANGED_EVENT, loadPinPlan);
+  window.removeEventListener(PROCEDURES_CHANGED_EVENT, rereadPins);
+  window.removeEventListener(CHART_PINS_CHANGED_EVENT, rereadPins);
+});
 
 function openChart(chart: ChartEntry) {
   selected.value = chart;
@@ -252,10 +340,10 @@ function closeViewer() {
     </p>
 
     <ul v-else class="flex flex-col gap-1.5">
-      <li v-for="c in visible" :key="c.id">
+      <li v-for="c in visible" :key="c.id" class="flex items-stretch gap-1.5">
         <button
           type="button"
-          class="card flex w-full items-center gap-3 p-3 text-left"
+          class="card flex min-w-0 flex-1 items-center gap-3 p-3 text-left"
           :aria-current="selected?.id === c.id ? 'true' : undefined"
           :ref="(el) => setRowRef(c.id, el as Element | null)"
           @click="openChart(c)"
@@ -263,24 +351,34 @@ function closeViewer() {
           <span
             v-if="searching"
             class="w-10 shrink-0 font-mono text-xs font-semibold"
-            :class="TAG_CLASS[c.category]"
+            :class="CHART_TAG_CLASS[c.category]"
           >
             {{ c.category }}
           </span>
           <span class="min-w-0 flex-1">
             <span class="block truncate text-sm text-ink">{{ c.name }}</span>
             <span
-              v-if="c.page || c.isSup"
+              v-if="c.page || c.isSup || auto.has(c.id)"
               class="mt-0.5 flex items-center gap-2 text-xs text-muted"
             >
               <span v-if="c.page" class="font-mono">{{ c.page }}</span>
               <span v-if="c.isSup" class="badge badge-warning">
                 {{ t("airports.charts.sup") }}
               </span>
+              <span v-if="auto.has(c.id)" class="badge">
+                {{ t("airports.charts.pins.auto") }}
+              </span>
             </span>
           </span>
           <Icon name="chevronRight" class="size-4 shrink-0 text-faint" />
         </button>
+        <ChartPinButton
+          v-if="role"
+          class="card"
+          :pinned="isPinned(c.id, auto, stored)"
+          :label="pinLabel(c)"
+          @toggle="togglePinned(c)"
+        />
       </li>
     </ul>
   </div>
