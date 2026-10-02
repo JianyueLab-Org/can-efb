@@ -91,6 +91,42 @@ describe("readPrefs", () => {
     expect(prefs.mora).toBe(true);
   });
 
+  test("钉板默认开", () => {
+    expect(DEFAULT_PREFS.pinboard).toBe(true);
+  });
+
+  test("没有 pinboard 键的旧偏好：补默认值（开），其余照旧", () => {
+    const prefs = readPrefs(
+      memoryStorage({
+        [PREF_KEY]: JSON.stringify({
+          airways: false,
+          chart: "high",
+          weather: true,
+        }),
+      }),
+    );
+    expect(prefs.pinboard).toBe(true);
+    expect(prefs.airways).toBe(false);
+    expect(prefs.chart).toBe("high");
+    expect(prefs.weather).toBe(true);
+  });
+
+  test("旧的三选一偏好也补上钉板", () => {
+    expect(
+      readPrefs(
+        memoryStorage({ [PREF_KEY]: JSON.stringify({ airway: "off" }) }),
+      ).pinboard,
+    ).toBe(true);
+  });
+
+  test("存坏了的 pinboard 回到默认值", () => {
+    expect(
+      readPrefs(
+        memoryStorage({ [PREF_KEY]: JSON.stringify({ pinboard: "no" }) }),
+      ).pinboard,
+    ).toBe(true);
+  });
+
   test("存坏了、或者 localStorage 本身会抛，一律回到默认", () => {
     expect(readPrefs(memoryStorage({ [PREF_KEY]: "{" }))).toEqual(
       DEFAULT_PREFS,
@@ -113,6 +149,7 @@ describe("writePrefs", () => {
       mora: true,
       traffic: false,
       weather: true,
+      pinboard: false,
       chart: "high" as const,
     };
     writePrefs(prefs, storage);

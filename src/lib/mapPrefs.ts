@@ -55,6 +55,11 @@ export interface LayerPrefs {
    * 按默认值补上。
    */
   weather: boolean;
+  /**
+   * 地图底部的钉板（`MapPinboard.vue`）露不露出来。只管平板和桌面：手机上没有那条
+   * 栏。后来加的键，旧偏好里没有，`readPrefs` 按默认值补上。
+   */
+  pinboard: boolean;
 }
 
 /**
@@ -84,6 +89,8 @@ export const DEFAULT_PREFS: LayerPrefs = {
   atcLive: true,
   // **默认关。** 一整片半透明色块，盖在航路上；瓦片还要花 can-api 的 OpenWeather 额度。
   weather: false,
+  // **默认开。** 钉住的航图是这次飞行要看的那几张，第一眼就该在。
+  pinboard: true,
 };
 
 function localStorageOrNull(): Storage | null {
@@ -111,6 +118,7 @@ export function readPrefs(
     }
     delete saved.airway;
     if (!isIfrChart(saved.chart)) delete saved.chart;
+    if (typeof saved.pinboard !== "boolean") delete saved.pinboard;
     return { ...DEFAULT_PREFS, ...saved };
   } catch {
     return { ...DEFAULT_PREFS };
