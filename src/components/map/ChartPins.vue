@@ -29,6 +29,7 @@ const {
   plan,
   groups,
   stored,
+  openChart: openedChart,
   emptyReason,
   emptyBody,
   load,
@@ -74,9 +75,9 @@ watch(
   },
 );
 
-/** Esc 关列表，只管焦点在列表里时的按键。查看器在 body 下，它的 Esc 不经过这里。 */
+/** Esc 关列表，只管焦点在列表里时的按键。查看器开着时 Esc 是查看器的。 */
 function onKeydown(event: KeyboardEvent) {
-  if (event.key !== "Escape" || !props.open) return;
+  if (event.key !== "Escape" || !props.open || openedChart.value) return;
   emit("close");
 }
 </script>
