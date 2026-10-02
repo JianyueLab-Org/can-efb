@@ -102,6 +102,7 @@ Bar visibility: shown only when Pinboard is on and the shell is not `phone`.
 ## Loading
 
 - First load happens when the bar first becomes visible, or the list is first opened. With Pinboard on (the default) on tablet and desktop, that is when the map mounts. On phones, and while Pinboard is off, nothing loads until the list is opened.
+- With Pinboard off on tablet and desktop, the bar and the list are not reachable from the map. Pins stay manageable in airport details. On phones the Pinboard button opens the list.
 - Plan changes (`efb:plan-changed`) and `hideNaip` changes refetch.
 - Procedure changes (`PROCEDURES_CHANGED_EVENT`) and pin changes (`efb:chart-pins-changed`) re-read local state without refetching.
 - Late responses are dropped.
