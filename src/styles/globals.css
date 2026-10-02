@@ -100,9 +100,9 @@
   border-radius: 0.25rem;
 }
 .map-corner-nw {
-  top: calc(var(--map-pad-top, 0px) + 0.5rem);
-  /* 左上角让给缩放控件。 */
-  left: calc(var(--map-pad-left, 0px) + 3rem);
+  /* 左上角让给模式条和工具栏：放在模式条下面、工具栏右边。 */
+  top: calc(var(--map-pad-top, 0px) + 3.25rem);
+  left: calc(var(--map-pad-left, 0px) + 4rem);
 }
 .map-corner-se {
   right: calc(var(--map-pad-right, 0px) + 0.5rem);
@@ -376,10 +376,10 @@
   pointer-events: auto;
 }
 
-/* 「这一层没有数据」/「没有航行资料库权限」。贴在可见区上沿居中。 */
+/* 「这一层没有数据」/「没有航行资料库权限」。模式条下面，可见区居中。 */
 .map-notice {
   position: absolute;
-  top: 0.5rem;
+  top: 3.25rem;
   left: 50%;
   transform: translateX(-50%);
   max-width: min(30rem, calc(100% - 8rem));
@@ -391,66 +391,18 @@
   text-align: center;
 }
 
-/* 「定位到我」。放在缩放控件下面：它是改变视野的动作，和 +/- 同一类。 */
-.map-locate {
-  position: absolute;
-  top: 7rem;
-  left: 0.5rem;
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.2rem 0.45rem;
-  border-radius: var(--radius-control);
-  font-size: 0.6875rem;
-  color: var(--color-ink);
-}
-.map-locate:hover {
-  background: var(--surface-overlay);
-}
-
-/* 管制席位详情（`AtcDetails.vue`）。贴在可见区右上，让开右上角的署名按钮。 */
+/* 管制席位详情（`AtcDetails.vue`）。贴在可见区右上，让开右上角的署名和缩放那一列。 */
 .map-atc-details {
   position: absolute;
   top: 2.75rem;
-  right: 0.5rem;
-  width: min(20rem, calc(100% - 1rem));
+  right: 3rem;
+  width: min(20rem, calc(100% - 3.5rem));
   max-height: calc(100% - 3.25rem);
   overflow-y: auto;
   padding: 0.625rem 0.75rem;
   border-radius: var(--radius-card);
 }
 
-/* 图层菜单和失败提示，从可见区左下角往上长。 */
-.map-layers {
-  position: absolute;
-  left: 0.5rem;
-  bottom: 0.5rem;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.375rem;
-  max-width: calc(100% - 1rem);
-}
-/* DOM 里菜单在按钮后面（键盘顺序），画面上要在按钮上方：两者都靠 order 排。 */
-.map-layer-trigger {
-  order: 2;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.3rem 0.6rem;
-  border-radius: var(--radius-control);
-  font-size: 0.75rem;
-  color: var(--color-ink);
-}
-.map-layer-menu {
-  order: 1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.125rem;
-  max-width: 22rem;
-  padding: 0.25rem;
-  border-radius: var(--radius-card);
-}
 .map-layer-btn {
   font-size: 0.75rem;
   padding: 0.25rem 0.6rem;
@@ -466,27 +418,6 @@
 }
 .map-layer-btn:disabled {
   opacity: 0.5;
-}
-/* IFR 高空 / 低空：航路开关后面的一对单选，选中的和开着的图层同一种底色。 */
-.map-chart-seg {
-  display: inline-flex;
-  padding: 0.125rem;
-  border-radius: 0.3rem;
-  border: 1px solid var(--border-subtle);
-}
-.map-chart-opt {
-  font-size: 0.7rem;
-  padding: 0.125rem 0.45rem;
-  border-radius: 0.2rem;
-  color: var(--color-muted);
-  white-space: nowrap;
-}
-.map-chart-opt:hover:not(:disabled) {
-  background: var(--surface-overlay);
-}
-.map-chart-opt.is-on {
-  background: var(--surface-overlay);
-  color: var(--color-ink);
 }
 /* 在线管制席位数。「现在有没有人管」是开图第一眼要的答案之一。 */
 .map-layer-count {
@@ -514,18 +445,6 @@
   border-radius: 0.2rem;
   background: linear-gradient(to right, #3fbf4f, #f2d43a, #e0402f);
 }
-/* 「3D」：在图层按钮下面，按下时和开着的图层同一种底色。 */
-.map-3d-toggle {
-  order: 3;
-  padding: 0.3rem 0.6rem;
-  border-radius: var(--radius-control);
-  font-size: 0.75rem;
-  color: var(--color-muted);
-}
-.map-3d-toggle.is-on {
-  color: var(--color-ink);
-  background: var(--surface-overlay);
-}
 /* 没取到的那一层。小，但带一个能按的重试。 */
 .map-layer-failure {
   display: flex;
@@ -537,22 +456,7 @@
   font-size: 0.75rem;
   color: var(--color-ink);
 }
-/* 「航图」按钮：在「3D」下面，开着弹出层时和开着的图层同一种底色。 */
-.map-charts-trigger {
-  order: 4;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.3rem 0.6rem;
-  border-radius: var(--radius-control);
-  font-size: 0.75rem;
-  color: var(--color-muted);
-}
-.map-charts-trigger.is-on {
-  color: var(--color-ink);
-  background: var(--surface-overlay);
-}
-/* 航图弹出层（`ChartPins.vue`）。从可见区左下角往上长，开着时盖住图层控件，
+/* 全部航图列表（`ChartPins.vue`）。从可见区左下角往上长，开着时盖住左边的控件，
    自己带关闭按钮和 Esc。 */
 .map-chart-pins {
   position: absolute;
