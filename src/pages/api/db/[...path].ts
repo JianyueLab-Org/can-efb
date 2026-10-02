@@ -38,9 +38,6 @@ interface Allowed {
 
 const ALLOW_LIST: Record<string, Allowed> = {
   // 航路网图层。`?level=high|low` 由 can-db 处理，省略是全量。
-  //
-  // 机场（`aip/airports`）**特意不在这里**：那一页是 SSR 取的，浏览器不需要这条
-  // 路。哪天真有岛屿要在浏览器里查机场再加，别为对称而开。
   "aip/airways": { methods: ["GET"], who: "useChartLayers.ts 的航路图层" },
   // 航路生成。规划逻辑在 can-db（internal/aip/route.go）—— 这一条只是把它开给
   // 浏览器，EFB 一行规划代码都没有。
@@ -52,15 +49,13 @@ const ALLOW_LIST: Record<string, Allowed> = {
   // 格子最低超障高度。**必须带 `?bbox=`**，can-db 那边没有「取全世界」的形式 ——
   // 这一层是画在图上的标注，而一张显示 180 度纬度的图没地方画它们。
   "aip/mora": { methods: ["GET"], who: "useChartLayers.ts 的 Grid MORA 图层" },
-  // 机场索引。**上面那句「特意不在这里」到期了**：地面图层要按机场取数据，而地
-  // 图只知道自己在看哪一块地 —— 中间缺的就是一张 ICAO → 坐标的表。这正是那句话
-  // 说的「哪天真有岛屿要在浏览器里查机场」。
+  // 机场索引。机场页的列表；地面图层按它把视野换成 ICAO。
   //
   // 它按 `aipAccess` 分级（1–2 级 246 个，3–4 级 433 个），分级在 can-db 那边判，
   // 这一层不抄。
   "aip/airports": {
     methods: ["GET"],
-    who: "lib/airports.ts，地面图层的机场索引；Airports.vue 的重试",
+    who: "Airports.vue；lib/airports.ts，地面图层的机场索引",
   },
   // 把一条**填报的**航路解析成线。和 `aip/route` 不是一回事：那条回答「该怎么
   // 飞」，这条回答「他填的这条画在哪儿」，一段都不裁。

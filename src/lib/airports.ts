@@ -183,9 +183,7 @@ export function airportsInView(
 }
 
 /**
- * 机场页列表的一行。和 `server/canDb.ts` 的 `AirportSummary` 逐字对齐 —— 两边读
- * 的是同一个接口。不直接 import 那个类型：那个文件服务端专用，岛屿一侧只留这一份。
- * 形状分叉了就会有一边悄悄读到 undefined，改一处就要改另一处。
+ * 机场页列表的一行。字段取自 can-db `/api/v1/aip/airports` 的 `AirportSummary`。
  */
 export interface AirportRow {
   icao: string;

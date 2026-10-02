@@ -1,11 +1,11 @@
 <script setup lang="ts">
 /**
- * 机场索引。数据来自 **can-db**（航行资料库），由页面在服务端取好传进来。
+ * 机场索引。数据来自 **can-db**（航行资料库），挂载后在浏览器里取。
  *
- * **第一次由页面在服务端取好传进来**（`initial`）：SSR 时 `server/canDb.ts` 已经
- * 带着成员的 cookie 问过一次，打开页面不必再等一个往返。**重试在浏览器里做**，走
- * `/api/db/aip/airports` —— 那条本来就在本站反代白名单上（地面图层的机场索引也读
- * 它），重试不多开任何一条路。
+ * **不在 SSR 里取。** 服务端先问 can-api 会话、再问 can-db 全表，两次串行往返都走
+ * 公网域名，点进这一页要等它们全部回来才换页。列表要输入后才显示，等它没有换来
+ * 任何东西：先出页面，列表在后台到。取数走 `/api/db/aip/airports`，那条本来就在
+ * 本站反代白名单上（地面图层的机场索引也读它）。
  *
  * **整张列表都推给地图，走 `markers` 而不是 `points`。** 那两个字段的区别不是样
  * 式：`points` 会被顺次连成一条航路线（那是 RouteMap 的用途），几百个机场塞进去
@@ -14,7 +14,7 @@
  * 点某一行时**不重推整层**，只多带一个 `focus`：地图把镜头对过去，不重新框住全
  * 国 —— 否则用户刚才的缩放会被每一次点击丢掉一遍。
  */
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, onMounted, ref } from "vue";
 import { createTranslator } from "@/lib/i18n";
 import { focusMap, publishToMap } from "@/lib/mapBus";
 import { unwrapList } from "@/lib/aip";
@@ -26,26 +26,23 @@ import AirportDetail from "./AirportDetail.vue";
 import type { AirportRow as Airport } from "@/lib/airports";
 
 const props = defineProps<{
-  initial: RequestState<Airport[]>;
   aipAccess: number;
   messages: Record<string, unknown>;
 }>();
 const t = createTranslator(props.messages);
 
-const state = ref<RequestState<Airport[]>>(props.initial);
+const state = ref<RequestState<Airport[]>>(LOADING);
 const airports = computed(() =>
   state.value.kind === "data" ? state.value.data : [],
 );
 
 /**
- * **走 `dbFetch`，不是裸 `fetch`。** SSR 那次（`server/canDb.ts`）看不见
- * localStorage，本来就没法按「隐藏 NAIP」过滤 —— 这是已知的 SSR 缺口，不是这里要
- * 补的。但**浏览器里的每一次 `/api/db/*` 都必须走 `dbFetch`**：它按当下的开关状态
- * 加 `?unrestricted=1`。裸 `fetch` 会漏掉这个参数，于是重试这一条路就会一直无视
- * 成员刚在设置页打开的「隐藏 NAIP」，和这张图上其余每一次浏览器发起的请求都不一致
- * （`lib/naip.ts`）。
+ * **走 `dbFetch`，不是裸 `fetch`。** 浏览器里的每一次 `/api/db/*` 都必须走
+ * `dbFetch`：它按当下的开关状态加 `?unrestricted=1`。裸 `fetch` 会漏掉这个参数，
+ * 于是这一页会无视成员在设置页打开的「隐藏 NAIP」，和这张图上其余每一次浏览器发起
+ * 的请求都不一致（`lib/naip.ts`）。
  */
-async function reload() {
+async function load() {
   state.value = LOADING;
   const response = await dbFetch("aip/airports").catch(() => null);
   if (!response) {
@@ -61,6 +58,12 @@ async function reload() {
     list,
     (l) => !l.length,
   );
+}
+
+onMounted(() => void load());
+
+async function reload() {
+  await load();
   // 重试成功时 StateCard 的「重试」按钮跟着 error 状态一起消失，焦点会掉回
   // <body>——只有 `data` 换来搜索框；`empty` 没有可聚的输入框，留给下一段代码
   // 处理不到也不报错（`searchInput.value` 那时是 null）。

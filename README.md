@@ -76,7 +76,7 @@ src/
 │   ├── BaseLayout     <head> 和首屏脚本，不带外壳
 │   └── AppLayout      Frame（面板在插槽里）+ 地图，页面都用这个
 ├── lib/               纯逻辑和它们的测试；mapBus 是面板到地图的通道
-├── server/            SSR 调 can-api / can-db，转发 Cookie
+├── server/            SSR 调 can-api，转发 Cookie
 ├── middleware.ts      整站登录门
 ├── pages/
 │   ├── api/v1/        走白名单的 can-api 同源反代

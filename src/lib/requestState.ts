@@ -47,7 +47,7 @@ export function fromApiResult<T>(
   return present(result.data, isEmpty);
 }
 
-/** can-db（同源 `/api/db/*` 或 SSR 的 `server/canDb.ts`）。401/403 是没权限。 */
+/** can-db（同源 `/api/db/*`）。401/403 是没权限。 */
 export function fromDbResponse<T>(
   ok: boolean,
   status: number,

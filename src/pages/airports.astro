@@ -1,6 +1,6 @@
 ---
 /**
- * 机场。数据来自 **can-db**（航行资料库），在服务端取好传进岛屿。
+ * 机场。数据来自 **can-db**（航行资料库），岛屿挂载后在浏览器里取，见 `Airports.vue`。
  *
  * 这一页曾经是占位页，理由写着「没有一份带跑道、频率、滑行道的机场库可读」——
  * 那句话在 can-db 上线之后就不成立了。
@@ -16,32 +16,20 @@
  *   成功但为空  → 资料库里没有机场（不是失败，也不是权限）
  *   成功        → 列表
  *
- * 四种结果由 `fromDbResponse` 分开，岛屿按类渲染 `StateCard`，这一层不再自己分支。
+ * 四种结果由 `fromDbResponse` 分开，岛屿按类渲染 `StateCard`。
  */
 import AppLayout from "@/layouts/AppLayout.astro";
 import Airports from "@/components/Airports.vue";
 import { getLocale, getMessages, useTranslations } from "@/lib/i18n";
-import { fromDbResponse } from "@/lib/requestState";
-import { listAirports } from "@/server/canDb";
 
 const locale = getLocale(Astro.cookies);
 const t = useTranslations(locale, "efb");
 const title = t("pages.airports.title");
 const description = t("pages.airports.description");
-
-// 401/403、别的失败、空、有数据 —— 四种结果在 fromDbResponse 里分开，岛屿各说各的。
-const result = await listAirports(Astro);
-const initial = fromDbResponse(
-  result.ok,
-  result.status,
-  result.data,
-  (list) => !list.length,
-);
 ---
 
 <AppLayout title={title} description={description}>
   <Airports
-    initial={initial}
     aipAccess={Astro.locals.user?.aipAccess ?? 0}
     messages={getMessages(locale, "efb")}
     client:load
