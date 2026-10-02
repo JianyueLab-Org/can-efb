@@ -14,11 +14,11 @@
  * 点某一行时**不重推整层**，只多带一个 `focus`：地图把镜头对过去，不重新框住全
  * 国 —— 否则用户刚才的缩放会被每一次点击丢掉一遍。
  */
-import { computed, nextTick, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { createTranslator } from "@/lib/i18n";
 import { focusMap, publishToMap } from "@/lib/mapBus";
 import { unwrapList } from "@/lib/aip";
-import { dbFetch } from "@/lib/naip";
+import { dbFetch, hideNaip } from "@/lib/naip";
 import { fromDbResponse, LOADING, type RequestState } from "@/lib/requestState";
 import StateCard from "@/components/ui/StateCard.vue";
 import Field from "@/components/ui/Field.vue";
@@ -42,9 +42,14 @@ const airports = computed(() =>
  * 于是这一页会无视成员在设置页打开的「隐藏 NAIP」，和这张图上其余每一次浏览器发起
  * 的请求都不一致（`lib/naip.ts`）。
  */
+/** 每次取数加一。回来时代号变了就丢掉：连着切两次开关，先发的可能后到。 */
+let seq = 0;
+
 async function load() {
+  const mine = ++seq;
   state.value = LOADING;
   const response = await dbFetch("aip/airports").catch(() => null);
+  if (mine !== seq) return;
   if (!response) {
     state.value = { kind: "error", status: 0 };
     return;
@@ -52,6 +57,7 @@ async function load() {
   const list = response.ok
     ? unwrapList<Airport>(await response.json().catch(() => null))
     : null;
+  if (mine !== seq) return;
   state.value = fromDbResponse(
     response.ok,
     response.status,
@@ -61,6 +67,8 @@ async function load() {
 }
 
 onMounted(() => void load());
+// 「不使用受限汇编」变了（设置页，或另一个标签页）：列表按新级别重取。
+watch(hideNaip, () => void load());
 
 async function reload() {
   await load();
