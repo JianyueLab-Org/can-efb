@@ -106,8 +106,11 @@
 }
 .map-corner-se {
   right: calc(var(--map-pad-right, 0px) + 0.5rem);
-  /* 让开右下角的比例尺（约 1.5rem 高加 10px 内边距）。 */
-  bottom: calc(var(--map-pad-bottom, 0px) + 2.5rem);
+  /* 让开右下角的比例尺（约 1.5rem 高加 10px 内边距），钉板露着时再让到栏上面。 */
+  bottom: calc(
+    var(--map-pad-bottom, 0px) +
+      max(2.5rem, var(--map-pinboard-reserve, 0px) + 0.25rem)
+  );
 }
 
 /* ---------------------------------------------------------------------------
@@ -461,12 +464,12 @@
 .map-chart-pins {
   position: absolute;
   left: 0.5rem;
-  bottom: 0.5rem;
+  bottom: calc(0.5rem + var(--map-pinboard-reserve, 0px));
   z-index: 3;
   display: flex;
   flex-direction: column;
   width: min(24rem, calc(100% - 1rem));
-  max-height: calc(100% - 1rem);
+  max-height: calc(100% - 1rem - var(--map-pinboard-reserve, 0px));
   border-radius: var(--radius-card);
 }
 .map-chart-pins-bar {
@@ -804,7 +807,7 @@
 .chart-viewer-beside {
   top: var(--shell-inset);
   right: var(--shell-inset);
-  bottom: var(--shell-inset);
+  bottom: var(--chart-viewer-bottom, var(--shell-inset));
   border-radius: var(--radius-sheet);
   box-shadow: var(--shadow-sheet);
   overflow: hidden;

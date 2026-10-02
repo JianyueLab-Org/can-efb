@@ -92,6 +92,7 @@ import {
 } from "@/lib/mapPrefs";
 import { hideNaip } from "@/lib/naip";
 import { subscribePanelLayout } from "@/lib/mapBus";
+import { pinboardReserve, viewerBottom, withPinboard } from "@/lib/pinboard";
 import {
   mapPaddingFor,
   parseShellMode,
@@ -356,12 +357,34 @@ const toolbarText: MapToolbarText = {
  * 让压在地图上的控件（`.map-overlay`、MapLibre 的四个控件角）跟着可见区走。
  */
 const padding = ref<MapPadding>({ top: 0, right: 0, bottom: 0, left: 0 });
+
+/**
+ * 钉板占掉的高度（`MapPinboard` 经 `height` 报）。三处用：地图内边距的底边再让一
+ * 截（框住航路、居中都落在栏上面）；`--map-pinboard-reserve` 给列表和右下角坐标让
+ * 位；`--chart-viewer-bottom` 让贴在旁边的查看器停在栏上面。`--map-pad-*` 不含它：
+ * 栏自己就贴在 `--map-pad-bottom` 上。
+ */
+const pinboardHeight = ref(0);
+const reserve = computed(() =>
+  barVisible.value ? pinboardReserve(pinboardHeight.value) : 0,
+);
+const mapPadding = computed(() => withPinboard(padding.value, reserve.value));
+
 const padStyle = computed(() => ({
   "--map-pad-top": `${padding.value.top}px`,
   "--map-pad-right": `${padding.value.right}px`,
   "--map-pad-bottom": `${padding.value.bottom}px`,
   "--map-pad-left": `${padding.value.left}px`,
+  "--map-pinboard-reserve": `${reserve.value}px`,
 }));
+
+/** 查看器 Teleport 到 body 下，读不到 `.map-stage` 上的变量，所以写在根元素上。 */
+function applyViewerBottom(bottom: number | null) {
+  const root = document.documentElement.style;
+  if (bottom === null) root.removeProperty("--chart-viewer-bottom");
+  else root.setProperty("--chart-viewer-bottom", `${bottom}px`);
+}
+watch(() => viewerBottom(padding.value, reserve.value), applyViewerBottom);
 let unsubscribeLayout: (() => void) | null = null;
 
 /** 视野变了：静态层按缩放补数据，地面层按视野补机场。两者互不相干。 */
@@ -470,6 +493,7 @@ onBeforeUnmount(() => {
   route.stop();
   live.stop();
   unsubscribeLayout?.();
+  applyViewerBottom(null);
 });
 </script>
 
@@ -481,7 +505,7 @@ onBeforeUnmount(() => {
       :points="points"
       :markers="markers"
       :focus="focus"
-      :padding="padding"
+      :padding="mapPadding"
       :airways="airways"
       :airway-fixes="shownFixes"
       :airports="airports"
@@ -564,6 +588,7 @@ onBeforeUnmount(() => {
         :text="t.pinboard"
         :list-open="listOpen"
         @list="toggleList"
+        @height="pinboardHeight = $event"
       />
 
       <AtcDetails
