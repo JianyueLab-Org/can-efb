@@ -460,6 +460,11 @@
       "detail": {
         "back": "一覧に戻る",
         "position": "位置",
+        "metar": {
+          "title": "METAR",
+          "failed": "{icao} の METAR を読み込めませんでした。存在しないという意味ではありません。",
+          "none": "{icao} の METAR はありません。"
+        },
         "runways": "滑走路",
         "noRunways": "この空港の滑走路データはありません。",
         "runwaysFailed": "滑走路を取得できませんでした。存在しないという意味ではありません。",
