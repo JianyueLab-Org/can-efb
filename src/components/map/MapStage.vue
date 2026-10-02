@@ -12,7 +12,9 @@
  * - `useRouteLayer`   航路：面板推来的点、已提交的计划、航路网上点亮的那几段
  * - `useWeatherLayer` 降水瓦片：开关、偏好、刷新、失败
  * - `MapControls.vue` 图层菜单、提示、重试、「定位到我」
+ * - `useChartPins`    本次飞行的钉住航图，这里建一份，provide 给列表
  * - ChartPins.vue      本次飞行的航图，地图上的「航图」按钮打开
+ * - ChartViewer.vue    唯一的航图查看器，按 `openChart` 渲染
  *
  * 横向依赖有两条。一条是航路网：登记处开关它，航路层要在它变了之后重算高亮。所以这
  * 份 ref 由这里持有，两边都拿到它，登记处在原来调 `refreshHighlight()` 的地方调
@@ -34,6 +36,7 @@ import {
   defineAsyncComponent,
   onBeforeUnmount,
   onMounted,
+  provide,
   ref,
   shallowRef,
   watch,
@@ -41,6 +44,8 @@ import {
 import type { FeatureCollection } from "geojson";
 import MapControls from "@/components/map/MapControls.vue";
 import ChartPins from "@/components/map/ChartPins.vue";
+import ChartViewer from "@/components/ChartViewer.vue";
+import { CHART_PINS_KEY, useChartPins } from "@/components/map/useChartPins";
 import AtcDetails, {
   type AtcDetailsText,
 } from "@/components/map/AtcDetails.vue";
@@ -169,9 +174,14 @@ const profileShown = computed(
   () => cruiseFt.value != null && points.value.length > 1,
 );
 
-/** 航图弹出层。第一次打开才取数（见 ChartPins.vue）。 */
+/** 航图弹出层。第一次打开才取数（见 useChartPins.ts）。 */
 const chartsOpen = ref(false);
 const controls = ref<InstanceType<typeof MapControls> | null>(null);
+
+/** 本次飞行的钉住航图。只建这一份，provide 给列表；查看器按 `openChart` 渲染。 */
+const pins = useChartPins({ aipAccess: props.aipAccess, active: chartsOpen });
+provide(CHART_PINS_KEY, pins);
+const { openChart } = pins;
 
 function closeCharts() {
   chartsOpen.value = false;
@@ -427,10 +437,17 @@ onBeforeUnmount(() => {
       />
       <ChartPins
         :open="chartsOpen"
-        :aip-access="aipAccess"
         :messages="chartMessages"
         @close="closeCharts"
       />
     </div>
+
+    <!-- 唯一的查看器。换一张时是同一个实例换 `chart`（它 watch `chart.id` 重载）。 -->
+    <ChartViewer
+      v-if="openChart"
+      :chart="openChart"
+      :messages="chartMessages"
+      @close="pins.close()"
+    />
   </section>
 </template>
