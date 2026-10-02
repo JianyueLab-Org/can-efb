@@ -100,14 +100,17 @@
   border-radius: 0.25rem;
 }
 .map-corner-nw {
-  top: calc(var(--map-pad-top, 0px) + 0.5rem);
-  /* 左上角让给缩放控件。 */
-  left: calc(var(--map-pad-left, 0px) + 3rem);
+  /* 左上角让给模式条和工具栏：放在模式条下面、工具栏右边。 */
+  top: calc(var(--map-pad-top, 0px) + 3.25rem);
+  left: calc(var(--map-pad-left, 0px) + 4rem);
 }
 .map-corner-se {
   right: calc(var(--map-pad-right, 0px) + 0.5rem);
-  /* 让开右下角的比例尺（约 1.5rem 高加 10px 内边距）。 */
-  bottom: calc(var(--map-pad-bottom, 0px) + 2.5rem);
+  /* 让开右下角的比例尺（约 1.5rem 高加 10px 内边距），钉板露着时再让到栏上面。 */
+  bottom: calc(
+    var(--map-pad-bottom, 0px) +
+      max(2.5rem, var(--map-pinboard-reserve, 0px) + 0.25rem)
+  );
 }
 
 /* ---------------------------------------------------------------------------
@@ -371,15 +374,18 @@
   transition:
     left 240ms ease,
     bottom 240ms ease;
+  /* 模式条按可见区宽度收成图标（见 `.map-mode-btn` 下面那条容器查询）。只是
+     inline-size：不改它自己的尺寸，里面绝对定位的控件照旧。 */
+  container: map-overlay / inline-size;
 }
 .map-overlay > * {
   pointer-events: auto;
 }
 
-/* 「这一层没有数据」/「没有航行资料库权限」。贴在可见区上沿居中。 */
+/* 「这一层没有数据」/「没有航行资料库权限」。模式条下面，可见区居中。 */
 .map-notice {
   position: absolute;
-  top: 0.5rem;
+  top: 3.25rem;
   left: 50%;
   transform: translateX(-50%);
   max-width: min(30rem, calc(100% - 8rem));
@@ -391,66 +397,18 @@
   text-align: center;
 }
 
-/* 「定位到我」。放在缩放控件下面：它是改变视野的动作，和 +/- 同一类。 */
-.map-locate {
-  position: absolute;
-  top: 7rem;
-  left: 0.5rem;
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.2rem 0.45rem;
-  border-radius: var(--radius-control);
-  font-size: 0.6875rem;
-  color: var(--color-ink);
-}
-.map-locate:hover {
-  background: var(--surface-overlay);
-}
-
-/* 管制席位详情（`AtcDetails.vue`）。贴在可见区右上，让开右上角的署名按钮。 */
+/* 管制席位详情（`AtcDetails.vue`）。贴在可见区右上，让开右上角的署名和缩放那一列。 */
 .map-atc-details {
   position: absolute;
   top: 2.75rem;
-  right: 0.5rem;
-  width: min(20rem, calc(100% - 1rem));
+  right: 3rem;
+  width: min(20rem, calc(100% - 3.5rem));
   max-height: calc(100% - 3.25rem);
   overflow-y: auto;
   padding: 0.625rem 0.75rem;
   border-radius: var(--radius-card);
 }
 
-/* 图层菜单和失败提示，从可见区左下角往上长。 */
-.map-layers {
-  position: absolute;
-  left: 0.5rem;
-  bottom: 0.5rem;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.375rem;
-  max-width: calc(100% - 1rem);
-}
-/* DOM 里菜单在按钮后面（键盘顺序），画面上要在按钮上方：两者都靠 order 排。 */
-.map-layer-trigger {
-  order: 2;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.3rem 0.6rem;
-  border-radius: var(--radius-control);
-  font-size: 0.75rem;
-  color: var(--color-ink);
-}
-.map-layer-menu {
-  order: 1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.125rem;
-  max-width: 22rem;
-  padding: 0.25rem;
-  border-radius: var(--radius-card);
-}
 .map-layer-btn {
   font-size: 0.75rem;
   padding: 0.25rem 0.6rem;
@@ -466,27 +424,6 @@
 }
 .map-layer-btn:disabled {
   opacity: 0.5;
-}
-/* IFR 高空 / 低空：航路开关后面的一对单选，选中的和开着的图层同一种底色。 */
-.map-chart-seg {
-  display: inline-flex;
-  padding: 0.125rem;
-  border-radius: 0.3rem;
-  border: 1px solid var(--border-subtle);
-}
-.map-chart-opt {
-  font-size: 0.7rem;
-  padding: 0.125rem 0.45rem;
-  border-radius: 0.2rem;
-  color: var(--color-muted);
-  white-space: nowrap;
-}
-.map-chart-opt:hover:not(:disabled) {
-  background: var(--surface-overlay);
-}
-.map-chart-opt.is-on {
-  background: var(--surface-overlay);
-  color: var(--color-ink);
 }
 /* 在线管制席位数。「现在有没有人管」是开图第一眼要的答案之一。 */
 .map-layer-count {
@@ -514,18 +451,6 @@
   border-radius: 0.2rem;
   background: linear-gradient(to right, #3fbf4f, #f2d43a, #e0402f);
 }
-/* 「3D」：在图层按钮下面，按下时和开着的图层同一种底色。 */
-.map-3d-toggle {
-  order: 3;
-  padding: 0.3rem 0.6rem;
-  border-radius: var(--radius-control);
-  font-size: 0.75rem;
-  color: var(--color-muted);
-}
-.map-3d-toggle.is-on {
-  color: var(--color-ink);
-  background: var(--surface-overlay);
-}
 /* 没取到的那一层。小，但带一个能按的重试。 */
 .map-layer-failure {
   display: flex;
@@ -537,32 +462,17 @@
   font-size: 0.75rem;
   color: var(--color-ink);
 }
-/* 「航图」按钮：在「3D」下面，开着弹出层时和开着的图层同一种底色。 */
-.map-charts-trigger {
-  order: 4;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.3rem 0.6rem;
-  border-radius: var(--radius-control);
-  font-size: 0.75rem;
-  color: var(--color-muted);
-}
-.map-charts-trigger.is-on {
-  color: var(--color-ink);
-  background: var(--surface-overlay);
-}
-/* 航图弹出层（`ChartPins.vue`）。从可见区左下角往上长，开着时盖住图层控件，
+/* 全部航图列表（`ChartPins.vue`）。从可见区左下角往上长，开着时盖住左边的控件，
    自己带关闭按钮和 Esc。 */
 .map-chart-pins {
   position: absolute;
   left: 0.5rem;
-  bottom: 0.5rem;
+  bottom: calc(0.5rem + var(--map-pinboard-reserve, 0px));
   z-index: 3;
   display: flex;
   flex-direction: column;
   width: min(24rem, calc(100% - 1rem));
-  max-height: calc(100% - 1rem);
+  max-height: calc(100% - 1rem - var(--map-pinboard-reserve, 0px));
   border-radius: var(--radius-card);
 }
 .map-chart-pins-bar {
@@ -601,6 +511,279 @@
   text-align: left;
 }
 .map-chart-pin-row:hover {
+  background: var(--surface-overlay);
+}
+
+/* 地图左上：模式条在上，工具栏在下，一列。容器本身不接指针 —— 两者之间的空白
+   挡住拖动就是一个看不出原因的死角。 */
+.map-overlay > .map-chrome {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.375rem;
+  /* 左边 0.5rem，右边让出 3rem 给右上角的署名和缩放那一列。 */
+  max-width: calc(100% - 3.5rem);
+  pointer-events: none;
+}
+.map-chrome > * {
+  pointer-events: auto;
+}
+.map-chrome > .map-modebar {
+  pointer-events: none;
+}
+.map-modebar > * {
+  pointer-events: auto;
+}
+
+/* 模式条：一条玻璃里四个开关，旁边是降水图例，没取到的提示另起一行。 */
+.map-modebar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+}
+.map-modebar-strip {
+  display: inline-flex;
+  gap: 0.125rem;
+  padding: 0.25rem;
+  border-radius: var(--radius-card);
+}
+.map-mode-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+.map-mode-btn:hover {
+  background: var(--surface-overlay);
+}
+.map-mode-btn.is-on {
+  background: var(--surface-overlay);
+  color: var(--color-ink);
+}
+.map-modebar > .map-layer-failure {
+  flex-basis: 100%;
+}
+/* 可见区窄（平板、wide 面板）时模式条只剩图标。带字那条最长约 23rem（英文，加管
+   制席位数），加上左边 0.5rem、右上角让出的 3rem，30rem 以下就会压到右上角。字只
+   是看不见，仍在无障碍树里当按钮的名字。 */
+@container map-overlay (max-width: 30rem) {
+  .map-mode-btn > span:not(.map-layer-count) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+}
+
+/* 工具栏：一列方形图标按钮。 */
+.map-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: 0.25rem;
+  border-radius: var(--radius-card);
+}
+.map-tool-wrap {
+  position: relative;
+}
+.map-tool-btn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  min-height: 2.5rem;
+  border-radius: 0.25rem;
+  color: var(--color-muted);
+}
+.map-tool-btn:hover {
+  background: var(--surface-overlay);
+  color: var(--color-ink);
+}
+.map-tool-btn.is-on {
+  background: var(--surface-overlay);
+  color: var(--color-ink);
+}
+/* HIGH / LOW 在上，IFR 在下。 */
+.map-tool-chart {
+  font-size: 0.625rem;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+}
+/* 图层按钮上的警示点：有一层没取到，菜单关着也看得见。 */
+.map-tool-alert {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 9999px;
+  background: var(--color-danger);
+}
+/* 图层菜单：从图层按钮向右弹出。 */
+.map-layer-flyout {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: calc(100% + 0.5rem);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.125rem;
+  width: 13rem;
+  padding: 0.25rem;
+  border-radius: var(--radius-card);
+}
+.map-layer-flyout .map-layer-btn {
+  text-align: left;
+}
+.map-layer-flyout .map-layer-failure {
+  max-width: none;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.7rem;
+}
+
+/* 底部钉板（MapPinboard.vue）。贴在可见区底边，`bottom` 和 lib/pinboard.ts 的
+   PINBOARD_GAP_PX 同值。右端让给比例尺（ScaleControl 宽 90px 加 10px 外边距）。 */
+.map-pinboard {
+  position: absolute;
+  left: 0.5rem;
+  right: 7.5rem;
+  bottom: 0.5rem;
+  display: flex;
+  align-items: stretch;
+  gap: 0.25rem;
+  min-height: 3rem;
+  padding: 0.25rem;
+  border-radius: var(--radius-card);
+}
+.map-pin-list {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  border-radius: 0.25rem;
+  color: var(--color-muted);
+}
+.map-pin-list:hover,
+.map-pin-list.is-on {
+  background: var(--surface-overlay);
+  color: var(--color-ink);
+}
+.map-pin-state {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.5rem;
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+/* 标签多了横向滚。 */
+.map-pin-scroll {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: stretch;
+  gap: 0.25rem;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+.map-pin-sep {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+.map-pin-sep.is-warn {
+  align-self: center;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--color-warning) 18%, transparent);
+  color: var(--color-ink);
+}
+.map-pin-retry {
+  flex-shrink: 0;
+  align-self: center;
+  font-size: 0.7rem;
+}
+/* 一张钉住的航图。顶上色条的颜色来自 CHART_STRIP_CLASS，这里只给宽度。 */
+.map-pin-tab {
+  position: relative;
+  flex-shrink: 0;
+  width: 8rem;
+  padding: 0.3rem 0.5rem;
+  border-top-width: 3px;
+  border-top-style: solid;
+  border-radius: 0.25rem;
+  text-align: left;
+  font-size: 0.7rem;
+  line-height: 1.25;
+  color: var(--color-muted);
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+.map-pin-tab:hover {
+  background: var(--surface-overlay);
+}
+.map-pin-tab.is-open {
+  background: var(--surface-overlay);
+  color: var(--color-ink);
+}
+/* 名称至多两行。 */
+.map-pin-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  word-break: break-all;
+}
+/* 自动钉住的小点。 */
+.map-pin-auto {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.3rem;
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 9999px;
+  background: var(--color-muted);
+}
+.map-pin-menu {
+  position: absolute;
+  z-index: 1;
+  bottom: calc(100% + 0.25rem);
+  padding: 0.25rem;
+  border-radius: var(--radius-control);
+}
+.map-pin-menu button {
+  padding: 0.3rem 0.6rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  color: var(--color-ink);
+}
+.map-pin-menu button:hover {
   background: var(--surface-overlay);
 }
 
@@ -645,7 +828,7 @@
 .chart-viewer-beside {
   top: var(--shell-inset);
   right: var(--shell-inset);
-  bottom: var(--shell-inset);
+  bottom: var(--chart-viewer-bottom, var(--shell-inset));
   border-radius: var(--radius-sheet);
   box-shadow: var(--shadow-sheet);
   overflow: hidden;

@@ -1,73 +1,42 @@
 <script setup lang="ts">
 /**
- * 地图上的「航图」弹出层：本次飞行的起飞、落地、备降三个机场，钉住的在前，后面是
- * 折起来的全部航图。点一行打开 ChartViewer。
+ * 全部航图列表：本次飞行的起飞、落地、备降三个机场，钉住的在前，后面是折起来的全
+ * 部航图。点一行在查看器里打开（查看器由 MapStage 渲染）。
  *
- * 规则在 `lib/chartPins.ts`。第一次打开才取数，地图挂载时什么都不取。开着时计划、
- * 「不使用受限汇编」一变就重取；程序选择、钉住变了只重读本机存储，不重取。关着时
- * 计划和「不使用受限汇编」的变化只记一笔，下次打开再取。
+ * 状态是 MapStage 建的那一份（`useChartPins`），这里不取数。取数、重取、重读的规
+ * 矩写在 `useChartPins.ts` 顶上。
  *
  * 每个机场的状态各管各的：一个机场没取到不影响另外两个，重试也只重试它。
  */
-import {
-  computed,
-  nextTick,
-  onBeforeUnmount,
-  onMounted,
-  ref,
-  watch,
-} from "vue";
+import { nextTick, ref, watch } from "vue";
 import { Icon } from "@jianyuelab-org/can-ui";
 import StateCard from "@/components/ui/StateCard.vue";
-import ChartViewer from "@/components/ChartViewer.vue";
 import ChartPinRow from "@/components/map/ChartPinRow.vue";
+import { injectChartPins } from "@/components/map/useChartPins";
 import { createTranslator } from "@/lib/i18n";
-import { dbFetch, hideNaip } from "@/lib/naip";
-import { LOADING } from "@/lib/requestState";
-import { PLAN_CHANGED_EVENT } from "@/lib/mapBus";
-import { loadFlightPlan } from "@/lib/planStore";
-import {
-  EMPTY_SELECTION,
-  PROCEDURES_CHANGED_EVENT,
-  readSelection,
-  type ProcedureSelection,
-} from "@/lib/procedureSelection";
-import {
-  chartIndexPath,
-  chartsEmptyBody,
-  chartsEmptyReason,
-  chartsState,
-  errorCodeOf,
-  parseChartIndex,
-  type ChartEntry,
-  type ChartsState,
-} from "@/lib/charts";
-import {
-  autoPins,
-  CHART_PINS_CHANGED_EVENT,
-  EMPTY_PINS,
-  isPinned,
-  pinnedCharts,
-  readPins,
-  readPlan,
-  sortByCategory,
-  togglePin,
-  unmatchedProcedures,
-  writePins,
-  type PinPlan,
-  type PinRole,
-  type PlanAirport,
-  type StoredPins,
-} from "@/lib/chartPins";
+import { isPinned, type PinRole } from "@/lib/chartPins";
+import type { ChartEntry } from "@/lib/charts";
 
 const props = defineProps<{
   open: boolean;
-  aipAccess: number;
   /** `common` 两句、`airports.denied`、`airports.charts`（含 `viewer` 和 `pins`）。 */
   messages: Record<string, unknown>;
 }>();
 const emit = defineEmits<{ close: [] }>();
 const t = createTranslator(props.messages);
+
+const {
+  plan,
+  groups,
+  stored,
+  openChart: openedChart,
+  emptyReason,
+  emptyBody,
+  load,
+  retry,
+  toggle: togglePin,
+  open: openChart,
+} = injectChartPins();
 
 const ROLE_LABEL: Record<PinRole, string> = {
   departure: t("airports.charts.pins.departure"),
@@ -79,125 +48,11 @@ const ROW_LABELS = {
   pin: t("airports.charts.pins.pin"),
 };
 
-type PlanState =
-  | { kind: "loading" }
-  | { kind: "error" }
-  | { kind: "none" }
-  | { kind: "plan"; plan: PinPlan };
-
-const plan = ref<PlanState>({ kind: "loading" });
-const states = ref<Partial<Record<PinRole, ChartsState>>>({});
-const selection = ref<ProcedureSelection>({ ...EMPTY_SELECTION });
-const stored = ref<StoredPins>(EMPTY_PINS);
-const selected = ref<ChartEntry | null>(null);
 const closeButton = ref<HTMLButtonElement | null>(null);
 const sectionRef = ref<HTMLElement | null>(null);
-/** 打开查看器之前焦点在哪儿，关掉时回去。 */
-let returnFocus: HTMLElement | null = null;
-let loaded = false;
-let stale = false;
-let seq = 0;
-
-function rereadLocal() {
-  if (plan.value.kind !== "plan") return;
-  const { departure, arrival } = plan.value.plan;
-  selection.value = readSelection(departure, arrival);
-  stored.value = readPins(departure, arrival);
-}
-
-async function loadAirport(airport: PlanAirport, mine: number) {
-  states.value = { ...states.value, [airport.role]: LOADING };
-  const response = await dbFetch(chartIndexPath(airport.icao)).catch(
-    () => null,
-  );
-  if (mine !== seq) return;
-  if (!response) {
-    states.value = {
-      ...states.value,
-      [airport.role]: { kind: "error", status: 0 },
-    };
-    return;
-  }
-  const body = await response.json().catch(() => null);
-  if (mine !== seq) return;
-  const index = response.ok ? parseChartIndex(body) : null;
-  states.value = {
-    ...states.value,
-    [airport.role]: chartsState(
-      response.ok,
-      response.status,
-      index,
-      errorCodeOf(body),
-    ),
-  };
-}
-
-async function load() {
-  const mine = ++seq;
-  loaded = true;
-  stale = false;
-  selected.value = null;
-  plan.value = { kind: "loading" };
-  states.value = {};
-  const result = await loadFlightPlan<{
-    departure?: string;
-    arrival?: string;
-    alternate?: string;
-  }>().catch(() => null);
-  if (mine !== seq) return;
-  if (!result || !result.ok) {
-    plan.value = { kind: "error" };
-    return;
-  }
-  const next = readPlan(result.data);
-  if (!next) {
-    plan.value = { kind: "none" };
-    return;
-  }
-  plan.value = { kind: "plan", plan: next };
-  rereadLocal();
-  await Promise.all(next.airports.map((a) => loadAirport(a, mine)));
-}
-
-function retry(airport: PlanAirport) {
-  void loadAirport(airport, seq);
-}
-
-/** 计划、「不使用受限汇编」变了。 */
-function onSourceChange() {
-  if (props.open) void load();
-  else if (loaded) stale = true;
-}
-
-const groups = computed(() => {
-  if (plan.value.kind !== "plan") return [];
-  return plan.value.plan.airports.map((airport) => {
-    const state = states.value[airport.role] ?? LOADING;
-    const charts = state.kind === "data" ? state.data.charts : [];
-    const auto = autoPins(charts, airport.role, selection.value);
-    return {
-      ...airport,
-      state,
-      auto,
-      pinned: pinnedCharts(charts, auto, stored.value),
-      all: sortByCategory(charts),
-      unmatched:
-        state.kind === "data"
-          ? unmatchedProcedures(charts, airport.role, selection.value)
-          : [],
-    };
-  });
-});
-
-const emptyReason = computed(() =>
-  chartsEmptyReason(hideNaip.value, props.aipAccess),
-);
-const emptyBody = computed(() => chartsEmptyBody(props.aipAccess));
 
 function toggle(chart: ChartEntry, auto: ReadonlySet<number>, role: PinRole) {
-  if (plan.value.kind !== "plan") return;
-  const { departure, arrival } = plan.value.plan;
-  writePins(departure, arrival, togglePin(stored.value, chart.id, auto));
+  togglePin(chart, auto);
   // 钉住列表里的那一行被取消后会消失，焦点落到 body：挪到「全部航图」里同一张的按钮，
   // 没展开就挪到该机场的标题
   void nextTick(() => {
@@ -211,51 +66,20 @@ function toggle(chart: ChartEntry, auto: ReadonlySet<number>, role: PinRole) {
   });
 }
 
-function openChart(chart: ChartEntry) {
-  returnFocus =
-    document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null;
-  selected.value = chart;
-}
-
-function closeViewer() {
-  selected.value = null;
-  const target = returnFocus;
-  returnFocus = null;
-  void nextTick(() => target?.focus());
-}
-
 watch(
   () => props.open,
   async (open) => {
-    if (!open) {
-      selected.value = null;
-      return;
-    }
-    if (!loaded || stale) void load();
+    if (!open) return;
     await nextTick();
     closeButton.value?.focus();
   },
 );
-watch(hideNaip, onSourceChange);
 
-/** Esc 关弹出层，只管弹出层里的按键。查看器开着时 Esc 是查看器的。 */
+/** Esc 关列表，只管焦点在列表里时的按键。查看器开着时 Esc 是查看器的。 */
 function onKeydown(event: KeyboardEvent) {
-  if (event.key !== "Escape" || !props.open || selected.value) return;
+  if (event.key !== "Escape" || !props.open || openedChart.value) return;
   emit("close");
 }
-
-onMounted(() => {
-  window.addEventListener(PLAN_CHANGED_EVENT, onSourceChange);
-  window.addEventListener(PROCEDURES_CHANGED_EVENT, rereadLocal);
-  window.addEventListener(CHART_PINS_CHANGED_EVENT, rereadLocal);
-});
-onBeforeUnmount(() => {
-  window.removeEventListener(PLAN_CHANGED_EVENT, onSourceChange);
-  window.removeEventListener(PROCEDURES_CHANGED_EVENT, rereadLocal);
-  window.removeEventListener(CHART_PINS_CHANGED_EVENT, rereadLocal);
-});
 </script>
 
 <template>
@@ -430,11 +254,4 @@ onBeforeUnmount(() => {
       </template>
     </div>
   </section>
-
-  <ChartViewer
-    v-if="selected"
-    :chart="selected"
-    :messages="messages"
-    @close="closeViewer"
-  />
 </template>

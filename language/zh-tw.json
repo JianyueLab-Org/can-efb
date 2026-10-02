@@ -383,8 +383,7 @@
         "atcLive": "管制",
         "ctr": "區域",
         "app": "進近",
-        "restricted": "限制區",
-        "weather": "降水"
+        "restricted": "限制區"
       },
       "failure": {
         "init": "地圖沒能啟動。重新整理一次；仍然不行請把主控台裡的錯誤發給我們。",
@@ -398,13 +397,40 @@
       "view3d": "3D",
       "view3dHint": "傾斜視圖裡的航線高度按巡航高度估算，不含程序高度限制，不是性能計算。",
       "chart": {
-        "label": "航圖",
         "high": "IFR 高空",
         "low": "IFR 低空"
       },
       "weather": {
         "light": "小雨",
         "heavy": "大雨"
+      },
+      "mode": {
+        "label": "地圖顯示",
+        "weather": "天氣",
+        "pinboard": "釘選板"
+      },
+      "toolbar": {
+        "label": "地圖工具",
+        "high": "HIGH",
+        "low": "LOW",
+        "chartSwitch": "{current}，點按切換到{next}"
+      },
+      "pinboard": {
+        "label": "釘選的航圖",
+        "list": "全部航圖",
+        "noPlan": "沒有提交飛行計畫",
+        "planFailed": "沒能讀取飛行計畫",
+        "noPins": "沒有釘選的航圖",
+        "unpin": "取消釘選",
+        "chip": {
+          "loading": "讀取中",
+          "failed": "沒取到",
+          "unconfigured": "儲存未接上",
+          "denied": "無權限",
+          "needsAccess": "需 3 級權限",
+          "hidden": "已隱藏",
+          "empty": "無航圖"
+        }
       },
       "atc": {
         "close": "關閉",
@@ -511,7 +537,6 @@
           "notFound": "這張航圖已經不在資料庫裡了。"
         },
         "pins": {
-          "button": "航圖",
           "title": "本次飛行的航圖",
           "close": "關閉航圖清單",
           "departure": "起飛",

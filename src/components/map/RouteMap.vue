@@ -698,10 +698,11 @@ onMounted(() => {
       maxPitch: EXTRUDE.maxPitch,
     });
 
-    // 指北针带倾斜示意：地图转过或倾斜过之后，点它回到正北俯视。
+    // 指北针带倾斜示意：地图转过或倾斜过之后，点它回到正北俯视。右上角、署名下面：
+    // 左上是模式条和工具栏（MapStage）。
     map.addControl(
       new NavigationControl({ showCompass: true, visualizePitch: true }),
-      "top-left",
+      "top-right",
     );
   } catch (error) {
     // WebGL 不可用、构造参数不合法都会走到这里。以前它会作为一个未捕获异常冒到

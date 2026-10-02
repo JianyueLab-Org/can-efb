@@ -383,8 +383,7 @@
         "atcLive": "管制",
         "ctr": "管制区",
         "app": "進入",
-        "restricted": "制限区域",
-        "weather": "降水"
+        "restricted": "制限区域"
       },
       "failure": {
         "init": "地図を起動できませんでした。ページを再読み込みしてください。それでも駄目な場合はコンソールのエラーをお送りください。",
@@ -398,13 +397,40 @@
       "view3d": "3D",
       "view3dHint": "傾斜表示の経路高度は巡航高度からの推定です。手順の高度制限は含まず、性能計算ではありません。",
       "chart": {
-        "label": "航空図",
         "high": "IFR High",
         "low": "IFR Low"
       },
       "weather": {
         "light": "弱い雨",
         "heavy": "強い雨"
+      },
+      "mode": {
+        "label": "地図の表示",
+        "weather": "気象",
+        "pinboard": "ピンボード"
+      },
+      "toolbar": {
+        "label": "地図ツール",
+        "high": "HIGH",
+        "low": "LOW",
+        "chartSwitch": "{current}（{next} に切り替え）"
+      },
+      "pinboard": {
+        "label": "ピン留めしたチャート",
+        "list": "すべてのチャート",
+        "noPlan": "フライトプランが提出されていません",
+        "planFailed": "フライトプランを読み込めませんでした",
+        "noPins": "ピン留めしたチャートはありません",
+        "unpin": "ピン留めを外す",
+        "chip": {
+          "loading": "読み込み中",
+          "failed": "取得失敗",
+          "unconfigured": "保存先未接続",
+          "denied": "権限なし",
+          "needsAccess": "レベル 3 が必要",
+          "hidden": "非表示",
+          "empty": "チャートなし"
+        }
       },
       "atc": {
         "close": "閉じる",
@@ -511,7 +537,6 @@
           "notFound": "このチャートはデータベースにありません。"
         },
         "pins": {
-          "button": "チャート",
           "title": "このフライトのチャート",
           "close": "チャート一覧を閉じる",
           "departure": "出発",

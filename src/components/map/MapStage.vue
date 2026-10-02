@@ -11,8 +11,14 @@
  * - `useTrafficLayer` 实时：在线机组、在线管制、自己那架和它的航迹
  * - `useRouteLayer`   航路：面板推来的点、已提交的计划、航路网上点亮的那几段
  * - `useWeatherLayer` 降水瓦片：开关、偏好、刷新、失败
- * - `MapControls.vue` 图层菜单、提示、重试、「定位到我」
- * - ChartPins.vue      本次飞行的航图，地图上的「航图」按钮打开
+ * - `useChartPins`    本次飞行的钉住航图，这里建一份，provide 给钉板和列表
+ * - `MapModeBar.vue`  左上的模式条：机组、管制、天气、钉板
+ * - `MapToolbar.vue`  模式条下面一列：IFR 高 / 低空、图层、3D、定位到我
+ * - `MapPinboard.vue` 底部的钉板，平板和桌面上、钉板开着时
+ * - `ChartPins.vue`   全部航图列表：钉板的列表按钮、手机上的钉板按钮打开
+ * - `ChartViewer.vue` 唯一的航图查看器，按 `openChart` 渲染
+ *
+ * 缩放和指北针在右上，署名下面（RouteMap）。
  *
  * 横向依赖有两条。一条是航路网：登记处开关它，航路层要在它变了之后重算高亮。所以这
  * 份 ref 由这里持有，两边都拿到它，登记处在原来调 `refreshHighlight()` 的地方调
@@ -22,6 +28,9 @@
  * 按旧值取的，得一起作废、一起重取 —— 只重取一部分，图上就同时画着两个级别的资
  * 料，看起来完全正常。所以代号 `aip.gen` 和唯一那个 `watch(hideNaip)` 都在这里：
  * 登记处、地面、计划三处各管自己那一半，号只有一个。
+ *
+ * 外壳排布读 `--shell-mode`：挂载时读一次，之后跟着 panel:layout 的 `mode` 走（面
+ * 板跨断点时会报一次）。不写 `matchMedia`。
  *
  * 仍然不能松的那一条：**绝不服务端渲染 MapLibre。** 它在模块顶层就摸 `window`。
  * 所以 RouteMap 用 `defineAsyncComponent` 引，并且用 `mounted` 守住 —— 改成静态
@@ -34,13 +43,24 @@ import {
   defineAsyncComponent,
   onBeforeUnmount,
   onMounted,
+  provide,
   ref,
   shallowRef,
   watch,
 } from "vue";
 import type { FeatureCollection } from "geojson";
-import MapControls from "@/components/map/MapControls.vue";
+import MapModeBar, {
+  type MapModeBarText,
+  type ModeToggle,
+} from "@/components/map/MapModeBar.vue";
+import MapToolbar, {
+  type MapToolbarText,
+} from "@/components/map/MapToolbar.vue";
+import MapPinboard, {
+  type MapPinboardText,
+} from "@/components/map/MapPinboard.vue";
 import ChartPins from "@/components/map/ChartPins.vue";
+import ChartViewer from "@/components/ChartViewer.vue";
 import AtcDetails, {
   type AtcDetailsText,
 } from "@/components/map/AtcDetails.vue";
@@ -51,6 +71,7 @@ import { useLayerNotice, type LayerId } from "@/components/map/useLayerNotice";
 import {
   useChartLayers,
   type AipGeneration,
+  type ChartLayerToggle,
   type LayerToggle,
   type Viewport,
 } from "@/components/map/useChartLayers";
@@ -62,22 +83,38 @@ import {
 import { hasPosition } from "@/lib/datafeed";
 import { useRouteLayer } from "@/components/map/useRouteLayer";
 import { useWeatherLayer } from "@/components/map/useWeatherLayer";
-import { DEFAULT_PREFS, readPrefs, type LayerPrefs } from "@/lib/mapPrefs";
+import {
+  CHART_PINS_KEY,
+  restoreFocus,
+  useChartPins,
+} from "@/components/map/useChartPins";
+import {
+  DEFAULT_PREFS,
+  readPrefs,
+  writePrefs,
+  type LayerPrefs,
+} from "@/lib/mapPrefs";
 import { hideNaip } from "@/lib/naip";
 import { subscribePanelLayout } from "@/lib/mapBus";
-import { mapPaddingFor, type MapPadding } from "@/lib/panelLayout";
+import { pinboardReserve, viewerBottom, withPinboard } from "@/lib/pinboard";
+import {
+  mapPaddingFor,
+  parseShellMode,
+  type MapPadding,
+  type ShellMode,
+} from "@/lib/panelLayout";
 
 const props = defineProps<{
   /** 地图角上的说明，已翻译。 */
   label: string;
   /** 自己的 CAN ID。没登录是 null。见 useTrafficLayer：按 CID 认自己。 */
   cid: string | null;
-  /** 航行资料库级别。航图弹出层的空状态按它说话。 */
+  /** 航行资料库级别。航图列表和钉板的空状态按它说话。 */
   aipAccess: number;
-  /** 航图弹出层和查看器要的那几本词典（AppLayout 挑好）。 */
+  /** 航图列表和查看器要的那几本词典（AppLayout 挑好）。 */
   chartMessages: Record<string, unknown>;
-  /** 十个图层开关的文案，已翻译。 */
-  layerLabels: Record<LayerToggle, string>;
+  /** 九个图层开关的文案，已翻译。降水的那个名字在 `t.mode.weather`。 */
+  layerLabels: Record<Exclude<LayerToggle, "weather">, string>;
   /** 图层相关的几句话，已翻译。`planOnMap` 带 `{from}` / `{to}`，`layerFailed` 带 `{layer}`。 */
   t: {
     denied: string;
@@ -91,15 +128,18 @@ const props = defineProps<{
     /** 「3D」按钮，和倾斜时航线剖面的那句说明。 */
     view3d: string;
     view3dHint: string;
-    /** 图层菜单里 IFR 高空 / 低空那一组。 */
-    chart: string;
+    /** IFR 高空 / 低空两张航图的全名。 */
     chartHigh: string;
     chartLow: string;
-    /** 地图上的「航图」按钮。 */
-    charts: string;
     /** 降水图例两端：小雨、大雨。 */
     weatherLight: string;
     weatherHeavy: string;
+    /** 模式条：整条的名字、天气、钉板（机组、管制用 layerLabels）。 */
+    mode: { label: string; weather: string; pinboard: string };
+    /** 工具栏：整列的名字、HIGH / LOW、切换那句（带 `{current}`、`{next}`）。 */
+    toolbar: { label: string; high: string; low: string; chartSwitch: string };
+    /** 底部钉板。 */
+    pinboard: MapPinboardText;
     /** 管制席位详情卡的文案。 */
     atc: AtcDetailsText;
     /** 飞机详情卡的文案。 */
@@ -169,14 +209,63 @@ const profileShown = computed(
   () => cruiseFt.value != null && points.value.length > 1,
 );
 
-/** 航图弹出层。第一次打开才取数（见 ChartPins.vue）。 */
-const chartsOpen = ref(false);
-const controls = ref<InstanceType<typeof MapControls> | null>(null);
+/* ------------------------------------------------------------ 外壳排布 */
 
-function closeCharts() {
-  chartsOpen.value = false;
-  controls.value?.focusCharts();
+/** 挂载前是 null：服务端不知道排布，钉板也就不渲染、不取数。 */
+const shellMode = ref<ShellMode | null>(null);
+const phone = computed(() => shellMode.value === "phone");
+
+function readShellMode(): ShellMode {
+  return parseShellMode(
+    getComputedStyle(document.documentElement).getPropertyValue("--shell-mode"),
+  );
 }
+
+/* ------------------------------------------------------------ 钉板与航图列表 */
+
+/** 钉板开关（偏好）。只管平板和桌面；手机上钉板按钮开列表。 */
+const pinboardOn = ref(DEFAULT_PREFS.pinboard);
+const barVisible = computed(
+  () =>
+    mounted.value &&
+    pinboardOn.value &&
+    shellMode.value !== null &&
+    shellMode.value !== "phone",
+);
+
+/** 全部航图列表。 */
+const listOpen = ref(false);
+/** 打开列表的那个按钮（钉板的列表按钮，或手机上的钉板按钮）。关掉时焦点回去。 */
+let listOpener: HTMLElement | null = null;
+
+/** 本次飞行的钉住航图。钉板露着或列表开着才取数（见 useChartPins.ts）。 */
+const pins = useChartPins({
+  aipAccess: props.aipAccess,
+  active: computed(() => barVisible.value || listOpen.value),
+});
+provide(CHART_PINS_KEY, pins);
+const { openChart } = pins;
+
+function openList() {
+  listOpener =
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+  listOpen.value = true;
+}
+
+function closeList() {
+  listOpen.value = false;
+  const target = listOpener;
+  listOpener = null;
+  restoreFocus(target);
+}
+
+function toggleList() {
+  if (listOpen.value) closeList();
+  else openList();
+}
+
 const { shownFixes, airports, runways, navaids, firs, mora, airspaces } = chart;
 const ifrChart = chart.chart;
 const { ground, groundAttribution } = groundLayer;
@@ -208,17 +297,28 @@ function locatePilot() {
 const noticeLine = notice.notice;
 const failedLayer = notice.failure;
 
-const layerState = computed<Record<LayerToggle, boolean>>(() => ({
+/** 实时和降水的失败挂在模式条上，其余的在工具栏的图层菜单里。 */
+const modeFailure = computed<"live" | "weather" | null>(() =>
+  failedLayer.value === "live" || failedLayer.value === "weather"
+    ? failedLayer.value
+    : null,
+);
+
+const modeState = computed<Record<ModeToggle, boolean>>(() => ({
+  traffic: live.showTraffic.value,
+  atcLive: live.showAtc.value,
+  weather: showWeather.value,
+  pinboard: pinboardOn.value,
+}));
+
+const staticState = computed<Record<ChartLayerToggle, boolean>>(() => ({
   airways: chart.showAirways.value,
   firs: chart.showFirs.value,
   navaids: chart.showNavaids.value,
   mora: chart.showMora.value,
-  traffic: live.showTraffic.value,
-  atcLive: live.showAtc.value,
   ctr: chart.showCtr.value,
   app: chart.showApp.value,
   restricted: chart.showRestricted.value,
-  weather: showWeather.value,
 }));
 
 const busy = computed(() => ({
@@ -230,17 +330,77 @@ const ownButton = computed(() =>
   ownAt.value ? { callsign: ownAt.value.callsign } : null,
 );
 
+const modeText: MapModeBarText = {
+  label: props.t.mode.label,
+  traffic: props.layerLabels.traffic,
+  atc: props.layerLabels.atcLive,
+  weather: props.t.mode.weather,
+  pinboard: props.t.mode.pinboard,
+  weatherLight: props.t.weatherLight,
+  weatherHeavy: props.t.weatherHeavy,
+  layerFailed: props.t.layerFailed,
+  retry: props.t.retry,
+};
+
+const toolbarText: MapToolbarText = {
+  label: props.t.toolbar.label,
+  layers: props.t.layersMenu,
+  layerFailed: props.t.layerFailed,
+  retry: props.t.retry,
+  view3d: props.t.view3d,
+  locate: props.t.locate,
+  high: props.t.toolbar.high,
+  low: props.t.toolbar.low,
+  chartHigh: props.t.chartHigh,
+  chartLow: props.t.chartLow,
+  chartSwitch: props.t.toolbar.chartSwitch,
+};
+
 /**
  * 面板盖住了哪一块。两处用：交给 RouteMap 做 `setPadding`，以及写成 CSS 变量，
  * 让压在地图上的控件（`.map-overlay`、MapLibre 的四个控件角）跟着可见区走。
  */
 const padding = ref<MapPadding>({ top: 0, right: 0, bottom: 0, left: 0 });
+
+/**
+ * 钉板占掉的高度（`MapPinboard` 经 `height` 报）。三处用：地图内边距的底边再让一
+ * 截（框住航路、居中都落在栏上面）；`--map-pinboard-reserve` 给列表和右下角坐标让
+ * 位；`--chart-viewer-bottom` 让贴在旁边的查看器停在栏上面。`--map-pad-*` 不含它：
+ * 栏自己就贴在 `--map-pad-bottom` 上。
+ */
+const pinboardHeight = ref(0);
+const reserve = computed(() =>
+  barVisible.value ? pinboardReserve(pinboardHeight.value) : 0,
+);
+const mapPadding = computed(() => withPinboard(padding.value, reserve.value));
+
 const padStyle = computed(() => ({
   "--map-pad-top": `${padding.value.top}px`,
   "--map-pad-right": `${padding.value.right}px`,
   "--map-pad-bottom": `${padding.value.bottom}px`,
   "--map-pad-left": `${padding.value.left}px`,
+  "--map-pinboard-reserve": `${reserve.value}px`,
 }));
+
+/** 查看器 Teleport 到 body 下，读不到 `.map-stage` 上的变量，所以写在根元素上。 */
+function applyViewerBottom(bottom: number | null) {
+  const root = document.documentElement.style;
+  if (bottom === null) root.removeProperty("--chart-viewer-bottom");
+  else root.setProperty("--chart-viewer-bottom", `${bottom}px`);
+}
+watch(() => viewerBottom(padding.value, reserve.value), applyViewerBottom);
+/**
+ * Astro 换页时整个换掉 <html> 的属性（style 在内），而值没变 watch 不会再跑，所
+ * 以换完补写一次。
+ */
+function reapplyViewerBottom() {
+  applyViewerBottom(viewerBottom(padding.value, reserve.value));
+}
+/* 钉板收起（关掉、换到手机排布）时，开列表的那个按钮跟着没了；之后关列表走
+   restoreFocus 的退路。 */
+watch(barVisible, (on) => {
+  if (!on) listOpener = null;
+});
 let unsubscribeLayout: (() => void) | null = null;
 
 /** 视野变了：静态层按缩放补数据，地面层按视野补机场。两者互不相干。 */
@@ -278,6 +438,26 @@ function onToggle(id: LayerToggle) {
   }
 }
 
+/** 模式条。钉板在手机上开列表，在平板和桌面上开关底部那条栏（存偏好）。 */
+function onMode(id: ModeToggle) {
+  if (id !== "pinboard") {
+    onToggle(id);
+    return;
+  }
+  if (phone.value) {
+    toggleList();
+    return;
+  }
+  pinboardOn.value = !pinboardOn.value;
+  prefs.pinboard = pinboardOn.value;
+  writePrefs(prefs);
+  // 列表是从栏上开的；栏收起来，列表一起收。焦点还在这个按钮上，不用挪。
+  if (!pinboardOn.value) {
+    listOpen.value = false;
+    listOpener = null;
+  }
+}
+
 function onRetry(id: LayerId) {
   if (id === "live") void live.refreshLive();
   else if (id === "weather") weather.retry();
@@ -307,7 +487,10 @@ watch(hideNaip, () => {
 
 onMounted(() => {
   mounted.value = true;
+  shellMode.value = readShellMode();
+  document.addEventListener("astro:after-swap", reapplyViewerBottom);
   unsubscribeLayout = subscribePanelLayout((layout) => {
+    shellMode.value = layout.mode;
     padding.value = mapPaddingFor(layout, {
       width: window.innerWidth,
       height: window.innerHeight,
@@ -317,6 +500,7 @@ onMounted(() => {
   // 下载完才出现。
   const saved = readPrefs();
   Object.assign(prefs, saved);
+  pinboardOn.value = saved.pinboard;
   chart.restore(saved);
   live.start(saved);
   weather.restore(saved);
@@ -329,6 +513,8 @@ onBeforeUnmount(() => {
   route.stop();
   live.stop();
   unsubscribeLayout?.();
+  document.removeEventListener("astro:after-swap", reapplyViewerBottom);
+  applyViewerBottom(null);
 });
 </script>
 
@@ -340,7 +526,7 @@ onBeforeUnmount(() => {
       :points="points"
       :markers="markers"
       :focus="focus"
-      :padding="padding"
+      :padding="mapPadding"
       :airways="airways"
       :airway-fixes="shownFixes"
       :airports="airports"
@@ -375,42 +561,57 @@ onBeforeUnmount(() => {
     <!-- 水合之前的占位：没有它，首屏这一整块是空的，等 JS 到了才突然出现地图。 -->
     <div v-else class="surface-grid h-full"></div>
 
-    <MapControls
-      ref="controls"
-      :labels="layerLabels"
-      :text="{
-        menu: t.layersMenu,
-        retry: t.retry,
-        locate: t.locate,
-        layerFailed: t.layerFailed,
-        view3d: t.view3d,
-        view3dHint: t.view3dHint,
-        weatherLight: t.weatherLight,
-        weatherHeavy: t.weatherHeavy,
-        chart: t.chart,
-        chartHigh: t.chartHigh,
-        chartLow: t.chartLow,
-        charts: t.charts,
-      }"
-      :on="layerState"
-      :chart="ifrChart"
-      :busy="busy"
-      :atc-count="atcCount"
-      :notice="noticeLine"
-      :failure="failedLayer"
-      :own="ownButton"
-      :view3d="view3d"
-      :profile-shown="profileShown"
-      :charts-open="chartsOpen"
-      @view3d="view3d = !view3d"
-      @charts="chartsOpen = !chartsOpen"
-      @toggle="onToggle"
-      @chart="chart.setChart"
-      @retry="onRetry"
-      @locate="locateOwn"
-    />
-
     <div class="map-overlay">
+      <!-- 「这一层没有数据」/「你没有航行资料库权限」。模式条下面居中。 -->
+      <p
+        v-if="noticeLine"
+        class="map-notice glass"
+        :data-notice="noticeLine.layer"
+      >
+        {{ noticeLine.text }}
+      </p>
+      <!-- 剖面是按巡航高度估算的，不是性能计算，也不含程序高度限制。画出来就要说。 -->
+      <p v-else-if="view3d && profileShown" class="map-notice glass">
+        {{ t.view3dHint }}
+      </p>
+
+      <div class="map-chrome">
+        <MapModeBar
+          :on="modeState"
+          :atc-count="atcCount"
+          :phone="phone"
+          :list-open="listOpen"
+          :failure="modeFailure"
+          :text="modeText"
+          @toggle="onMode"
+          @retry="onRetry"
+        />
+        <MapToolbar
+          :labels="layerLabels"
+          :on="staticState"
+          :chart="ifrChart"
+          :busy="busy"
+          :failure="failedLayer"
+          :view3d="view3d"
+          :own="ownButton"
+          :phone="phone"
+          :text="toolbarText"
+          @toggle="onToggle"
+          @chart="chart.setChart"
+          @retry="onRetry"
+          @view3d="view3d = !view3d"
+          @locate="locateOwn"
+        />
+      </div>
+
+      <MapPinboard
+        v-if="barVisible"
+        :text="t.pinboard"
+        :list-open="listOpen"
+        @list="toggleList"
+        @height="pinboardHeight = $event"
+      />
+
       <AtcDetails
         v-if="selected"
         :station="selected.station"
@@ -426,11 +627,18 @@ onBeforeUnmount(() => {
         @locate="locatePilot"
       />
       <ChartPins
-        :open="chartsOpen"
-        :aip-access="aipAccess"
+        :open="listOpen"
         :messages="chartMessages"
-        @close="closeCharts"
+        @close="closeList"
       />
     </div>
+
+    <!-- 唯一的查看器。换一张时是同一个实例换 `chart`（它 watch `chart.id` 重载）。 -->
+    <ChartViewer
+      v-if="openChart"
+      :chart="openChart"
+      :messages="chartMessages"
+      @close="pins.close()"
+    />
   </section>
 </template>

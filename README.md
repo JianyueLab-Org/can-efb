@@ -66,7 +66,7 @@ src/
 ├── components/
 │   ├── Frame          can-ui 的 CanFrame（rail）：轨、手机标签栏、⌘K、账户
 │   ├── FloatingPanel  浮在地图上的面板；手机上是三档底部抽屉
-│   ├── map/           常驻地图：MapStage、RouteMap（MapLibre，从不 SSR）、MapControls、各 use*Layer
+│   ├── map/           常驻地图：MapStage、RouteMap（MapLibre，从不 SSR）、MapModeBar、MapToolbar、MapPinboard、各 use*Layer
 │   ├── ui/            StateCard、PanelSection、Field、FieldGrid
 │   ├── flightplan/    飞行计划页
 │   ├── Dashboard      概览 · RouteTabs 航路 · Airports 机场 · Settings 设置

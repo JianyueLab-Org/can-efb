@@ -383,8 +383,7 @@
         "atcLive": "ATC",
         "ctr": "CTR",
         "app": "APP",
-        "restricted": "Restricted",
-        "weather": "Precipitation"
+        "restricted": "Restricted"
       },
       "failure": {
         "init": "The map failed to start. Reload the page; if it still fails, send us the console error.",
@@ -398,13 +397,40 @@
       "view3d": "3D",
       "view3dHint": "Route altitudes in the tilted view are estimated from the cruise level. They ignore procedure altitude restrictions and are not a performance calculation.",
       "chart": {
-        "label": "Chart",
         "high": "IFR High",
         "low": "IFR Low"
       },
       "weather": {
         "light": "Light",
         "heavy": "Heavy"
+      },
+      "mode": {
+        "label": "Map modes",
+        "weather": "Weather",
+        "pinboard": "Pinboard"
+      },
+      "toolbar": {
+        "label": "Map tools",
+        "high": "HIGH",
+        "low": "LOW",
+        "chartSwitch": "{current}; switch to {next}"
+      },
+      "pinboard": {
+        "label": "Pinned charts",
+        "list": "All charts",
+        "noPlan": "No flight plan filed",
+        "planFailed": "Couldn't read the flight plan",
+        "noPins": "No pinned charts",
+        "unpin": "Unpin",
+        "chip": {
+          "loading": "Loading",
+          "failed": "Failed",
+          "unconfigured": "No storage",
+          "denied": "No access",
+          "needsAccess": "Needs tier 3",
+          "hidden": "Hidden",
+          "empty": "No charts"
+        }
       },
       "atc": {
         "close": "Close",
@@ -511,7 +537,6 @@
           "notFound": "This chart is no longer in the database."
         },
         "pins": {
-          "button": "Charts",
           "title": "Charts for this flight",
           "close": "Close chart list",
           "departure": "Departure",

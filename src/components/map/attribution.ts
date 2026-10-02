@@ -44,6 +44,15 @@ export function createAttribution(
       customAttribution: [...head, ...lines].join(" · "),
     });
     map.addControl(control, "top-right");
+    // 右上角是署名在上、缩放和指北针在下。MapLibre 把上方两个角的新控件接在末尾，
+    // 署名每次重挂都会掉到缩放下面，所以挂完挪回第一个。
+    const corner = map
+      .getContainer()
+      .querySelector(".maplibregl-ctrl-top-right");
+    const attrib = corner?.querySelector(".maplibregl-ctrl-attrib");
+    if (corner && attrib && corner.firstElementChild !== attrib) {
+      corner.prepend(attrib);
+    }
   }
 
   return { apply };
