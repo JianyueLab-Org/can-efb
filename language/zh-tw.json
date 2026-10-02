@@ -406,6 +406,34 @@
         "light": "小雨",
         "heavy": "大雨"
       },
+      "mode": {
+        "label": "地圖顯示",
+        "weather": "天氣",
+        "pinboard": "釘選板"
+      },
+      "toolbar": {
+        "label": "地圖工具",
+        "high": "HIGH",
+        "low": "LOW",
+        "chartSwitch": "{current}，點按切換到{next}"
+      },
+      "pinboard": {
+        "label": "釘選的航圖",
+        "list": "全部航圖",
+        "noPlan": "沒有提交飛行計畫",
+        "planFailed": "沒能讀取飛行計畫",
+        "noPins": "沒有釘選的航圖",
+        "unpin": "取消釘選",
+        "chip": {
+          "loading": "讀取中",
+          "failed": "沒取到",
+          "unconfigured": "儲存未接上",
+          "denied": "無權限",
+          "needsAccess": "需 3 級權限",
+          "hidden": "已隱藏",
+          "empty": "無航圖"
+        }
+      },
       "atc": {
         "close": "關閉",
         "airspace": "管制區",

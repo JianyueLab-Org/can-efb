@@ -406,6 +406,34 @@
         "light": "Light",
         "heavy": "Heavy"
       },
+      "mode": {
+        "label": "Map modes",
+        "weather": "Weather",
+        "pinboard": "Pinboard"
+      },
+      "toolbar": {
+        "label": "Map tools",
+        "high": "HIGH",
+        "low": "LOW",
+        "chartSwitch": "{current}; switch to {next}"
+      },
+      "pinboard": {
+        "label": "Pinned charts",
+        "list": "All charts",
+        "noPlan": "No flight plan filed",
+        "planFailed": "Couldn't read the flight plan",
+        "noPins": "No pinned charts",
+        "unpin": "Unpin",
+        "chip": {
+          "loading": "Loading",
+          "failed": "Failed",
+          "unconfigured": "No storage",
+          "denied": "No access",
+          "needsAccess": "Needs tier 3",
+          "hidden": "Hidden",
+          "empty": "No charts"
+        }
+      },
       "atc": {
         "close": "Close",
         "airspace": "Airspace",

@@ -406,6 +406,34 @@
         "light": "小雨",
         "heavy": "大雨"
       },
+      "mode": {
+        "label": "地图显示",
+        "weather": "天气",
+        "pinboard": "钉板"
+      },
+      "toolbar": {
+        "label": "地图工具",
+        "high": "HIGH",
+        "low": "LOW",
+        "chartSwitch": "{current}，点按切换到{next}"
+      },
+      "pinboard": {
+        "label": "钉住的航图",
+        "list": "全部航图",
+        "noPlan": "没有提交飞行计划",
+        "planFailed": "没能读取飞行计划",
+        "noPins": "没有钉住的航图",
+        "unpin": "取消钉住",
+        "chip": {
+          "loading": "读取中",
+          "failed": "没取到",
+          "unconfigured": "存储未接上",
+          "denied": "无权限",
+          "needsAccess": "需 3 级权限",
+          "hidden": "已隐藏",
+          "empty": "无航图"
+        }
+      },
       "atc": {
         "close": "关闭",
         "airspace": "管制区",
