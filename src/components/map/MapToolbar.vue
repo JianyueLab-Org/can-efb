@@ -127,10 +127,22 @@ function onDocumentClick(event: MouseEvent) {
   if (!root.value?.contains(event.target as Node)) open.value = false;
 }
 
+/** 只管焦点在工具栏里的 Esc：列表、查看器各有自己的 Esc。 */
 function onKeydown(event: KeyboardEvent) {
-  if (event.key !== "Escape" || !open.value) return;
+  if (
+    event.key !== "Escape" ||
+    !open.value ||
+    !root.value?.contains(document.activeElement)
+  )
+    return;
   open.value = false;
   trigger.value?.focus();
+}
+
+/** 焦点离开工具栏（Tab 出去）就收起菜单。 */
+function onFocusout(event: FocusEvent) {
+  const next = event.relatedTarget as Node | null;
+  if (open.value && next && !root.value?.contains(next)) open.value = false;
 }
 
 onMounted(() => {
@@ -149,6 +161,7 @@ onBeforeUnmount(() => {
     class="map-toolbar glass"
     role="group"
     :aria-label="text.label"
+    @focusout="onFocusout"
   >
     <!-- IFR 高空 / 低空：按一下换到另一张。航路关着也管禁区一族，所以一直在。 -->
     <button

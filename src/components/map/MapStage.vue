@@ -83,7 +83,11 @@ import {
 import { hasPosition } from "@/lib/datafeed";
 import { useRouteLayer } from "@/components/map/useRouteLayer";
 import { useWeatherLayer } from "@/components/map/useWeatherLayer";
-import { CHART_PINS_KEY, useChartPins } from "@/components/map/useChartPins";
+import {
+  CHART_PINS_KEY,
+  restoreFocus,
+  useChartPins,
+} from "@/components/map/useChartPins";
 import {
   DEFAULT_PREFS,
   readPrefs,
@@ -109,8 +113,8 @@ const props = defineProps<{
   aipAccess: number;
   /** 航图列表和查看器要的那几本词典（AppLayout 挑好）。 */
   chartMessages: Record<string, unknown>;
-  /** 十个图层开关的文案，已翻译。 */
-  layerLabels: Record<LayerToggle, string>;
+  /** 九个图层开关的文案，已翻译。降水的那个名字在 `t.mode.weather`。 */
+  layerLabels: Record<Exclude<LayerToggle, "weather">, string>;
   /** 图层相关的几句话，已翻译。`planOnMap` 带 `{from}` / `{to}`，`layerFailed` 带 `{layer}`。 */
   t: {
     denied: string;
@@ -254,7 +258,7 @@ function closeList() {
   listOpen.value = false;
   const target = listOpener;
   listOpener = null;
-  if (target?.isConnected) target.focus();
+  restoreFocus(target);
 }
 
 function toggleList() {
@@ -385,6 +389,18 @@ function applyViewerBottom(bottom: number | null) {
   else root.setProperty("--chart-viewer-bottom", `${bottom}px`);
 }
 watch(() => viewerBottom(padding.value, reserve.value), applyViewerBottom);
+/**
+ * Astro 换页时整个换掉 <html> 的属性（style 在内），而值没变 watch 不会再跑，所
+ * 以换完补写一次。
+ */
+function reapplyViewerBottom() {
+  applyViewerBottom(viewerBottom(padding.value, reserve.value));
+}
+/* 钉板收起（关掉、换到手机排布）时，开列表的那个按钮跟着没了；之后关列表走
+   restoreFocus 的退路。 */
+watch(barVisible, (on) => {
+  if (!on) listOpener = null;
+});
 let unsubscribeLayout: (() => void) | null = null;
 
 /** 视野变了：静态层按缩放补数据，地面层按视野补机场。两者互不相干。 */
@@ -435,8 +451,11 @@ function onMode(id: ModeToggle) {
   pinboardOn.value = !pinboardOn.value;
   prefs.pinboard = pinboardOn.value;
   writePrefs(prefs);
-  // 列表是从栏上开的；栏收起来，列表一起收。
-  if (!pinboardOn.value) listOpen.value = false;
+  // 列表是从栏上开的；栏收起来，列表一起收。焦点还在这个按钮上，不用挪。
+  if (!pinboardOn.value) {
+    listOpen.value = false;
+    listOpener = null;
+  }
 }
 
 function onRetry(id: LayerId) {
@@ -469,6 +488,7 @@ watch(hideNaip, () => {
 onMounted(() => {
   mounted.value = true;
   shellMode.value = readShellMode();
+  document.addEventListener("astro:after-swap", reapplyViewerBottom);
   unsubscribeLayout = subscribePanelLayout((layout) => {
     shellMode.value = layout.mode;
     padding.value = mapPaddingFor(layout, {
@@ -493,6 +513,7 @@ onBeforeUnmount(() => {
   route.stop();
   live.stop();
   unsubscribeLayout?.();
+  document.removeEventListener("astro:after-swap", reapplyViewerBottom);
   applyViewerBottom(null);
 });
 </script>

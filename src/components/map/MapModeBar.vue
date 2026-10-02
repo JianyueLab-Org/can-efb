@@ -90,6 +90,7 @@ function failureText(): string {
         :key="m.id"
         type="button"
         class="map-mode-btn"
+        :data-mode="m.id"
         :class="isOn(m.id) ? 'is-on' : ''"
         :aria-pressed="opensList(m.id) ? undefined : on[m.id]"
         :aria-expanded="opensList(m.id) ? listOpen : undefined"

@@ -383,8 +383,7 @@
         "atcLive": "管制",
         "ctr": "区域",
         "app": "进近",
-        "restricted": "限制区",
-        "weather": "降水"
+        "restricted": "限制区"
       },
       "failure": {
         "init": "地图没能启动。刷新一次；仍然不行请把控制台里的报错发给我们。",
@@ -398,7 +397,6 @@
       "view3d": "3D",
       "view3dHint": "倾斜视图里的航线高度按巡航高度估算，不含程序高度限制，不是性能计算。",
       "chart": {
-        "label": "航图",
         "high": "IFR 高空",
         "low": "IFR 低空"
       },
@@ -534,7 +532,6 @@
           "notFound": "这张航图已经不在资料库里了。"
         },
         "pins": {
-          "button": "航图",
           "title": "本次飞行的航图",
           "close": "关闭航图列表",
           "departure": "起飞",

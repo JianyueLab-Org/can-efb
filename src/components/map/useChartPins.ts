@@ -101,6 +101,22 @@ export function injectChartPins(): ChartPinsStore {
   return store;
 }
 
+/**
+ * 焦点回到 `target`。它已经不在页面上或看不见（钉板收了、换到手机排布），就落到钉
+ * 板的列表按钮，再没有就落到模式条的钉板按钮 —— 不让焦点掉到 body 上。
+ */
+export function restoreFocus(target: HTMLElement | null) {
+  const usable =
+    target !== null && target.isConnected && target.getClientRects().length > 0;
+  const next = usable
+    ? target
+    : (document.querySelector<HTMLElement>(".map-pinboard .map-pin-list") ??
+      document.querySelector<HTMLElement>(
+        '.map-mode-btn[data-mode="pinboard"]',
+      ));
+  next?.focus();
+}
+
 export function useChartPins(options: {
   /** 航行资料库级别。空状态按它说话。 */
   aipAccess: number;
@@ -236,7 +252,16 @@ export function useChartPins(options: {
     openChart.value = null;
     const target = returnFocus;
     returnFocus = null;
-    void nextTick(() => target?.focus());
+    void nextTick(() => restoreFocus(target));
+  }
+
+  /**
+   * Astro 换页时 body 整个换掉，Teleport 到 body 下的查看器跟着被摘掉，而 `openChart`
+   * 还在：钉板上那一格一直亮着，再点只是往一个看不见的查看器里换图。换页前收掉。
+   */
+  function onBeforeSwap() {
+    openChart.value = null;
+    returnFocus = null;
   }
 
   watch(options.active, (on) => {
@@ -248,11 +273,13 @@ export function useChartPins(options: {
     window.addEventListener(PLAN_CHANGED_EVENT, onSourceChange);
     window.addEventListener(PROCEDURES_CHANGED_EVENT, rereadLocal);
     window.addEventListener(CHART_PINS_CHANGED_EVENT, rereadLocal);
+    document.addEventListener("astro:before-swap", onBeforeSwap);
   });
   onBeforeUnmount(() => {
     window.removeEventListener(PLAN_CHANGED_EVENT, onSourceChange);
     window.removeEventListener(PROCEDURES_CHANGED_EVENT, rereadLocal);
     window.removeEventListener(CHART_PINS_CHANGED_EVENT, rereadLocal);
+    document.removeEventListener("astro:before-swap", onBeforeSwap);
   });
 
   return {
