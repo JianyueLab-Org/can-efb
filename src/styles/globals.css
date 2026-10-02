@@ -604,6 +604,132 @@
   background: var(--surface-overlay);
 }
 
+/* 地图左上：模式条在上，工具栏在下，一列。容器本身不接指针 —— 两者之间的空白
+   挡住拖动就是一个看不出原因的死角。 */
+.map-overlay > .map-chrome {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.375rem;
+  max-width: calc(100% - 1rem);
+  pointer-events: none;
+}
+.map-chrome > * {
+  pointer-events: auto;
+}
+.map-chrome > .map-modebar {
+  pointer-events: none;
+}
+.map-modebar > * {
+  pointer-events: auto;
+}
+
+/* 模式条：一条玻璃里四个开关，旁边是降水图例，没取到的提示另起一行。 */
+.map-modebar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+}
+.map-modebar-strip {
+  display: inline-flex;
+  gap: 0.125rem;
+  padding: 0.25rem;
+  border-radius: var(--radius-card);
+}
+.map-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+.map-mode-btn:hover {
+  background: var(--surface-overlay);
+}
+.map-mode-btn.is-on {
+  background: var(--surface-overlay);
+  color: var(--color-ink);
+}
+.map-modebar > .map-layer-failure {
+  flex-basis: 100%;
+}
+
+/* 工具栏：一列方形图标按钮。 */
+.map-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: 0.25rem;
+  border-radius: var(--radius-card);
+}
+.map-tool-wrap {
+  position: relative;
+}
+.map-tool-btn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  min-height: 2.5rem;
+  border-radius: 0.25rem;
+  color: var(--color-muted);
+}
+.map-tool-btn:hover {
+  background: var(--surface-overlay);
+  color: var(--color-ink);
+}
+.map-tool-btn.is-on {
+  background: var(--surface-overlay);
+  color: var(--color-ink);
+}
+/* HIGH / LOW 在上，IFR 在下。 */
+.map-tool-chart {
+  font-size: 0.625rem;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+}
+/* 图层按钮上的警示点：有一层没取到，菜单关着也看得见。 */
+.map-tool-alert {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 9999px;
+  background: var(--color-danger);
+}
+/* 图层菜单：从图层按钮向右弹出。 */
+.map-layer-flyout {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: calc(100% + 0.5rem);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.125rem;
+  width: 13rem;
+  padding: 0.25rem;
+  border-radius: var(--radius-card);
+}
+.map-layer-flyout .map-layer-btn {
+  text-align: left;
+}
+.map-layer-flyout .map-layer-failure {
+  max-width: none;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.7rem;
+}
+
 /* 表单两列排布（FieldGrid.vue）。按面板宽度判：standard 面板 26rem 恒为一列，wide
    面板 44rem 才分两列。36rem 这道线落在两者之间，离哪一边都够远，不会在某个宽度上
    来回跳。 */
