@@ -730,6 +730,135 @@
   font-size: 0.7rem;
 }
 
+/* 底部钉板（MapPinboard.vue）。贴在可见区底边，`bottom` 和 lib/pinboard.ts 的
+   PINBOARD_GAP_PX 同值。右端让给比例尺（ScaleControl 宽 90px 加 10px 外边距）。 */
+.map-pinboard {
+  position: absolute;
+  left: 0.5rem;
+  right: 7.5rem;
+  bottom: 0.5rem;
+  display: flex;
+  align-items: stretch;
+  gap: 0.25rem;
+  min-height: 3rem;
+  padding: 0.25rem;
+  border-radius: var(--radius-card);
+}
+.map-pin-list {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  border-radius: 0.25rem;
+  color: var(--color-muted);
+}
+.map-pin-list:hover,
+.map-pin-list.is-on {
+  background: var(--surface-overlay);
+  color: var(--color-ink);
+}
+.map-pin-state {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.5rem;
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+/* 标签多了横向滚。 */
+.map-pin-scroll {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: stretch;
+  gap: 0.25rem;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+.map-pin-sep {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+.map-pin-sep.is-warn {
+  align-self: center;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--color-warning) 18%, transparent);
+  color: var(--color-ink);
+}
+.map-pin-retry {
+  flex-shrink: 0;
+  align-self: center;
+  font-size: 0.7rem;
+}
+/* 一张钉住的航图。顶上色条的颜色来自 CHART_STRIP_CLASS，这里只给宽度。 */
+.map-pin-tab {
+  position: relative;
+  flex-shrink: 0;
+  width: 8rem;
+  padding: 0.3rem 0.5rem;
+  border-top-width: 3px;
+  border-top-style: solid;
+  border-radius: 0.25rem;
+  text-align: left;
+  font-size: 0.7rem;
+  line-height: 1.25;
+  color: var(--color-muted);
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+.map-pin-tab:hover {
+  background: var(--surface-overlay);
+}
+.map-pin-tab.is-open {
+  background: var(--surface-overlay);
+  color: var(--color-ink);
+}
+/* 名称至多两行。 */
+.map-pin-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  word-break: break-all;
+}
+/* 自动钉住的小点。 */
+.map-pin-auto {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.3rem;
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 9999px;
+  background: var(--color-muted);
+}
+.map-pin-menu {
+  position: absolute;
+  z-index: 1;
+  bottom: calc(100% + 0.25rem);
+  padding: 0.25rem;
+  border-radius: var(--radius-control);
+}
+.map-pin-menu button {
+  padding: 0.3rem 0.6rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  color: var(--color-ink);
+}
+.map-pin-menu button:hover {
+  background: var(--surface-overlay);
+}
+
 /* 表单两列排布（FieldGrid.vue）。按面板宽度判：standard 面板 26rem 恒为一列，wide
    面板 44rem 才分两列。36rem 这道线落在两者之间，离哪一边都够远，不会在某个宽度上
    来回跳。 */
