@@ -460,6 +460,11 @@
       "detail": {
         "back": "返回列表",
         "position": "位置",
+        "metar": {
+          "title": "METAR",
+          "failed": "沒能讀取 {icao} 的 METAR —— 這不代表沒有。",
+          "none": "{icao} 暫無 METAR。"
+        },
         "runways": "跑道",
         "noRunways": "資料庫裡這個機場沒有跑道資料。",
         "runwaysFailed": "沒能讀取跑道 —— 這不代表沒有。",

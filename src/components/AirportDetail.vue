@@ -1,6 +1,8 @@
 <script setup lang="ts">
 /**
- * 一个机场的详情：标高、位置、机位数、跑道。
+ * 一个机场的详情：标高、位置、机位数、METAR、跑道。
+ *
+ * METAR 走 can-api 的 `/api/v1/metar`（和概览天气卡同一条），只摆原文，不解码。
  *
  * 跑道走 can-db 的机场详情（和进离场程序选择器同一个接口、同一份缓存形状）。那个
  * 接口的门和列表一样，但**能看到列表不等于一定能看到详情** —— 两次请求之间权限可
@@ -21,7 +23,9 @@ import {
   ProcedureError,
   runwayIdents,
 } from "@/lib/procedures";
+import { api } from "@/lib/canApi";
 import {
+  fromApiResult,
   isForbiddenStatus,
   LOADING,
   type RequestState,
@@ -84,12 +88,37 @@ async function loadRunways() {
   }
 }
 
+const metar = ref<RequestState<string>>(LOADING);
+/** 每次取数加一。切到别的机场时，上一个机场的报文晚到就丢掉。 */
+let metarSeq = 0;
+
+async function loadMetar() {
+  const mine = ++metarSeq;
+  metar.value = LOADING;
+  const icao = props.airport.icao;
+  const result = await api<{ icao: string; metar: string | null }>(
+    `/api/v1/metar?icao=${encodeURIComponent(icao)}`,
+  );
+  if (mine !== metarSeq) return;
+  metar.value = fromApiResult<string>(
+    result.ok ? { ok: true, data: result.data.metar } : result,
+    (text) => !text,
+  );
+}
+
 onMounted(() => {
+  void loadMetar();
   void loadRunways();
   wireTabs();
   heading.value?.focus();
 });
-watch(() => props.airport.icao, loadRunways);
+watch(
+  () => props.airport.icao,
+  () => {
+    void loadMetar();
+    void loadRunways();
+  },
+);
 </script>
 
 <template>
@@ -154,6 +183,27 @@ watch(() => props.airport.icao, loadRunways);
           <dd class="font-mono text-ink">{{ airport.stands }}</dd>
         </div>
       </dl>
+
+      <PanelSection :title="t('airports.detail.metar.title')" :level="3">
+        <p
+          v-if="metar.kind === 'data'"
+          class="break-words font-mono text-xs leading-relaxed text-ink"
+        >
+          {{ metar.data }}
+        </p>
+        <StateCard
+          v-else-if="metar.kind === 'error'"
+          kind="error"
+          :title="t('airports.detail.metar.failed', { icao: airport.icao })"
+          :retry-label="t('common.retry')"
+          compact
+          @retry="loadMetar"
+        />
+        <p v-else-if="metar.kind === 'empty'" class="text-xs text-faint">
+          {{ t("airports.detail.metar.none", { icao: airport.icao }) }}
+        </p>
+        <p v-else class="skeleton h-4 w-3/4"></p>
+      </PanelSection>
 
       <PanelSection :title="t('airports.detail.runways')" :level="3">
         <StateCard

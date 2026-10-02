@@ -460,6 +460,11 @@
       "detail": {
         "back": "Back to list",
         "position": "Position",
+        "metar": {
+          "title": "METAR",
+          "failed": "Couldn't read the METAR for {icao}. That doesn't mean there is none.",
+          "none": "No METAR available for {icao}."
+        },
         "runways": "Runways",
         "noRunways": "The database has no runways for this airport.",
         "runwaysFailed": "Couldn't load the runways — that doesn't mean there are none.",
