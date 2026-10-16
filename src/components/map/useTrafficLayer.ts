@@ -25,6 +25,7 @@ import {
   coverageKey,
   indexBoundaries,
   indexTracons,
+  unwrapGeoJsonCollection,
   wantsAirportCoords,
   wantsTracons,
   type BoundaryIndex,
@@ -52,7 +53,7 @@ let traconIndex: TraconIndex | null = null;
 async function fetchCollection(url: string): Promise<FeatureCollection> {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`${url}: ${response.status}`);
-  return (await response.json()) as FeatureCollection;
+  return unwrapGeoJsonCollection((await response.json()) as FeatureCollection);
 }
 
 let boundaryRequest: Promise<BoundaryIndex | null> | null = null;

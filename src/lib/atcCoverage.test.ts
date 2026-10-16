@@ -8,6 +8,7 @@ import {
   wantsAirportCoords,
   wantsTracons,
   coverageKey,
+  unwrapGeoJsonCollection,
 } from "./atcCoverage";
 import { useAirportCodes } from "./airportCodes";
 import type { DatafeedController } from "./datafeed";
@@ -40,6 +41,30 @@ function square(
 function collection(features: Feature[]): FeatureCollection {
   return { type: "FeatureCollection", features };
 }
+
+test("unwraps ATC rings across the antimeridian", () => {
+  const input = collection([square({ id: "KZAK" }, 179, 20)]);
+  input.features[0].geometry = {
+    type: "Polygon",
+    coordinates: [
+      [
+        [179, 20],
+        [-179, 20],
+        [-179, 21],
+        [179, 21],
+        [179, 20],
+      ],
+    ],
+  };
+
+  const [ring] = (
+    unwrapGeoJsonCollection(input).features[0].geometry as GeoJSON.Polygon
+  ).coordinates;
+  for (let i = 1; i < ring.length; i++) {
+    expect(Math.abs(ring[i][0] - ring[i - 1][0])).toBeLessThanOrEqual(180);
+  }
+  expect(ring.map(([lon]) => lon)).toEqual([179, 181, 181, 179, 179]);
+});
 
 useFirTable({
   version: "test",
