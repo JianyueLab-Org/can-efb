@@ -49,6 +49,54 @@ import {
 /** VATSpy 边界：id → 它底下的要素（陆上一块、洋区一块，见 `prefersOceanic`）。 */
 export type BoundaryIndex = Map<string, Feature[]>;
 
+function isPosition(value: unknown): value is [number, number, ...number[]] {
+  return (
+    Array.isArray(value) &&
+    typeof value[0] === "number" &&
+    typeof value[1] === "number"
+  );
+}
+
+function unwrapPath(path: unknown[]): unknown[] {
+  let previous: number | null = null;
+  return path.map((value) => {
+    if (!isPosition(value)) return value;
+    let longitude = value[0];
+    if (previous !== null) {
+      while (longitude - previous > 180) longitude -= 360;
+      while (longitude - previous < -180) longitude += 360;
+    }
+    previous = longitude;
+    return [longitude, ...value.slice(1)];
+  });
+}
+
+function unwrapCoordinates(value: unknown): unknown {
+  if (!Array.isArray(value) || value.length === 0) return value;
+  if (isPosition(value[0])) return unwrapPath(value);
+  return value.map(unwrapCoordinates);
+}
+
+/** Keep each ATC ring continuous when it crosses the antimeridian. */
+export function unwrapGeoJsonCollection(
+  collection: FeatureCollection,
+): FeatureCollection {
+  return {
+    ...collection,
+    features: collection.features.map((feature) => {
+      const geometry = feature.geometry;
+      if (!geometry || !("coordinates" in geometry)) return feature;
+      return {
+        ...feature,
+        geometry: {
+          ...geometry,
+          coordinates: unwrapCoordinates(geometry.coordinates),
+        },
+      } as Feature;
+    }),
+  };
+}
+
 export function indexBoundaries(collection: FeatureCollection): BoundaryIndex {
   const index: BoundaryIndex = new Map();
   for (const feature of collection.features) {
