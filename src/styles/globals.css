@@ -16,8 +16,9 @@
    =========================================================================== */
 
 /* 顶栏和图标轨来自 can-ui 的 frame.css（`CanFrame layout="map" rail`）。
-   这里不再定义它们。面板和地图按 `--frame-top`（顶栏高）和 `--rail-current`
-   （≥768px 是图标轨宽，以下是 0）让位。 */
+   这里不再定义它们。面板按 `--frame-top`（顶栏高）和 `--rail-current`
+   （≥768px 是图标轨宽，以下是 0）让位。地图从 `--frame-top` 开始，铺在图标轨下面，
+   靠内边距让开它。 */
 
 /* 航路地图（RouteMap.vue）。
 
@@ -142,7 +143,7 @@
 /* 从顶栏下沿开始：顶栏不透明，地图伸到它下面只会让内边距多算一截。 */
 .map-stage {
   position: fixed;
-  inset: var(--frame-top) 0 0 0;
+  inset: var(--frame-top, var(--frame-bar-height)) 0 0 0;
   z-index: 0;
   overflow: hidden;
 }
@@ -157,7 +158,8 @@
   /* 拉满时上沿停在顶栏下面一道留白处。 */
   bottom: env(safe-area-inset-bottom);
   height: calc(
-    100dvh - var(--frame-top) - env(safe-area-inset-bottom) - var(--shell-inset)
+    100dvh - var(--frame-top, var(--frame-bar-height)) -
+      env(safe-area-inset-bottom) - var(--shell-inset)
   );
   display: flex;
   flex-direction: column;
@@ -227,7 +229,7 @@
   }
 
   .floating-panel {
-    top: calc(var(--frame-top) + var(--shell-inset));
+    top: calc(var(--frame-top, var(--frame-bar-height)) + var(--shell-inset));
     bottom: var(--shell-inset);
     right: auto;
     left: calc(var(--rail-current) + var(--shell-inset));
@@ -320,8 +322,8 @@
 }
 
 /* ---------------------------------------------------------------------------
-   玻璃材质。面板和地图上的控件共用这一个类。轨和标签栏是 can-ui 的不透明底色
-   （`bg-surface-sunken` / `bg-surface`）。
+   玻璃材质。面板和地图上的控件共用这一个类。顶栏和图标轨是 can-ui 的不透明底色
+   （`bg-surface`）。
 
    取的是 can-ui 的材质令牌（`--material-regular` 那一组），深浅两套由令牌自己换，
    这里不另写颜色。退路有两条，都退回 can-ui 的实心浮层色：浏览器不支持
@@ -818,7 +820,7 @@
   outline: none;
 }
 .chart-viewer-beside {
-  top: calc(var(--frame-top) + var(--shell-inset));
+  top: calc(var(--frame-top, var(--frame-bar-height)) + var(--shell-inset));
   right: var(--shell-inset);
   bottom: var(--chart-viewer-bottom, var(--shell-inset));
   border-radius: var(--radius-sheet);

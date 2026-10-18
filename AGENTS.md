@@ -134,8 +134,8 @@ cookie 转发回去。哪天有人要在这里加 Secret，先确认那件事不
 `FloatingPanel.astro` 在 `CanFrame` 的默认插槽里，即 `<main id="main-content">` 之内；
 它自己是 `<section>`。它渲染的 `<header>`（`PageHeader.astro`）是**页面级**的标题区，
 不是站头。地图不在插槽里：它靠 `transition:persist` 跨页面存活，排在 `Frame` 后面。
-`<main>` 已经按图标轨让过位（`md:pl-[var(--map-rail-width)]`）；面板和地图是 fixed，
-自己加 `--rail-current`，两者不叠加。
+`<main>` 已经按图标轨让过位（`md:pl-[var(--map-rail-width)]`）。面板是 fixed，自己加
+`--rail-current`。地图铺在图标轨下面，靠内边距让开它（面板右边缘之外才算可见区）。
 
 `AppLayout` 的 `bare`：插槽直接铺满 `<main>`，不放面板，也不放地图。`/404` 用它渲染
 can-ui 的 `NotFound`。

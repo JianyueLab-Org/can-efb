@@ -29,7 +29,7 @@ describe("buildNav", () => {
     expect(buildNav(t).every((item) => item.href?.startsWith("/"))).toBe(true);
   });
 
-  test("手机标签：概览、飞行计划、航路；机场和设置进「我的」", () => {
+  test("phoneTab 三页：概览、飞行计划、航路；机场和设置不在其中", () => {
     const { tabs, overflow } = railTabs(buildNav(t));
     expect(tabs.map((link) => link.href)).toEqual([
       "/",
