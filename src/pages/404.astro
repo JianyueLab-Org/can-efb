@@ -2,24 +2,29 @@
 /**
  * 404。**带外壳**，不是一个孤零零的错误页。
  *
- * 走错一个地址的人下一步一定是去别的地方，而这个站的「别的地方」全在轨里。用
- * BaseLayout 渲染会让他们只剩下浏览器的后退按钮。
+ * 走错一个地址的人下一步一定是去别的地方，而这个站的「别的地方」全在顶栏和图标
+ * 轨里。用 BaseLayout 渲染会让他们只剩下浏览器的后退按钮。
  *
- * 用 StateCard 而不是自己再写一遍「没有东西」的卡片样式 —— 这个组件不认识词典，
- * 所以 Astro 页面和岛屿都能直接用同一份外观。
+ * 内容是 can-ui 的 `NotFound`：全网同一份 404，四种语言的文案在 can-ui 里。它是
+ * 整块内容，所以 AppLayout 用 `bare`：不放面板，也不放地图。状态码由这一页设。
  */
 import AppLayout from "@/layouts/AppLayout.astro";
-import StateCard from "@/components/ui/StateCard.vue";
-import { getLocale, useTranslations } from "@/lib/i18n";
+import { NotFound, notFoundText } from "@jianyuelab-org/can-ui";
+import { originsFromEnv } from "@jianyuelab-org/can-ui/sites";
+import { getLocale } from "@/lib/i18n";
 
-const t = useTranslations(getLocale(Astro.cookies), "efb");
+const locale = getLocale(Astro.cookies);
+Astro.response.status = 404;
 ---
 
-<AppLayout title={t("notFound.title")} afterSignOut="reload">
+<AppLayout title={notFoundText(locale).title} afterSignOut="reload" bare>
   {
-    /* 不加 client: —— 这一页没有要在浏览器里做的事，StateCard 只渲染一次 HTML。 */
+    /* 不加 client: —— 这一页没有要在浏览器里做的事，NotFound 只渲染一次 HTML。 */
   }
-  <StateCard kind="empty" title={t("notFound.title")} body={t("notFound.body")}>
-    <a slot="action" href="/" class="btn btn-primary">{t("notFound.home")}</a>
-  </StateCard>
+  <NotFound
+    current="efb"
+    locale={locale}
+    homeHref="/"
+    origins={originsFromEnv(import.meta.env)}
+  />
 </AppLayout>

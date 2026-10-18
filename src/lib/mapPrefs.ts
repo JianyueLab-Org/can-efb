@@ -11,7 +11,7 @@ import { isIfrChart, type IfrChart } from "@/lib/ifrChart";
  * 图层偏好存 localStorage。
  *
  * 这块地图跨页面存活，但**刷新一次就回到默认**——而"我要看哪几层"是一个跨会话
- * 的选择，不是一次浏览的状态。和轨的折叠状态存 `data-rail` 是同一个道理。
+ * 的选择，不是一次浏览的状态。
  *
  * 读写都包在 try 里：锁死的浏览器里 localStorage 会抛，而一个图层偏好不值得让
  * 整块地图挂掉。

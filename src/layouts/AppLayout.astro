@@ -1,13 +1,16 @@
 ---
 /**
- * 外壳：**地图铺满视口，面板浮在上面。** 没有站头，也不要加回来。
+ * 外壳：**顶栏之下地图铺满，面板浮在上面。**
  *
- * 轨、手机标签栏和「我的」面板是 can-ui 的 `CanFrame`（`layout="rail"`），经
+ * 顶栏和图标轨是 can-ui 的 `CanFrame`（`layout="map" rail`），经
  * `components/Frame.vue` 传入。面板在 Frame 的默认插槽里，落在
  * `<main id="main-content">` 之内。地图不进插槽：`transition:persist` 让它跨页面
  * 存活，它排在 Frame 后面。
  *
- * 层次自下而上：MapStage → 面板 → 轨。DOM 顺序：跳过链接、轨、标签栏、面板、地图。
+ * 层次自下而上：MapStage → 面板、图标轨 → 顶栏。DOM 顺序：跳过链接、顶栏、图标轨、
+ * 面板、地图。
+ *
+ * `bare`：插槽直接进 `<main>`，没有面板也没有地图（404）。
  *
  * `client:load` 给三样：Frame、地图、每一页自己的主岛屿。
  *
@@ -34,6 +37,8 @@ interface Props {
   afterSignOut?: "web" | "reload";
   /** 站点根页：`<title>` 只显示站名。 */
   root?: boolean;
+  /** 不要面板和地图，插槽直接铺满 `<main>`。 */
+  bare?: boolean;
 }
 
 const {
@@ -42,6 +47,7 @@ const {
   panel = "standard",
   afterSignOut = "web",
   root = false,
+  bare = false,
 } = Astro.props;
 
 const locale = getLocale(Astro.cookies);
@@ -63,23 +69,31 @@ const user = toFrameUser(Astro.locals.user);
     origins={originsFromEnv(import.meta.env)}
     client:load
   >
-    <FloatingPanel
-      width={panel}
-      title={title}
-      description={description}
-      labels={{
-        collapse: t("panel.collapse"),
-        expand: t("panel.expand"),
-        handle: t("panel.handle"),
-        sheet: {
-          collapsed: t("panel.sheet.collapsed"),
-          half: t("panel.sheet.half"),
-          full: t("panel.sheet.full"),
-        },
-      }}
-    >
-      <slot />
-    </FloatingPanel>
+    {
+      bare ? (
+        <div class="flex h-full flex-col overflow-y-auto">
+          <slot />
+        </div>
+      ) : (
+        <FloatingPanel
+          width={panel}
+          title={title}
+          description={description}
+          labels={{
+            collapse: t("panel.collapse"),
+            expand: t("panel.expand"),
+            handle: t("panel.handle"),
+            sheet: {
+              collapsed: t("panel.sheet.collapsed"),
+              half: t("panel.sheet.half"),
+              full: t("panel.sheet.full"),
+            },
+          }}
+        >
+          <slot />
+        </FloatingPanel>
+      )
+    }
   </Frame>
 
   {
@@ -90,8 +104,8 @@ const user = toFrameUser(Astro.locals.user);
     */
   }
   {
-    /* 除 404 外每页都要会话；匿名的 404 没有地图。 */
-    Astro.locals.user && (
+    /* 除 404 外每页都要会话；404 是 bare，没有地图。 */
+    !bare && Astro.locals.user && (
       <MapStage
         label={t("route.map.label")}
         cid={Astro.locals.user.username}

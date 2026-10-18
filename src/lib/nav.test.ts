@@ -4,7 +4,7 @@ import { buildNav } from "@/lib/nav";
 
 /**
  * 导航是 can-ui 的 `NavItem[]`，五个平铺的链接：概览、飞行计划、航路、机场、设置。
- * 手机标签栏只放 `phoneTab` 的三页，其余在「我的」面板顶部。
+ * `phoneTab` 标的是三页（`railTabs` 按它分）。
  */
 const t = (key: string) => key;
 

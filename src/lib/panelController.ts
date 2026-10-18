@@ -3,7 +3,7 @@
  * 己盖住了哪一块告诉地图（`panel:layout`）。
  *
  * 面板是 Astro 渲染的静态 HTML，里面装着各页自己的岛屿 —— 把整页塞进一个 Vue 岛
- * 屿，正是轨当初避开的水合代价。所以行为写成这一段普通脚本：每次
+ * 屿，要付整页的水合代价。所以行为写成这一段普通脚本：每次
  * `astro:page-load`（首屏和每次换页都会发）挂一次，`astro:before-swap` 拆一次。
  *
  * 纯计算在 `lib/panelLayout.ts` 和 `lib/sheet.ts`；这里只碰 DOM。
@@ -16,7 +16,6 @@ import {
 import { announcePanelLayout } from "@/lib/mapBus";
 import {
   parseShellMode,
-  railChangeAnnouncesImmediately,
   type PanelWidth,
   type ShellMode,
 } from "@/lib/panelLayout";
@@ -262,7 +261,10 @@ export function mountPanel(): void {
     scheduleAnnounce();
   }
 
-  /* ------------------------------------------------ 跨过断点 */
+  /* ------------------------------------------------ 跨过断点
+
+     768px 两边排布不同，图标轨宽（`--rail-current`）也在这里变：0 ↔ 3.5rem。
+     面板的 left 跟着变、宽度可能不变，所以靠 resize 而不是 ResizeObserver。 */
 
   function onResize() {
     const next = readShellMode();
@@ -288,29 +290,6 @@ export function mountPanel(): void {
   };
   const resizeObserver = new ResizeObserver(onGeometryChange);
 
-  /* 轨折叠或展开：面板的 `left` 跟着 `--rail-current` 变，宽度不变，所以
-     ResizeObserver 不响。**这里曾经不管三七二十一地调 scheduleAnnounce**：80ms
-     的防抖比 `left` 的 200ms 过渡短，于是在过渡跑到一半时把矩形报给地图，
-     `camera.setPadding` 跟着往那个中间值 easeTo 一次；transitionend 到达时报的
-     终值又 easeTo 一次，镜头跟着跳 —— 表现是折叠/展开轨时地图的内边距一顿一顿。
-     `railChangeAnnouncesImmediately` 判断这次到底会不会有 `left` 过渡（减少动态
-     效果，或者当前排布本身没有 `left` 过渡，比如手机的底部抽屉）：会的话什么都
-     不做，交给 transitionend / transitioncancel 在过渡结束时报一次终值
-     （onTransitionEnd）；不会的话没有任何过渡事件会来，这里必须自己直接报。 */
-  function onRailChange() {
-    const style = getComputedStyle(root);
-    if (
-      railChangeAnnouncesImmediately(
-        prefersReducedMotion(),
-        style.transitionProperty,
-        style.transitionDuration,
-      )
-    ) {
-      announce();
-    }
-  }
-  const railObserver = new MutationObserver(onRailChange);
-
   toggle?.addEventListener("click", onToggle);
   handle?.addEventListener("click", onHandleClick);
   handle?.addEventListener("keydown", onHandleKeydown);
@@ -324,10 +303,6 @@ export function mountPanel(): void {
   root.addEventListener("transitioncancel", onTransitionEnd);
   window.addEventListener("resize", onResize);
   resizeObserver.observe(root);
-  railObserver.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ["data-rail"],
-  });
 
   if (mode === "phone") applySnap(snap, false);
   else announce();
@@ -347,6 +322,5 @@ export function mountPanel(): void {
     root.removeEventListener("transitioncancel", onTransitionEnd);
     window.removeEventListener("resize", onResize);
     resizeObserver.disconnect();
-    railObserver.disconnect();
   };
 }

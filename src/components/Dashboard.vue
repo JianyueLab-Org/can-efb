@@ -283,7 +283,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="space-y-6">
-    <!-- 谁在用。和轨里的账户是同一份会话，这里只是开门第一眼。 -->
+    <!-- 谁在用。和顶栏里的账户是同一份会话，这里只是开门第一眼。 -->
     <section class="flex items-center gap-3">
       <span
         class="flex size-10 shrink-0 items-center justify-center rounded-full bg-can text-sm font-semibold text-on-can"

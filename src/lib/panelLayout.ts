@@ -1,7 +1,7 @@
 /**
  * 浮动面板和地图之间的几何换算。
  *
- * 地图铺满整个视口，面板浮在它上面。于是「地图的可见区」不再是地图容器本身，而是
+ * 地图铺满顶栏以下的整个视口，面板浮在它上面。于是「地图的可见区」不再是地图容器本身，而是
  * 容器减去面板盖住的那一块 —— MapLibre 的 `setPadding` 正是为这件事存在的：给了
  * 内边距之后，`fitBounds`、`easeTo` 的中心落在露出来的那一块中间，而不是落在被面
  * 板压住的视口中心。
@@ -54,57 +54,6 @@ export function parseShellMode(raw: string): ShellMode {
   return value === "desktop" || value === "tablet" ? value : "phone";
 }
 
-function cssTimeMs(raw: string | undefined): number {
-  const match = /^(-?[\d.]+)(ms|s)$/.exec((raw ?? "").trim());
-  if (!match) return 0;
-  const value = Number(match[1]);
-  return match[2] === "ms" ? value : value * 1000;
-}
-
-/**
- * `transition-property` / `transition-duration` 是按声明顺序对应的两串逗号分隔
- * 值（`getComputedStyle` 原样返回 CSS 简写 `transition` 展开后的结果）。取其中
- * `property` 那一路的时长；`transition: none` 会把 property 折成单独一个 `all`，
- * 这时按 `all` 的时长算，因为它确实盖住了每一个属性。查不到就当 0。
- *
- * **duration 列比 property 列短时按 CSS 规则循环取**（`durations[index %
- * durations.length]`），不是塌到最后一个：`transition: a 200ms, b, left` 这种
- * 写法里 `transition-duration` 只有一个值，CSS 把它接到每一路属性上，第三路
- * （`left`）用的又是第一个值，不是「最后一个」这个不相干的概念。
- */
-function transitionDurationFor(
-  property: string,
-  transitionProperty: string,
-  transitionDuration: string,
-): number {
-  const props = transitionProperty.split(",").map((s) => s.trim());
-  const durations = transitionDuration.split(",").map((s) => s.trim());
-  const idx = props.indexOf(property);
-  const index = idx !== -1 ? idx : props.indexOf("all");
-  if (index === -1 || durations.length === 0) return 0;
-  return cssTimeMs(durations[index % durations.length]);
-}
-
-/**
- * 轨折叠 / 展开会不会让面板的 `left` 跑一次过渡。
- *
- * 会的话，报告交给 transitionend / transitioncancel（面板过渡到一半时的矩形是
- * 中间态，这时候报给地图，`camera.setPadding` 会对着这个中间值 easeTo 一次，
- * 过渡结束时真正的终值又报一次，镜头跳两下）。不会的话（减少动态效果，或者当
- * 前排布本身没有 `left` 过渡，比如手机的底部抽屉）不会有任何过渡事件到来，调用
- * 方必须自己直接报一次。
- */
-export function railChangeAnnouncesImmediately(
-  reducedMotion: boolean,
-  transitionProperty: string,
-  transitionDuration: string,
-): boolean {
-  if (reducedMotion) return true;
-  return (
-    transitionDurationFor("left", transitionProperty, transitionDuration) <= 0
-  );
-}
-
 /**
  * 面板盖住了哪一块，换成地图的内边距。
  *
@@ -132,4 +81,30 @@ export function mapPaddingFor(
     Math.max(0, viewport.width - gap - MIN_VISIBLE_PX),
   );
   return { top: gap, right: gap, bottom: gap, left };
+}
+
+/**
+ * 把面板矩形从视口坐标换到地图容器坐标，连同容器尺寸一起交给 `mapPaddingFor`。
+ *
+ * 地图从顶栏下沿开始（`.map-stage` 的 `top: var(--frame-top)`），面板矩形却是
+ * 视口坐标。手机上「盖住多少」按底边算，两套坐标底边重合，结果一样；但「至少留
+ * 多少」要按地图自己的高度算，否则会多留出一个顶栏高。
+ */
+export function stagePaddingFor(
+  layout: PanelLayout,
+  stage: PanelRect,
+): MapPadding {
+  const { rect } = layout;
+  return mapPaddingFor(
+    {
+      ...layout,
+      rect: {
+        left: rect.left - stage.left,
+        top: rect.top - stage.top,
+        right: rect.right - stage.left,
+        bottom: rect.bottom - stage.top,
+      },
+    },
+    { width: stage.right - stage.left, height: stage.bottom - stage.top },
+  );
 }

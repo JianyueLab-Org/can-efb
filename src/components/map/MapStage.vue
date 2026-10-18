@@ -98,8 +98,8 @@ import { hideNaip } from "@/lib/naip";
 import { subscribePanelLayout } from "@/lib/mapBus";
 import { pinboardReserve, viewerBottom, withPinboard } from "@/lib/pinboard";
 import {
-  mapPaddingFor,
   parseShellMode,
+  stagePaddingFor,
   type MapPadding,
   type ShellMode,
 } from "@/lib/panelLayout";
@@ -361,6 +361,8 @@ const toolbarText: MapToolbarText = {
  * 让压在地图上的控件（`.map-overlay`、MapLibre 的四个控件角）跟着可见区走。
  */
 const padding = ref<MapPadding>({ top: 0, right: 0, bottom: 0, left: 0 });
+/** 地图容器。面板矩形是视口坐标，要换成它的坐标再算内边距。 */
+const stageEl = ref<HTMLElement | null>(null);
 
 /**
  * 钉板占掉的高度（`MapPinboard` 经 `height` 报）。三处用：地图内边距的底边再让一
@@ -491,10 +493,13 @@ onMounted(() => {
   document.addEventListener("astro:after-swap", reapplyViewerBottom);
   unsubscribeLayout = subscribePanelLayout((layout) => {
     shellMode.value = layout.mode;
-    padding.value = mapPaddingFor(layout, {
-      width: window.innerWidth,
-      height: window.innerHeight,
-    });
+    const stage = stageEl.value?.getBoundingClientRect() ?? {
+      left: 0,
+      top: 0,
+      right: window.innerWidth,
+      bottom: window.innerHeight,
+    };
+    padding.value = stagePaddingFor(layout, stage);
   });
   // 按偏好把图层打开 —— 这是「打开就看到航图」的那一步。不 await：地图不该等航路网
   // 下载完才出现。
@@ -519,7 +524,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="map-stage" :style="padStyle" :aria-label="label">
+  <section
+    ref="stageEl"
+    class="map-stage"
+    :style="padStyle"
+    :aria-label="label"
+  >
     <!-- `points` 为空也照样渲染：空点集只画底图，不会抛。 -->
     <RouteMap
       v-if="mounted"
