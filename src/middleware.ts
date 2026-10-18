@@ -9,7 +9,7 @@ import { isPublicRoute } from "@/server/publicRoute";
  * **这个站整站都要登录，404 页和 `isUnguarded` 列出的路径例外**，所以没有
  * PROTECTED_PREFIXES 这样一份清单：航图、计划、日志全是「这名飞行员自己的」。
  * 将来真要开一个公开页，得在 `isPublicRoute` 里显式开口子，而不是默认就开着。
- * 匿名的 404 不渲染地图。
+ * 404 不渲染地图。
  *
  * 不重定向的有三处。404 页（`isPublicRoute`）照样问会话，只是从不重定向，
  * can-api 不可用时也按匿名渲染。`/api/*` 和 `/healthz`（`isUnguarded`）连会话
@@ -66,7 +66,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
 /**
  * can-api 不可用时的那一页。
  *
- * 故意写成一段内联 HTML，不走布局：布局要渲染轨脚的账户区、要读词典，而这时会
+ * 故意写成一段内联 HTML，不走布局：布局要渲染顶栏的账户区、要读词典，而这时会
  * 话本身就是缺的那一块。`/api/*` 不经过这里（见 `isUnguarded`），反代自己会回
  * 502 JSON，所以这里只需要一种形状。
  */

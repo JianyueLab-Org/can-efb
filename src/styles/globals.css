@@ -1,7 +1,7 @@
 /* ===========================================================================
    电子飞行包的样式表。
 
-   设计系统整体搬到了 can-ui —— 令牌、base 层、组件类、动效层、轨和手机标签栏
+   设计系统整体搬到了 can-ui —— 令牌、base 层、组件类、动效层、顶栏和图标轨
    都在那边一份。这里只留下这行 import，以及下面 "can-efb only" 那一节：地图、
    浮动面板和地图控件。
 
@@ -15,9 +15,10 @@
    can-efb only — 上面是 can-ui 的样式，从这里往下才是这个站自己的。
    =========================================================================== */
 
-/* 轨和手机标签栏来自 can-ui 的 frame.css：`--rail-*`、`--tabbar-height`、
-   `.app-rail`、`.rail-item`、`.rail-label`、`.tab-bar`、`.tab-bar-item`。
-   这里不再定义它们。面板按 `--rail-current` 和 `--tabbar-height` 让位。 */
+/* 顶栏和图标轨来自 can-ui 的 frame.css（`CanFrame layout="map" rail`）。
+   这里不再定义它们。面板按 `--frame-top`（顶栏高）和 `--rail-current`
+   （≥768px 是图标轨宽，以下是 0）让位。地图从 `--frame-top` 开始，铺在图标轨下面，
+   靠内边距让开它。 */
 
 /* 航路地图（RouteMap.vue）。
 
@@ -114,7 +115,7 @@
 }
 
 /* ---------------------------------------------------------------------------
-   外壳：地图铺满视口，轨和面板浮在上面。
+   外壳：顶栏之下地图铺满，图标轨和面板浮在上面。
 
    上一版是「轨 | 面板 | 地图」三栏：地图只拿到剩下那一截，1024–1152 之间还得改走
    上下堆叠。现在地图永远是整个视口，面板是压在它上面的一张玻璃卡片，地图用
@@ -123,10 +124,10 @@
    **断点只在这个文件里定义**：768 和 1152 两个数不出现在任何 .vue / .ts 里。JS
    要知道当前排布就读 `--shell-mode`，这里在媒体查询里翻面。
 
-       视口        轨                           面板
-       ≥1152       显示，可折叠                 standard 或 wide
-       768–1151    默认收起（data-rail=auto）   wide 退回 standard
-       <768        换成底部标签栏               底部抽屉，三档
+       视口        导航                         面板
+       ≥1152       图标轨                       standard 或 wide
+       768–1151    图标轨                       wide 退回 standard
+       <768        顶栏汉堡菜单打开的抽屉       底部抽屉，三档，止于顶栏之下
    --------------------------------------------------------------------------- */
 
 :root {
@@ -139,9 +140,10 @@
   --sheet-peek: 72px;
 }
 
+/* 从顶栏下沿开始：顶栏不透明，地图伸到它下面只会让内边距多算一截。 */
 .map-stage {
   position: fixed;
-  inset: 0;
+  inset: var(--frame-top, var(--frame-bar-height)) 0 0 0;
   z-index: 0;
   overflow: hidden;
 }
@@ -153,10 +155,11 @@
   z-index: 30;
   left: 0;
   right: 0;
-  bottom: calc(var(--tabbar-height) + env(safe-area-inset-bottom));
+  /* 拉满时上沿停在顶栏下面一道留白处。 */
+  bottom: env(safe-area-inset-bottom);
   height: calc(
-    100dvh - var(--tabbar-height) - env(safe-area-inset-bottom) -
-      var(--shell-inset)
+    100dvh - var(--frame-top, var(--frame-bar-height)) -
+      env(safe-area-inset-bottom) - var(--shell-inset)
   );
   display: flex;
   flex-direction: column;
@@ -220,20 +223,13 @@
   }
 }
 
-/* 反过来：手机上没有意义的东西（比如「默认收起侧栏」—— 手机上没有侧栏）。 */
-@media (max-width: 767.98px) {
-  .phone-hidden {
-    display: none !important;
-  }
-}
-
 @media (min-width: 768px) {
   :root {
     --shell-mode: tablet;
   }
 
   .floating-panel {
-    top: var(--shell-inset);
+    top: calc(var(--frame-top, var(--frame-bar-height)) + var(--shell-inset));
     bottom: var(--shell-inset);
     right: auto;
     left: calc(var(--rail-current) + var(--shell-inset));
@@ -244,9 +240,7 @@
     border-radius: var(--radius-sheet);
     border-bottom-width: 1px;
     transform: none;
-    transition:
-      width 240ms var(--ease-out-quint),
-      left 200ms ease;
+    transition: width 240ms var(--ease-out-quint);
   }
   .panel-handle {
     display: none;
@@ -328,8 +322,8 @@
 }
 
 /* ---------------------------------------------------------------------------
-   玻璃材质。面板和地图上的控件共用这一个类。轨和标签栏是 can-ui 的不透明底色
-   （`bg-surface-sunken` / `bg-surface`）。
+   玻璃材质。面板和地图上的控件共用这一个类。顶栏和图标轨是 can-ui 的不透明底色
+   （`bg-surface`）。
 
    取的是 can-ui 的材质令牌（`--material-regular` 那一组），深浅两套由令牌自己换，
    这里不另写颜色。退路有两条，都退回 can-ui 的实心浮层色：浏览器不支持
@@ -816,7 +810,7 @@
 
 /* ---------------------------------------------------------------------------
    航图查看器（ChartViewer.vue）。平板和桌面上贴在面板右边（left 由组件按面板
-   矩形给），手机上盖满。压在轨、标签栏（40）和面板（30）之上，压在 can-ui 的对话框和命令面板（50）之下。
+   矩形给），手机上盖满。压在顶栏（40）、图标轨和面板（30）之上，压在 can-ui 的对话框和命令面板（50）之下。
    --------------------------------------------------------------------------- */
 .chart-viewer {
   position: fixed;
@@ -826,7 +820,7 @@
   outline: none;
 }
 .chart-viewer-beside {
-  top: var(--shell-inset);
+  top: calc(var(--frame-top, var(--frame-bar-height)) + var(--shell-inset));
   right: var(--shell-inset);
   bottom: var(--chart-viewer-bottom, var(--shell-inset));
   border-radius: var(--radius-sheet);

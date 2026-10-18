@@ -4,7 +4,7 @@ import {
   MIN_VISIBLE_PX,
   PANEL_GAP_PX,
   parseShellMode,
-  railChangeAnnouncesImmediately,
+  stagePaddingFor,
 } from "@/lib/panelLayout";
 
 /**
@@ -12,7 +12,7 @@ import {
  * 板底下 —— 屏幕上看起来像「航路没框进来」，不像一个 bug。
  */
 describe("mapPaddingFor", () => {
-  test("桌面：左边让出轨和面板，再加一道留白", () => {
+  test("桌面：左边让出图标轨和面板，再加一道留白", () => {
     expect(
       mapPaddingFor(
         {
@@ -93,51 +93,48 @@ describe("parseShellMode", () => {
 });
 
 /**
- * 折叠/展开轨会不会让面板的 `left` 跑一次过渡，决定观察器是自己直接报
- * （panel:layout），还是等 transitionend / transitioncancel 报。判错的后果是
- * 地图在过渡跑到一半时就把镜头往中间态 easeTo 一次，过渡结束时终值又报一次，
- * 表现成 padding 跳两下。
+ * 地图从顶栏下沿开始，面板矩形是视口坐标。换算错了，手机上「至少留多少」会按视
+ * 口高度算，多留出一个顶栏高；桌面上左边让位会差出一个容器偏移。
  */
-describe("railChangeAnnouncesImmediately", () => {
-  test("桌面/平板：left 有 200ms 过渡，交给 transitionend", () => {
+describe("stagePaddingFor", () => {
+  const stage = { left: 0, top: 57, right: 1440, bottom: 800 };
+
+  test("桌面：按容器坐标让出面板，结果和视口坐标一致（左边重合）", () => {
     expect(
-      railChangeAnnouncesImmediately(false, "width, left", "240ms, 200ms"),
-    ).toBe(false);
+      stagePaddingFor(
+        {
+          mode: "desktop",
+          collapsed: false,
+          rect: { left: 68, top: 69, right: 484, bottom: 788 },
+        },
+        stage,
+      ),
+    ).toEqual({ top: 12, right: 12, bottom: 12, left: 496 });
   });
 
-  test("手机：这一排布的 transition 里根本没有 left，直接报", () => {
-    expect(railChangeAnnouncesImmediately(false, "transform", "320ms")).toBe(
-      true,
+  test("手机：盖住多少按底边算，两套坐标一样", () => {
+    expect(
+      stagePaddingFor(
+        {
+          mode: "phone",
+          collapsed: false,
+          rect: { left: 0, top: 500, right: 390, bottom: 844 },
+        },
+        { left: 0, top: 57, right: 390, bottom: 844 },
+      ),
+    ).toEqual({ top: 12, right: 12, bottom: 356, left: 12 });
+  });
+
+  test("手机：抽屉拉满时按地图自己的高度留出可见区", () => {
+    const phone = { left: 0, top: 57, right: 390, bottom: 844 };
+    const padding = stagePaddingFor(
+      {
+        mode: "phone",
+        collapsed: false,
+        rect: { left: 0, top: 69, right: 390, bottom: 844 },
+      },
+      phone,
     );
-  });
-
-  test("减少动态效果：不管 CSS 算出来的时长，直接报", () => {
-    expect(
-      railChangeAnnouncesImmediately(true, "width, left", "240ms, 200ms"),
-    ).toBe(true);
-  });
-
-  test("减少动态效果的 CSS 把 transition 折成 all/0s，同样直接报", () => {
-    expect(railChangeAnnouncesImmediately(false, "all", "0s")).toBe(true);
-  });
-
-  test("浏览器有时用秒而不是毫秒报时长", () => {
-    expect(
-      railChangeAnnouncesImmediately(false, "width, left", "0.24s, 0.2s"),
-    ).toBe(false);
-  });
-
-  test("left 的时长本来就是 0：不用等一个不会来的事件", () => {
-    expect(
-      railChangeAnnouncesImmediately(false, "width, left", "240ms, 0ms"),
-    ).toBe(true);
-  });
-
-  test("duration 列比 property 列短：按 CSS 规则循环取值，不是塌到最后一个", () => {
-    // CSS 里 transition-duration 比 transition-property 短时是循环对应的：
-    // a→200ms、b→0ms、left→200ms（回到第一个），不是补最后一个 0ms。
-    expect(
-      railChangeAnnouncesImmediately(false, "a, b, left", "200ms, 0ms"),
-    ).toBe(false);
+    expect(phone.bottom - phone.top - padding.bottom).toBe(MIN_VISIBLE_PX);
   });
 });

@@ -27,17 +27,16 @@ commit 指针 —— 根仓库只记录指针，指向一个没推过的 SHA 会
 session secret；这个站不参与 OAuth，会话由 can-api 签在父域上，它只负责把
 cookie 转发回去。哪天有人要在这里加 Secret，先确认那件事不能靠转发 cookie 完成。
 
-## 外壳：地图铺满，面板浮在上面
+## 外壳：顶栏之下地图铺满，面板浮在上面
 
-外壳是**一张铺满窗口的地图**，面板是浮在它上面的玻璃（`.glass`，材质取 can-ui 的
-`--material-regular` / `--material-blur-regular`）；轨是 can-ui 的不透明
-`bg-surface-sunken`，贴在左边。以前是**轨 | 面板 |
-地图**三栏，地图只拿剩下的宽度 —— 1280 上四成，1024 上比轨还窄。现在地图永远是整
-个窗口，面板挡住的那一块用**内边距**让出来：
+外壳是 can-ui 的 `CanFrame layout="map" rail`：56px 不透明顶栏，顶栏之下**一张铺满的
+地图**（`.map-stage`，`top: var(--frame-top)`）。面板是浮在地图上的玻璃（`.glass`，
+材质取 can-ui 的 `--material-regular` / `--material-blur-regular`）。≥768px 左边是
+3.5rem 的不透明图标轨，压在地图上。面板挡住的那一块用**内边距**让出来：
 
 - 面板每次改变位置或大小，`lib/panelController.ts` 发一条 `panel:layout`（`mapBus`
-  上，新订阅者会收到上一条）。`MapStage` 用 `lib/panelLayout.ts` 的 `mapPaddingFor`
-  算出内边距交给 MapLibre，所以「居中」「框住航路」都是对**没被挡住的那一块**说的。
+  上，新订阅者会收到上一条）。矩形是视口坐标；`MapStage` 用 `lib/panelLayout.ts` 的
+  `stagePaddingFor` 换成地图容器坐标、再经 `mapPaddingFor` 算出内边距交给 MapLibre，所以「居中」「框住航路」都是对**没被挡住的那一块**说的。
 - 面板宽度由页面声明：`standard`（26rem，列表和短表单）或 `wide`（44rem，飞行计划、
   设置）。平板上 wide 退回 standard。
 - 面板可以收起成一条（`inert` 挡住里面的 Tab），地图跟着把内边距收回去。
@@ -63,16 +62,22 @@ cookie 转发回去。哪天有人要在这里加 Secret，先确认那件事不
 
 ### 三种排布，断点只写在 CSS 里
 
-| 宽度       | `--shell-mode` | 轨                 | 面板                              |
+| 宽度       | `--shell-mode` | 导航               | 面板                              |
 | ---------- | -------------- | ------------------ | --------------------------------- |
-| ≥1152px    | `desktop`      | 展开（或按偏好）   | 左侧浮卡，standard / wide         |
-| 768–1151px | `tablet`       | 默认收起（`auto`） | 左侧浮卡，恒为 standard           |
-| <768px     | `phone`        | 没有，换底部标签栏 | 底部抽屉：收起 72px / 半屏 / 全屏 |
+| ≥1152px    | `desktop`      | 图标轨             | 左侧浮卡，standard / wide         |
+| 768–1151px | `tablet`       | 图标轨             | 左侧浮卡，恒为 standard           |
+| <768px     | `phone`        | 汉堡菜单打开的抽屉 | 底部抽屉：收起 72px / 半屏 / 全屏 |
 
-768 和 1152 **只写在 `globals.css` 的媒体查询里**。JS 要知道当前排布就读
-`--shell-mode`（`parseShellMode`），要知道轨的默认就读 `--rail-auto`
-（can-ui 的 `effectiveRail`）—— 不写 `matchMedia`。以前 RouteMap 自己写过一份
+768 和 1152 **只写在 `globals.css` 的媒体查询里**（768 也是 can-ui `frame.css` 里图标轨
+出现的断点）。JS 要知道当前排布就读 `--shell-mode`（`parseShellMode`）—— 不写
+`matchMedia`。以前 RouteMap 自己写过一份
 `matchMedia("(min-width: 1024px)")`，改断点时两份分叉，那是没人查得到的毛病。
+
+浮卡顶边是 `calc(var(--frame-top) + var(--shell-inset))`，左边是
+`calc(var(--rail-current) + var(--shell-inset))`。手机抽屉高
+`100dvh - --frame-top - 安全区 - --shell-inset`、贴底，拉满时停在顶栏下面。
+`--frame-top`、`--rail-current` 由 can-ui 的 map 外壳写在 `:root` 上；`--tabbar-height`
+恒为 0，本站不读。图标轨宽只在跨 768px 时变，`panelController` 在 `resize` 里重报一次。
 
 手机的抽屉按 can-ui 的 `projectToDetent` 吸附到三档之一，拖动时越界有阻尼
 （`rubberbandClamp`），焦点进入抽屉时展开到全屏，免得输入框被键盘和地图夹住。
@@ -108,51 +113,35 @@ cookie 转发回去。哪天有人要在这里加 Secret，先确认那件事不
 `@sm:` / `@md:` 这种容器前缀，表单用 `FieldGrid`（面板 ≥36rem 才分两列）。用视口
 前缀的话，1440 的屏上 standard 面板也会被排成两列，每列不到 200px。
 
-## 这个站没有站头，这是整个布局的前提
+## 外壳是 can-ui 的 map 外壳
 
-**不要加回顶栏。** 外壳是 can-ui 的 `CanFrame`，`layout="rail"`，由
-`src/components/Frame.vue` 传入导航、成员、外壳文案和各站地址。品牌、跨站菜单
-（`NetworkMenu`）、⌘K、主题、语言、账户和退出登录都在左侧那条轨里。
+外壳是 can-ui 的 `CanFrame`，`layout="map" rail`，由 `src/components/Frame.vue` 传入
+导航、成员、外壳文案和各站地址。56px 顶栏上是品牌、跨站菜单（`NetworkMenu`）、⌘K、
+通知、主题语言、账户和退出登录，全网各站同一条。
 
-理由：EFB 在飞行途中看，屏幕多半是横放的平板或副屏，竖直方向最紧张。
-
-- **手机（<768px）没有轨**，换成底部标签栏：标了 `phoneTab` 的三页（概览、飞行计划、
-  航路），然后 ⌘K，最后「我的」。「我的」打开底部面板：顶部是其余本站页面（机场、设置），
-  然后跨站菜单、主题语言、账户。
+- **≥768px** 本站导航在左边的图标轨上（只有图标，名字在 `title` / `aria-label`）。
+  图标轨不折叠，没有 `data-rail`，也没有 `RailScript`。
+- **手机（<768px）** 没有轨，也没有底部标签栏；顶栏的汉堡菜单打开抽屉，里面是本站导航。
 - **⌘K** 是 can-ui 的 `CommandPalette`：本站页面在前，别的站的页面按站分组在后。
 - **退出登录**是 can-ui 的 `AccountMenu`：POST 本站 `/api/v1/auth/signout`，反代原样
   带回 can-api 的 `Set-Cookie`，然后按 `afterSignOut` 走：默认 `"web"` 去 can-web 的 `/`，公开页用 `"reload"`（`AppLayout` 的同名 prop）。
-- **通知铃**是 can-ui 的 `NotificationBell`（`Frame.vue` 的 `notifications`）：轨上一行，
-  手机上在「我的」面板第一行。同源 `/api/v1/notifications…`，反代的 `ALLOW_LIST` /
+- **通知铃**是 can-ui 的 `NotificationBell`（`Frame.vue` 的 `notifications`），在顶栏上。
+  同源 `/api/v1/notifications…`，反代的 `ALLOW_LIST` /
   `ALLOW_PATTERNS` 里各有条目，都不带 `cacheSeconds` —— `ResponseCache` 不碰它们。
 - 账户菜单是 can-ui 固定的一份：飞行员面板、账户、退出登录，本站不加条目。
-- 网络规格要求每个站同一条顶栏；合并后的 `map` 布局（可选轨）还在 can-ui 里待做，在那之前本站留在 `rail`。
-- 设置页保留主题语言那一行和「默认收起侧栏」开关，不放跨站链接和退出按钮。
+- 设置页保留主题语言那一行，不放跨站链接和退出按钮。
 
 `FloatingPanel.astro` 在 `CanFrame` 的默认插槽里，即 `<main id="main-content">` 之内；
 它自己是 `<section>`。它渲染的 `<header>`（`PageHeader.astro`）是**页面级**的标题区，
 不是站头。地图不在插槽里：它靠 `transition:persist` 跨页面存活，排在 `Frame` 后面。
+`<main>` 已经按图标轨让过位（`md:pl-[var(--map-rail-width)]`）。面板是 fixed，自己加
+`--rail-current`。地图铺在图标轨下面，靠内边距让开它（面板右边缘之外才算可见区）。
 
-### 折叠状态在 `<html data-rail>` 上
+`AppLayout` 的 `bare`：插槽直接铺满 `<main>`，不放面板，也不放地图。`/404` 用它渲染
+can-ui 的 `NotFound`。
 
-轨在 17rem 和 4.75rem 之间折叠。`data-rail` 三个值：`expanded`、`collapsed`、`auto`。
-`auto` 是没存过偏好：桌面展开，平板（768–1151px）收起，由 CSS 给出 `--rail-auto`。
-
-全部来自 can-ui：
-
-- `@jianyuelab-org/can-ui/components/RailScript.astro` —— 首屏之前从 localStorage 的
-  `efb.rail` 读出、写到 `data-rail`。在 `BaseLayout.astro` 的 `<head>` 里，紧跟
-  `ThemeScript`。
-- `@jianyuelab-org/can-ui/styles` 的 `frame.css` —— `--rail-width`、
-  `--rail-width-collapsed`、`--rail-current`、`--rail-auto`、`--tabbar-height`、
-  `.app-rail`、`.rail-item`、`.rail-label`、`.tab-bar`、`.tab-bar-item`。本站
-  `globals.css` 不定义它们。
-- `currentRail()` / `setRail()`（`@jianyuelab-org/can-ui/frame`）—— 读写 `data-rail`。`CanFrame` 的折叠钮
-  和设置页的开关都用它们。
-
-本站只读这些值：`.floating-panel` 按 `--rail-current` 和 `--tabbar-height` 让位；
-`lib/panelController.ts` 观察 `data-rail`；`PersistHtmlState.astro` 在客户端导航时把
-`data-rail` 抄到新文档上。
+`PersistHtmlState.astro` 在客户端导航时把主题（`class="dark"`、`color-scheme`）抄到
+新文档上。
 
 ## 数据：全部经由 can-api，浏览器只打同源
 
@@ -211,8 +200,8 @@ OpenWeather 的 key 在 can-api（`OPENWEATHER_API_KEY`），这个站仍然一�
 
 **整站要登录，没有 PROTECTED_PREFIXES 那样一份清单** —— 清单的意义在于区分公开
 页和受保护页，而 EFB 只有一页公开的：`/404`（`src/server/publicRoute.ts` 的 `isPublicRoute`）。
-匿名访问时它照常渲染、不回 503，没有地图（`AppLayout` 只在有会话时渲染 `MapStage`），
-退出登录是 `afterSignOut="reload"`。另有两条完全不问会话，写在 `isUnguarded()` 里：
+匿名访问时它照常渲染、不回 503。它是 can-ui 的 `NotFound`，`AppLayout` 用 `bare`，不论
+有没有会话都没有面板和地图；状态码由页面设成 404。退出登录是 `afterSignOut="reload"`。另有两条完全不问会话，写在 `isUnguarded()` 里：
 `/api/*`（自己有白名单，而且调用方要状态码不要 302）和 `/healthz`（探活必须能
 在 can-api 挂掉时照样回 200，否则上游一抖 kubelet 就把这边的 Pod 一起滚掉）。
 
@@ -256,8 +245,7 @@ can-web 再同步过来 —— 四个站各改各的，正是当初统一掉的�
 `@jianyuelab-org/can-ui` 引入，`icons.ts` 那份键表也随 `Icon` 一起删了。
 
 同样删掉的：`AppRail.vue`、`SidebarNav.vue`、`RailScript.astro`、`lib/railState.ts`、
-本站的 ⌘K 和 i18n 实现。改用 can-ui 的 `CanFrame`、`RailScript`、`currentRail` /
-`setRail` 和 `createSiteI18n`。
+本站的 ⌘K 和 i18n 实现。改用 can-ui 的 `CanFrame` 和 `createSiteI18n`。
 
 `globals.css` 按「上游部分在前、本站部分在末尾单独一节」切开，就是为了同步时可以
 整段替换上半截。
@@ -795,16 +783,15 @@ NAIP 终端区航图的 PDF，机场详情的一个标签，不是单独的页�
 ## 导航是一份数据
 
 加一个页面 = 在 `src/lib/nav.ts` 里加一行 + 在四本词典里加两条文案 +
-`src/pages/` 下加一个文件。轨、手机标签栏和 ⌘K 一起长。
+`src/pages/` 下加一个文件。图标轨、手机抽屉和 ⌘K 一起长。
 
 `buildNav(t)` 返回 can-ui 的 `NavItem[]`：五个平铺的链接，按规格的顺序（概览、飞行计划、
 航路、机场、设置），没有分组。
-`phoneTab: true` 的页进手机标签栏（最多三页，现在是概览、飞行计划、航路），其余在
-「我的」面板顶部。
+`phoneTab: true` 标在概览、飞行计划、航路上。map 外壳没有手机标签栏，这个标记眼下不影响渲染。
 `nav.ts` 里写 i18n 的**键**，文案在 `buildNav` 里解析。
 
 ⌘K 里别的站的页面来自 can-ui 的 `SITE_PAGES`。本站在那里登记了 `/`、`/flightplan`、
-`/route`、`/airports`；`/settings` 在那里还没有登记。改这四个路由之一，先改 can-ui 的
+`/route`、`/airports`、`/settings`。改这五个路由之一，先改 can-ui 的
 `sitePages.ts`，否则 `check:pages` 红。
 
 页面标题来自 `src/lib/pageTitle.ts`：`<页面> · <siteLabel 的站名>`，根页（`AppLayout` 的 `root`）只显示站名。

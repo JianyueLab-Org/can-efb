@@ -7,19 +7,17 @@
  * 2. **SimBrief 绑定** —— 真的写 can-api（`/api/v1/pilot/simbrief`）。绑的时候
  *    那边会先向 SimBrief 验证再存，而且**存的是数字 ID 而不是你输入的别名**，
  *    所以绑定成功后回显的值可能和输入的不一样，这是对的。
- * 3. **本机偏好** —— 主题、语言、侧栏、「不使用受限汇编」，全部只存在这台设备上。它们不值得占用
+ * 3. **本机偏好** —— 主题、语言、「不使用受限汇编」，全部只存在这台设备上。它们不值得占用
  *    can-api 的一张表，而且换一台设备本来就该重新选。
  *
- * 跨站链接和退出登录在外壳里（can-ui 的 CanFrame）：桌面和平板在轨上，手机在底部
- * 标签栏的「我的」里。这一页不重复。
+ * 跨站链接和退出登录在外壳里（can-ui 的 CanFrame）的顶栏上。这一页不重复。
  */
-import { onBeforeUnmount, onMounted, ref, useId, watch } from "vue";
+import { onMounted, ref, useId, watch } from "vue";
 import { api, describeFailure } from "@/lib/canApi";
 import { AIP_RESTRICTED_CALL } from "@/lib/charts";
 import { createTranslator } from "@/lib/i18n";
 import { hideNaip, setHideNaip } from "@/lib/naip";
 import { Icon, ThemeLangControls } from "@jianyuelab-org/can-ui";
-import { currentRail, setRail } from "@jianyuelab-org/can-ui/frame";
 import PanelSection from "@/components/ui/PanelSection.vue";
 import StateCard from "@/components/ui/StateCard.vue";
 
@@ -105,22 +103,6 @@ async function unlink() {
 }
 
 /* ------------------------------------------------------------ 本机偏好 */
-const railCollapsed = ref(false);
-const railLabelId = useId();
-
-// 只写 data-rail（can-ui 的 setRail），再由观察者读回来：轨上那颗按钮也会改它，
-// 这边的开关要跟着变，而不是停在进页面时读到的值上。
-let railObserver: MutationObserver | null = null;
-
-// 没选过时（`data-rail="auto"`）答案随宽度变，所以跨过断点也要再读一次。
-function syncRail() {
-  railCollapsed.value = currentRail() === "collapsed";
-}
-
-function toggleRail(next: boolean) {
-  setRail(next ? "collapsed" : "expanded");
-}
-
 /*
  * 「不使用受限汇编」。3 级（受限可调用）以下不显示：对他们 can-db 那边恒为空转，摆
  * 出来只会让人以为自己错过了什么。
@@ -138,18 +120,7 @@ watch(hideNaip, (on) => {
 
 onMounted(() => {
   naipHidden.value = hideNaip.value;
-  syncRail();
-  railObserver = new MutationObserver(syncRail);
-  railObserver.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ["data-rail"],
-  });
-  window.addEventListener("resize", syncRail);
   void loadSimbrief();
-});
-onBeforeUnmount(() => {
-  railObserver?.disconnect();
-  window.removeEventListener("resize", syncRail);
 });
 </script>
 
@@ -194,34 +165,6 @@ onBeforeUnmount(() => {
       :description="t('settings.local.hint')"
     >
       <div class="space-y-4">
-        <!-- 手机上没有侧栏，这个开关在那里什么都不做，不摆出来。 -->
-        <div class="phone-hidden flex items-center justify-between gap-4">
-          <div class="min-w-0">
-            <p :id="railLabelId" class="text-sm font-medium text-ink">
-              {{ t("settings.local.rail") }}
-            </p>
-            <p class="text-xs text-muted">{{ t("settings.local.railHint") }}</p>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            :aria-checked="railCollapsed"
-            :aria-labelledby="railLabelId"
-            :class="[
-              'relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors',
-              railCollapsed ? 'bg-can' : 'bg-surface-sunken',
-            ]"
-            @click="toggleRail(!railCollapsed)"
-          >
-            <span
-              :class="[
-                'my-0.5 size-5 rounded-full bg-white shadow-card transition-transform',
-                railCollapsed ? 'translate-x-5' : 'translate-x-0.5',
-              ]"
-            ></span>
-          </button>
-        </div>
-
         <div v-if="canHideNaip" class="flex items-center justify-between gap-4">
           <div class="min-w-0">
             <p :id="naipLabelId" class="text-sm font-medium text-ink">

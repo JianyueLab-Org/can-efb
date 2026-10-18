@@ -1,15 +1,14 @@
 ---
 /**
- * 页面外框 —— `<head>`、两个首屏脚本、`<body>`，仅此而已。
+ * 页面外框 —— `<head>`、首屏主题脚本、`<body>`，仅此而已。
  *
- * 两个首屏脚本都来自 can-ui：`ThemeScript`（主题）和 `RailScript`（轨的折叠状态，
- * 写 `<html data-rail>`，存储键 `efb.rail`）。
+ * 首屏脚本是 can-ui 的 `ThemeScript`（主题）。地图外壳的图标轨不折叠，没有
+ * `RailScript`。
  *
  * 外壳不在这一层。要外壳的页面用 AppLayout；这一层留给**不要**外壳的页面。
  */
 import "@/styles/globals.css";
 import ThemeScript from "@jianyuelab-org/can-ui/components/ThemeScript.astro";
-import RailScript from "@jianyuelab-org/can-ui/components/RailScript.astro";
 import PersistHtmlState from "@/components/PersistHtmlState.astro";
 import { ClientRouter } from "astro:transitions";
 import { getLocale, useTranslations } from "@/lib/i18n";
@@ -56,14 +55,13 @@ const fullTitle = pageTitle(root ? undefined : title, locale);
     {/* EFB 是登录后才有意义的工具，没有值得被搜索引擎收录的公开页面。 */}
     <meta name="robots" content="noindex" />
     <ThemeScript />
-    <RailScript />
     {
       /*
-      ClientRouter 为地图的 `transition:persist` 而来。导航由客户端接管，两个首屏
-      脚本因此要经得起重复执行；ThemeScript 和 RailScript 都是幂等的。
+      ClientRouter 为地图的 `transition:persist` 而来。导航由客户端接管，首屏
+      脚本因此要经得起重复执行；ThemeScript 是幂等的。
 
       PersistHtmlState 必须和 ClientRouter 成对存在：换页时 <html> 上的属性会被
-      换掉，而主题和 data-rail 正好写在那里。
+      换掉，而主题正好写在那里。
     */
     }
     <PersistHtmlState />

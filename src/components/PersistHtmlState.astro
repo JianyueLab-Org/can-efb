@@ -6,15 +6,11 @@
  * 页面存活（`transition:persist`）才引入的，代价是导航不再是整页重载：Astro 会
  * 用服务端返回的新文档去换掉当前文档，**包括 `<html>` 上的属性**。
  *
- * 而这个站有三样东西正好写在 `<html>` 上，且全部由首屏的 `is:inline` 脚本在绘
- * 制前写好：
+ * 而这个站的主题正好写在 `<html>` 上，由首屏的 `is:inline` 脚本（can-ui 的
+ * `ThemeScript`）在绘制前写好：`class="dark"` 和 `style="color-scheme:…"`。
  *
- * - `class="dark"` 和 `style="color-scheme:…"` —— `ThemeScript`（来自 can-ui）
- * - `data-rail` —— can-ui 的 `RailScript`
- *
- * 服务端不知道这三样的值（主题存在 cookie/localStorage、折叠状态存在
- * localStorage），所以新文档上它们是空的。换过去之后，主题被抹回浅色、轨弹回展
- * 开态 —— 每换一页闪一次。Astro 的文档专门点了这个坑。
+ * 服务端不知道它的值（存在 cookie/localStorage），所以新文档上它是空的。换过去
+ * 之后，主题被抹回浅色 —— 每换一页闪一次。Astro 的文档专门点了这个坑。
  *
  * **做法是「把当前状态抄到新文档上」，不是「重新推导一遍」。** 后者要把
  * ThemeScript 那段 cookie / localStorage / prefers-color-scheme 的判断复制过
@@ -26,7 +22,7 @@
  * 可以在它被放到屏幕上**之前**改好，于是一帧都不闪。after-swap 也能改，但那时
  * 文档已经在页面上了，等于把闪烁从「一定发生」降级成「可能发生」。
  *
- * `is:inline` 是必须的，和另外两个脚本同一个理由 —— 它不能被打包、被 defer。
+ * `is:inline` 是必须的，和 ThemeScript 同一个理由 —— 它不能被打包、被 defer。
  */
 ---
 
@@ -39,10 +35,5 @@
     // （表单控件、滚动条、导航之间的画布底色）和页面对不上。
     incoming.classList.toggle("dark", current.classList.contains("dark"));
     incoming.style.colorScheme = current.style.colorScheme;
-
-    // 轨的折叠状态。抹掉它的表现是正文横向平移 12rem，比主题闪烁更晃眼。
-    if (current.dataset.rail) {
-      incoming.dataset.rail = current.dataset.rail;
-    }
   });
 </script>
