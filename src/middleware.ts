@@ -6,13 +6,13 @@ import { isPublicRoute } from "@/server/publicRoute";
 /**
  * 每个请求先问一次 can-api「你是谁」，答案放进 `Astro.locals.user`。
  *
- * **这个站整站都要登录，只有 404 页例外**（见 `isPublicRoute`），所以没有
+ * **这个站整站都要登录，404 页和 `isUnguarded` 列出的路径例外**，所以没有
  * PROTECTED_PREFIXES 这样一份清单：航图、计划、日志全是「这名飞行员自己的」。
  * 将来真要开一个公开页，得在 `isPublicRoute` 里显式开口子，而不是默认就开着。
  * 匿名的 404 不渲染地图。
  *
- * 例外只有 `/api/*`：那是本站的反代，它自己有白名单，而且它的调用方要的是状态
- * 码不是 302 —— 把一个 fetch 重定向到登录页，岛屿拿到的会是一段 HTML。
+ * 不问会话、也不重定向的有三处：404 页（`isPublicRoute`），以及 `/api/*` 和
+ * `/healthz`（`isUnguarded`，各自的理由见下方）。
  *
  * 重定向去的是 **can-web 的登录页**：EFB 自己没有登录页，也不该有。会话由
  * can-api 在父域上签发，主站上登录过的成员到这里本来就带着 cookie。

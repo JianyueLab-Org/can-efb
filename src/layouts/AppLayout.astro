@@ -94,8 +94,8 @@ const user = toFrameUser(Astro.locals.user);
     Astro.locals.user && (
       <MapStage
         label={t("route.map.label")}
-        cid={Astro.locals.user?.username ?? null}
-        aipAccess={Astro.locals.user?.aipAccess ?? 0}
+        cid={Astro.locals.user.username}
+        aipAccess={Astro.locals.user.aipAccess}
         chartMessages={{
           common: { loading: t("common.loading"), retry: t("common.retry") },
           airports: {

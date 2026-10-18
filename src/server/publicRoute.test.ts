@@ -17,5 +17,6 @@ describe("isPublicRoute", () => {
     ]) {
       expect(isPublicRoute(path, pattern)).toBe(false);
     }
+    expect(isPublicRoute("/route", undefined)).toBe(false);
   });
 });
