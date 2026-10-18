@@ -15,7 +15,7 @@ import { getLocale, useTranslations } from "@/lib/i18n";
 const t = useTranslations(getLocale(Astro.cookies), "efb");
 ---
 
-<AppLayout title={t("notFound.title")}>
+<AppLayout title={t("notFound.title")} afterSignOut="reload">
   {
     /* 不加 client: —— 这一页没有要在浏览器里做的事，StateCard 只渲染一次 HTML。 */
   }

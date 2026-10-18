@@ -210,7 +210,9 @@ OpenWeather 的 key 在 can-api（`OPENWEATHER_API_KEY`），这个站仍然一�
 `Astro.locals.user`。
 
 **整站要登录，没有 PROTECTED_PREFIXES 那样一份清单** —— 清单的意义在于区分公开
-页和受保护页，而 EFB 一页公开的都没有。例外只有两条，写在 `isUnguarded()` 里：
+页和受保护页，而 EFB 只有一页公开的：`/404`（`src/server/publicRoute.ts` 的 `isPublicRoute`）。
+匿名访问时它照常渲染、不回 503，没有地图（`AppLayout` 只在有会话时渲染 `MapStage`），
+退出登录是 `afterSignOut="reload"`。另有两条完全不问会话，写在 `isUnguarded()` 里：
 `/api/*`（自己有白名单，而且调用方要状态码不要 302）和 `/healthz`（探活必须能
 在 can-api 挂掉时照样回 200，否则上游一抖 kubelet 就把这边的 Pod 一起滚掉）。
 
@@ -895,10 +897,9 @@ FlightPlan、Airports、AirportDetail、AirportCharts、ProcedurePicker、RouteG
 
 1. ~~**上线**~~ —— **已经上线了。** `efb.ceruleanavi.net` 解析、`/healthz` 回
    200、根路径按预期 302 去主站登录页。这一条以前写着"至今不解析"，是旧的。
-2. **品牌资源**。`public/favicon.svg` 现在是一块写着 EFB 的品牌色方牌，占位而
-   已。正式标识到位后连同 `apple-touch-icon.png` /
-   `icon-512.png` 一起补进 `BaseLayout.astro`。正式 logo 不能用
-   `logo-full.png` —— 那张图上写的是旧名字。
+2. ~~**品牌资源**~~ —— **做完了。** `public/` 里是网络统一的三张 PNG 图标
+   （`favicon-32.png`、`apple-touch-icon.png`、`icon-512.png`），和 can-web、
+   can-radar 是同一批文件，`BaseLayout.astro` 已引用。
 3. ~~**登录后跳回 EFB**~~ —— **做完了。** can-web 那边加了显式白名单，这个域在
    名单上；`signInUrl(returnTo)` 会带上 callbackUrl。线上未登录访问根路径已经能
    看到它。见上面那一段。

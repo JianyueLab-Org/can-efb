@@ -1,14 +1,15 @@
 import { defineMiddleware } from "astro:middleware";
 import { resolveSession } from "@/server/canApi";
 import { signInUrl } from "@/lib/config";
+import { isPublicRoute } from "@/server/publicRoute";
 
 /**
  * 每个请求先问一次 can-api「你是谁」，答案放进 `Astro.locals.user`。
  *
- * **这个站整站都要登录**，所以没有 PROTECTED_PREFIXES 这样一份清单 —— 清单的
- * 意义在于区分公开页和受保护页，而 EFB 一页公开的都没有：航图、计划、日志全
- * 是「这名飞行员自己的」。反过来说，将来真要开一个公开页（比如分享一份放行
- * 单），得在这里显式开口子，而不是默认就开着。
+ * **这个站整站都要登录，只有 404 页例外**（见 `isPublicRoute`），所以没有
+ * PROTECTED_PREFIXES 这样一份清单：航图、计划、日志全是「这名飞行员自己的」。
+ * 将来真要开一个公开页，得在 `isPublicRoute` 里显式开口子，而不是默认就开着。
+ * 匿名的 404 不渲染地图。
  *
  * 例外只有 `/api/*`：那是本站的反代，它自己有白名单，而且它的调用方要的是状态
  * 码不是 302 —— 把一个 fetch 重定向到登录页，岛屿拿到的会是一段 HTML。
@@ -33,6 +34,13 @@ function isUnguarded(pathname: string): boolean {
 export const onRequest = defineMiddleware(async (context, next) => {
   if (isUnguarded(context.url.pathname)) {
     context.locals.user = null;
+    return withSecurityHeaders(await next());
+  }
+
+  if (isPublicRoute(context.url.pathname, context.routePattern)) {
+    // 公开页拿不到会话也照常渲染，当匿名处理，不回 503。
+    const session = await resolveSession(context);
+    context.locals.user = session.status === "signedIn" ? session.user : null;
     return withSecurityHeaders(await next());
   }
 

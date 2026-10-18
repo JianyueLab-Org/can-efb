@@ -35,11 +35,9 @@ const fullTitle = pageTitle(root ? undefined : title, locale);
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    {
-      /* public/ 里现在只有 favicon.svg。品牌资源到位之后再补 favicon-32.png /
-        apple-touch-icon.png / icon-512.png，现在指过去只会是三个 404。 */
-    }
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
     <meta
