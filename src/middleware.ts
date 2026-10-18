@@ -11,8 +11,9 @@ import { isPublicRoute } from "@/server/publicRoute";
  * 将来真要开一个公开页，得在 `isPublicRoute` 里显式开口子，而不是默认就开着。
  * 匿名的 404 不渲染地图。
  *
- * 不问会话、也不重定向的有三处：404 页（`isPublicRoute`），以及 `/api/*` 和
- * `/healthz`（`isUnguarded`，各自的理由见下方）。
+ * 不重定向的有三处。404 页（`isPublicRoute`）照样问会话，只是从不重定向，
+ * can-api 不可用时也按匿名渲染。`/api/*` 和 `/healthz`（`isUnguarded`）连会话
+ * 都不问，各自的理由见下方。
  *
  * 重定向去的是 **can-web 的登录页**：EFB 自己没有登录页，也不该有。会话由
  * can-api 在父域上签发，主站上登录过的成员到这里本来就带着 cookie。
