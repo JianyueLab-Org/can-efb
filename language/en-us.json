@@ -1,6 +1,5 @@
 {
   "efb": {
-    "siteName": "CAN Electronic Flight Bag",
     "tagline": "The pilot's electronic flight bag for Cerulean Aviation Network",
     "frame": {
       "skipToContent": "Skip to content",
@@ -55,10 +54,6 @@
         "half": "Panel at half height",
         "full": "Panel at full height"
       }
-    },
-    "sections": {
-      "flight": "Flight",
-      "briefing": "Briefing"
     },
     "nav": {
       "dashboard": "Overview",

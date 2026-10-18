@@ -1,6 +1,5 @@
 {
   "efb": {
-    "siteName": "CAN 电子飞行包",
     "tagline": "Cerulean Aviation Network 的飞行员电子飞行包",
     "frame": {
       "skipToContent": "跳到主要内容",
@@ -55,10 +54,6 @@
         "half": "面板在半屏",
         "full": "面板已拉满"
       }
-    },
-    "sections": {
-      "flight": "飞行",
-      "briefing": "资料"
     },
     "nav": {
       "dashboard": "概览",

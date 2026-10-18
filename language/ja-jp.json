@@ -1,6 +1,5 @@
 {
   "efb": {
-    "siteName": "CAN 電子フライトバッグ",
     "tagline": "Cerulean Aviation Network のパイロット向け電子フライトバッグ",
     "frame": {
       "skipToContent": "本文へスキップ",
@@ -55,10 +54,6 @@
         "half": "パネルは半分の高さです",
         "full": "パネルは全画面です"
       }
-    },
-    "sections": {
-      "flight": "フライト",
-      "briefing": "ブリーフィング"
     },
     "nav": {
       "dashboard": "概要",

@@ -20,7 +20,7 @@ import MapStage from "@/components/map/MapStage.vue";
 import FloatingPanel from "@/components/FloatingPanel.astro";
 import { originsFromEnv } from "@jianyuelab-org/can-ui/sites";
 import { getLocale, getMessages, useTranslations } from "@/lib/i18n";
-import { buildNav, buildProfileItems } from "@/lib/nav";
+import { buildNav } from "@/lib/nav";
 import { toFrameUser } from "@/lib/session";
 import { signInUrl } from "@/lib/config";
 import type { PanelWidth } from "@/lib/panelLayout";
@@ -30,9 +30,19 @@ interface Props {
   description?: string;
   /** 面板宽度。表单页（飞行计划、设置）用 `wide`，其余 `standard`。 */
   panel?: PanelWidth;
+  /** 退出登录之后去哪：默认 can-web 的 `/`；公开页用 `reload`。 */
+  afterSignOut?: "web" | "reload";
+  /** 站点根页：`<title>` 只显示站名。 */
+  root?: boolean;
 }
 
-const { title, description, panel = "standard" } = Astro.props;
+const {
+  title,
+  description,
+  panel = "standard",
+  afterSignOut = "web",
+  root = false,
+} = Astro.props;
 
 const locale = getLocale(Astro.cookies);
 const t = useTranslations(locale, "efb");
@@ -41,14 +51,14 @@ const t = useTranslations(locale, "efb");
 const user = toFrameUser(Astro.locals.user);
 ---
 
-<BaseLayout title={title} description={description}>
+<BaseLayout title={title} description={description} root={root}>
   <Frame
     locale={locale}
     pathname={Astro.url.pathname}
     nav={buildNav(t)}
     user={user}
-    profileItems={buildProfileItems(t)}
     signInHref={signInUrl(Astro.url)}
+    afterSignOut={afterSignOut}
     messages={getMessages(locale, "efb.frame")}
     origins={originsFromEnv(import.meta.env)}
     client:load
