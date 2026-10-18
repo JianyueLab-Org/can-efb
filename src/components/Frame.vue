@@ -3,18 +3,17 @@
  * 本站的外壳：can-ui 的 `CanFrame`，`layout="rail"`。只传数据。
  *
  * 轨、手机标签栏和「我的」面板、⌘K、跨站菜单、主题语言、账户和退出登录都在
- * can-ui 里。折叠状态在 `<html data-rail>` 上，由 can-ui 的 `RailScript` 在首屏
+ * can-ui 里（账户菜单是 can-ui 固定的一份，本站不再塞条目）。折叠状态在 `<html data-rail>` 上，由 can-ui 的 `RailScript` 在首屏
  * 之前写好（`BaseLayout.astro`）。
  *
  * 默认插槽是浮动面板，落在 `<main id="main-content">` 里。地图不进插槽：它靠
  * `transition:persist` 跨页面存活，AppLayout 把它放在 Frame 后面。
  *
  * 退出登录 POST 本站 `/api/v1/auth/signout`，反代原样带回 can-api 的
- * `Set-Cookie`；之后去 can-web 的 `/`（`after-sign-out="web"`）。
+ * `Set-Cookie`；之后按 `afterSignOut` 走：默认去 can-web 的 `/`。
  */
 import {
   CanFrame,
-  type NavChild,
   type NavItem,
   type SiteOrigins,
 } from "@jianyuelab-org/can-ui";
@@ -25,8 +24,9 @@ defineProps<{
   pathname: string;
   nav: NavItem[];
   user: FrameUser | null;
-  profileItems: NavChild[];
   signInHref: string;
+  /** 退出登录之后：`web` 去 can-web 的 `/`，`reload` 留在当前页（公开页）。 */
+  afterSignOut: "web" | "reload";
   /** `getMessages(locale, "efb.frame")`。 */
   messages: Record<string, unknown>;
   /** `originsFromEnv(import.meta.env)`。 */
@@ -43,9 +43,8 @@ defineProps<{
     :nav="nav"
     :user="user"
     notifications
-    :profile-items="profileItems"
     :sign-in-href="signInHref"
-    after-sign-out="web"
+    :after-sign-out="afterSignOut"
     :messages="messages"
     :origins="origins"
   >

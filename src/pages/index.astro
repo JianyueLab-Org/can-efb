@@ -14,7 +14,7 @@ const description = t("pages.dashboard.description");
 const user = toFrameUser(Astro.locals.user);
 ---
 
-<AppLayout title={title} description={description}>
+<AppLayout title={title} description={description} root>
   <Dashboard
     messages={getMessages(locale, "efb")}
     userName={user?.name ?? ""}

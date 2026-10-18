@@ -20,7 +20,7 @@ import MapStage from "@/components/map/MapStage.vue";
 import FloatingPanel from "@/components/FloatingPanel.astro";
 import { originsFromEnv } from "@jianyuelab-org/can-ui/sites";
 import { getLocale, getMessages, useTranslations } from "@/lib/i18n";
-import { buildNav, buildProfileItems } from "@/lib/nav";
+import { buildNav } from "@/lib/nav";
 import { toFrameUser } from "@/lib/session";
 import { signInUrl } from "@/lib/config";
 import type { PanelWidth } from "@/lib/panelLayout";
@@ -30,9 +30,19 @@ interface Props {
   description?: string;
   /** 面板宽度。表单页（飞行计划、设置）用 `wide`，其余 `standard`。 */
   panel?: PanelWidth;
+  /** 退出登录之后去哪：默认 can-web 的 `/`；公开页用 `reload`。 */
+  afterSignOut?: "web" | "reload";
+  /** 站点根页：`<title>` 只显示站名。 */
+  root?: boolean;
 }
 
-const { title, description, panel = "standard" } = Astro.props;
+const {
+  title,
+  description,
+  panel = "standard",
+  afterSignOut = "web",
+  root = false,
+} = Astro.props;
 
 const locale = getLocale(Astro.cookies);
 const t = useTranslations(locale, "efb");
@@ -41,14 +51,14 @@ const t = useTranslations(locale, "efb");
 const user = toFrameUser(Astro.locals.user);
 ---
 
-<BaseLayout title={title} description={description}>
+<BaseLayout title={title} description={description} root={root}>
   <Frame
     locale={locale}
     pathname={Astro.url.pathname}
     nav={buildNav(t)}
     user={user}
-    profileItems={buildProfileItems(t)}
     signInHref={signInUrl(Astro.url)}
+    afterSignOut={afterSignOut}
     messages={getMessages(locale, "efb.frame")}
     origins={originsFromEnv(import.meta.env)}
     client:load
@@ -79,115 +89,120 @@ const user = toFrameUser(Astro.locals.user);
       插槽里的东西每页随新文档换掉。
     */
   }
-  <MapStage
-    label={t("route.map.label")}
-    cid={Astro.locals.user?.username ?? null}
-    aipAccess={Astro.locals.user?.aipAccess ?? 0}
-    chartMessages={{
-      common: { loading: t("common.loading"), retry: t("common.retry") },
-      airports: {
-        denied: getMessages(locale, "efb.airports.denied"),
-        charts: getMessages(locale, "efb.airports.charts"),
-      },
-    }}
-    t={{
-      denied: t("map.denied"),
-      emptyNavaids: t("map.emptyLayer.navaids"),
-      emptyGeneric: t("map.emptyLayer.generic"),
-      planOnMap: t("map.planOnMap"),
-      layersMenu: t("map.layersMenu"),
-      layerFailed: t("map.layerFailed"),
-      retry: t("common.retry"),
-      locate: t("map.locate"),
-      view3d: t("map.view3d"),
-      view3dHint: t("map.view3dHint"),
-      chartHigh: t("map.chart.high"),
-      chartLow: t("map.chart.low"),
-      weatherLight: t("map.weather.light"),
-      weatherHeavy: t("map.weather.heavy"),
-      mode: {
-        label: t("map.mode.label"),
-        weather: t("map.mode.weather"),
-        pinboard: t("map.mode.pinboard"),
-      },
-      toolbar: {
-        label: t("map.toolbar.label"),
-        high: t("map.toolbar.high"),
-        low: t("map.toolbar.low"),
-        chartSwitch: t("map.toolbar.chartSwitch"),
-      },
-      pinboard: {
-        label: t("map.pinboard.label"),
-        list: t("map.pinboard.list"),
-        noPlan: t("map.pinboard.noPlan"),
-        noPlanAction: t("airports.charts.pins.noPlanAction"),
-        planFailed: t("map.pinboard.planFailed"),
-        noPins: t("map.pinboard.noPins"),
-        unpin: t("map.pinboard.unpin"),
-        auto: t("airports.charts.pins.auto"),
-        retry: t("common.retry"),
-        loading: t("common.loading"),
-        chip: {
-          loading: t("map.pinboard.chip.loading"),
-          failed: t("map.pinboard.chip.failed"),
-          unconfigured: t("map.pinboard.chip.unconfigured"),
-          denied: t("map.pinboard.chip.denied"),
-          needsAccess: t("map.pinboard.chip.needsAccess"),
-          hidden: t("map.pinboard.chip.hidden"),
-          empty: t("map.pinboard.chip.empty"),
-        },
-      },
-      atc: {
-        close: t("map.atc.close"),
-        airspace: t("map.atc.airspace"),
-        covering: t("map.atc.covering"),
-        extending: t("map.atc.extending"),
-        frequency: t("map.atc.frequency"),
-        member: t("map.atc.member"),
-        rating: t("map.atc.rating"),
-        online: t("map.atc.online"),
-        atisText: t("map.atc.atisText"),
-        controllerInfo: t("map.atc.controllerInfo"),
-      },
-      pilot: {
-        close: t("map.pilot.close"),
-        locate: t("map.pilot.locate"),
-        onGround: t("map.pilot.onGround"),
-        airborne: t("map.pilot.airborne"),
-        noFlightPlan: t("map.pilot.noFlightPlan"),
-        remaining: t("map.pilot.remaining"),
-        eta: t("map.pilot.eta"),
-        altitude: t("map.pilot.altitude"),
-        level: t("map.pilot.level"),
-        groundspeed: t("map.pilot.groundspeed"),
-        heading: t("map.pilot.heading"),
-        squawk: t("map.pilot.squawk"),
-        rules: t("map.pilot.rules"),
-        flightPlan: t("map.pilot.flightPlan"),
-        aircraft: t("map.pilot.aircraft"),
-        cruise: t("map.pilot.cruise"),
-        tas: t("map.pilot.tas"),
-        alternate: t("map.pilot.alternate"),
-        member: t("map.pilot.member"),
-        online: t("map.pilot.online"),
-      },
-    }}
-    failureText={{
-      init: t("map.failure.init"),
-      webgl: t("map.failure.webgl"),
-    }}
-    layerLabels={{
-      airways: t("map.layers.airways"),
-      firs: t("map.layers.firs"),
-      navaids: t("map.layers.navaids"),
-      mora: t("map.layers.mora"),
-      traffic: t("map.layers.traffic"),
-      atcLive: t("map.layers.atcLive"),
-      ctr: t("map.layers.ctr"),
-      app: t("map.layers.app"),
-      restricted: t("map.layers.restricted"),
-    }}
-    client:load
-    transition:persist
-  />
+  {
+    /* 除 404 外每页都要会话；匿名的 404 没有地图。 */
+    Astro.locals.user && (
+      <MapStage
+        label={t("route.map.label")}
+        cid={Astro.locals.user.username}
+        aipAccess={Astro.locals.user.aipAccess}
+        chartMessages={{
+          common: { loading: t("common.loading"), retry: t("common.retry") },
+          airports: {
+            denied: getMessages(locale, "efb.airports.denied"),
+            charts: getMessages(locale, "efb.airports.charts"),
+          },
+        }}
+        t={{
+          denied: t("map.denied"),
+          emptyNavaids: t("map.emptyLayer.navaids"),
+          emptyGeneric: t("map.emptyLayer.generic"),
+          planOnMap: t("map.planOnMap"),
+          layersMenu: t("map.layersMenu"),
+          layerFailed: t("map.layerFailed"),
+          retry: t("common.retry"),
+          locate: t("map.locate"),
+          view3d: t("map.view3d"),
+          view3dHint: t("map.view3dHint"),
+          chartHigh: t("map.chart.high"),
+          chartLow: t("map.chart.low"),
+          weatherLight: t("map.weather.light"),
+          weatherHeavy: t("map.weather.heavy"),
+          mode: {
+            label: t("map.mode.label"),
+            weather: t("map.mode.weather"),
+            pinboard: t("map.mode.pinboard"),
+          },
+          toolbar: {
+            label: t("map.toolbar.label"),
+            high: t("map.toolbar.high"),
+            low: t("map.toolbar.low"),
+            chartSwitch: t("map.toolbar.chartSwitch"),
+          },
+          pinboard: {
+            label: t("map.pinboard.label"),
+            list: t("map.pinboard.list"),
+            noPlan: t("map.pinboard.noPlan"),
+            noPlanAction: t("airports.charts.pins.noPlanAction"),
+            planFailed: t("map.pinboard.planFailed"),
+            noPins: t("map.pinboard.noPins"),
+            unpin: t("map.pinboard.unpin"),
+            auto: t("airports.charts.pins.auto"),
+            retry: t("common.retry"),
+            loading: t("common.loading"),
+            chip: {
+              loading: t("map.pinboard.chip.loading"),
+              failed: t("map.pinboard.chip.failed"),
+              unconfigured: t("map.pinboard.chip.unconfigured"),
+              denied: t("map.pinboard.chip.denied"),
+              needsAccess: t("map.pinboard.chip.needsAccess"),
+              hidden: t("map.pinboard.chip.hidden"),
+              empty: t("map.pinboard.chip.empty"),
+            },
+          },
+          atc: {
+            close: t("map.atc.close"),
+            airspace: t("map.atc.airspace"),
+            covering: t("map.atc.covering"),
+            extending: t("map.atc.extending"),
+            frequency: t("map.atc.frequency"),
+            member: t("map.atc.member"),
+            rating: t("map.atc.rating"),
+            online: t("map.atc.online"),
+            atisText: t("map.atc.atisText"),
+            controllerInfo: t("map.atc.controllerInfo"),
+          },
+          pilot: {
+            close: t("map.pilot.close"),
+            locate: t("map.pilot.locate"),
+            onGround: t("map.pilot.onGround"),
+            airborne: t("map.pilot.airborne"),
+            noFlightPlan: t("map.pilot.noFlightPlan"),
+            remaining: t("map.pilot.remaining"),
+            eta: t("map.pilot.eta"),
+            altitude: t("map.pilot.altitude"),
+            level: t("map.pilot.level"),
+            groundspeed: t("map.pilot.groundspeed"),
+            heading: t("map.pilot.heading"),
+            squawk: t("map.pilot.squawk"),
+            rules: t("map.pilot.rules"),
+            flightPlan: t("map.pilot.flightPlan"),
+            aircraft: t("map.pilot.aircraft"),
+            cruise: t("map.pilot.cruise"),
+            tas: t("map.pilot.tas"),
+            alternate: t("map.pilot.alternate"),
+            member: t("map.pilot.member"),
+            online: t("map.pilot.online"),
+          },
+        }}
+        failureText={{
+          init: t("map.failure.init"),
+          webgl: t("map.failure.webgl"),
+        }}
+        layerLabels={{
+          airways: t("map.layers.airways"),
+          firs: t("map.layers.firs"),
+          navaids: t("map.layers.navaids"),
+          mora: t("map.layers.mora"),
+          traffic: t("map.layers.traffic"),
+          atcLive: t("map.layers.atcLive"),
+          ctr: t("map.layers.ctr"),
+          app: t("map.layers.app"),
+          restricted: t("map.layers.restricted"),
+        }}
+        client:load
+        transition:persist
+      />
+    )
+  }
 </BaseLayout>

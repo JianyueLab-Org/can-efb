@@ -121,11 +121,12 @@ cookie 转发回去。哪天有人要在这里加 Secret，先确认那件事不
   然后跨站菜单、主题语言、账户。
 - **⌘K** 是 can-ui 的 `CommandPalette`：本站页面在前，别的站的页面按站分组在后。
 - **退出登录**是 can-ui 的 `AccountMenu`：POST 本站 `/api/v1/auth/signout`，反代原样
-  带回 can-api 的 `Set-Cookie`，然后去 can-web 的 `/`（`afterSignOut="web"`）。
+  带回 can-api 的 `Set-Cookie`，然后按 `afterSignOut` 走：默认 `"web"` 去 can-web 的 `/`，公开页用 `"reload"`（`AppLayout` 的同名 prop）。
 - **通知铃**是 can-ui 的 `NotificationBell`（`Frame.vue` 的 `notifications`）：轨上一行，
   手机上在「我的」面板第一行。同源 `/api/v1/notifications…`，反代的 `ALLOW_LIST` /
   `ALLOW_PATTERNS` 里各有条目，都不带 `cacheSeconds` —— `ResponseCache` 不碰它们。
-- 账户菜单里退出登录上面是「设置」（`buildProfileItems`）。
+- 账户菜单是 can-ui 固定的一份：飞行员面板、账户、退出登录，本站不加条目。
+- 网络规格要求每个站同一条顶栏；合并后的 `map` 布局（可选轨）还在 can-ui 里待做，在那之前本站留在 `rail`。
 - 设置页保留主题语言那一行和「默认收起侧栏」开关，不放跨站链接和退出按钮。
 
 `FloatingPanel.astro` 在 `CanFrame` 的默认插槽里，即 `<main id="main-content">` 之内；
@@ -209,7 +210,9 @@ OpenWeather 的 key 在 can-api（`OPENWEATHER_API_KEY`），这个站仍然一�
 `Astro.locals.user`。
 
 **整站要登录，没有 PROTECTED_PREFIXES 那样一份清单** —— 清单的意义在于区分公开
-页和受保护页，而 EFB 一页公开的都没有。例外只有两条，写在 `isUnguarded()` 里：
+页和受保护页，而 EFB 只有一页公开的：`/404`（`src/server/publicRoute.ts` 的 `isPublicRoute`）。
+匿名访问时它照常渲染、不回 503，没有地图（`AppLayout` 只在有会话时渲染 `MapStage`），
+退出登录是 `afterSignOut="reload"`。另有两条完全不问会话，写在 `isUnguarded()` 里：
 `/api/*`（自己有白名单，而且调用方要状态码不要 302）和 `/healthz`（探活必须能
 在 can-api 挂掉时照样回 200，否则上游一抖 kubelet 就把这边的 Pod 一起滚掉）。
 
@@ -794,14 +797,17 @@ NAIP 终端区航图的 PDF，机场详情的一个标签，不是单独的页�
 加一个页面 = 在 `src/lib/nav.ts` 里加一行 + 在四本词典里加两条文案 +
 `src/pages/` 下加一个文件。轨、手机标签栏和 ⌘K 一起长。
 
-`buildNav(t)` 返回 can-ui 的 `NavItem[]`：有标题的一节是带 `children` 的组。
-`phoneTab: true` 的页进手机标签栏（组里组外都可以标，最多三页，现在是概览、飞行计划、
-航路），其余在「我的」面板顶部。
+`buildNav(t)` 返回 can-ui 的 `NavItem[]`：五个平铺的链接，按规格的顺序（概览、飞行计划、
+航路、机场、设置），没有分组。
+`phoneTab: true` 的页进手机标签栏（最多三页，现在是概览、飞行计划、航路），其余在
+「我的」面板顶部。
 `nav.ts` 里写 i18n 的**键**，文案在 `buildNav` 里解析。
 
 ⌘K 里别的站的页面来自 can-ui 的 `SITE_PAGES`。本站在那里登记了 `/`、`/flightplan`、
-`/route`、`/airports`。改这四个路由之一，先改 can-ui 的 `sitePages.ts`，否则
-`check:pages` 红。
+`/route`、`/airports`；`/settings` 在那里还没有登记。改这四个路由之一，先改 can-ui 的
+`sitePages.ts`，否则 `check:pages` 红。
+
+页面标题来自 `src/lib/pageTitle.ts`：`<页面> · <siteLabel 的站名>`，根页（`AppLayout` 的 `root`）只显示站名。
 
 ## i18n
 
@@ -891,10 +897,9 @@ FlightPlan、Airports、AirportDetail、AirportCharts、ProcedurePicker、RouteG
 
 1. ~~**上线**~~ —— **已经上线了。** `efb.ceruleanavi.net` 解析、`/healthz` 回
    200、根路径按预期 302 去主站登录页。这一条以前写着"至今不解析"，是旧的。
-2. **品牌资源**。`public/favicon.svg` 现在是一块写着 EFB 的品牌色方牌，占位而
-   已。正式标识到位后连同 `apple-touch-icon.png` /
-   `icon-512.png` 一起补进 `BaseLayout.astro`。正式 logo 不能用
-   `logo-full.png` —— 那张图上写的是旧名字。
+2. ~~**品牌资源**~~ —— **做完了。** `public/` 里是网络统一的三张 PNG 图标
+   （`favicon-32.png`、`apple-touch-icon.png`、`icon-512.png`），和 can-web、
+   can-radar 是同一批文件，`BaseLayout.astro` 已引用。
 3. ~~**登录后跳回 EFB**~~ —— **做完了。** can-web 那边加了显式白名单，这个域在
    名单上；`signInUrl(returnTo)` 会带上 callbackUrl。线上未登录访问根路径已经能
    看到它。见上面那一段。

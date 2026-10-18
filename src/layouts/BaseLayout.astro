@@ -13,18 +13,21 @@ import RailScript from "@jianyuelab-org/can-ui/components/RailScript.astro";
 import PersistHtmlState from "@/components/PersistHtmlState.astro";
 import { ClientRouter } from "astro:transitions";
 import { getLocale, useTranslations } from "@/lib/i18n";
+import { pageTitle } from "@/lib/pageTitle";
 
 interface Props {
   /** 页面标题，会拼上站名。 */
   title?: string;
   description?: string;
+  /** 站点根页：只显示站名。 */
+  root?: boolean;
 }
 
 const locale = getLocale(Astro.cookies);
 const t = useTranslations(locale, "efb");
 
-const { title, description = t("tagline") } = Astro.props;
-const fullTitle = title ? `${title} · ${t("siteName")}` : t("siteName");
+const { title, description = t("tagline"), root = false } = Astro.props;
+const fullTitle = pageTitle(root ? undefined : title, locale);
 ---
 
 <!doctype html>
@@ -32,14 +35,21 @@ const fullTitle = title ? `${title} · ${t("siteName")}` : t("siteName");
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    {
-      /* public/ 里现在只有 favicon.svg。品牌资源到位之后再补 favicon-32.png /
-        apple-touch-icon.png / icon-512.png，现在指过去只会是三个 404。 */
-    }
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
-    <meta name="theme-color" content="#4c92c1" />
+    <meta
+      name="theme-color"
+      content="#ffffff"
+      media="(prefers-color-scheme: light)"
+    />
+    <meta
+      name="theme-color"
+      content="#0b0f14"
+      media="(prefers-color-scheme: dark)"
+    />
     <meta property="og:title" content={fullTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:type" content="website" />
