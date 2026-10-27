@@ -301,12 +301,10 @@ onBeforeUnmount(() => {
     </section>
 
     <PanelSection :title="t('dashboard.plan.title')">
-      <template #actions>
-        <!-- 只有确知没有计划时才说「去提交」；不知道的时候那句话是在替他假设。 -->
+      <!-- 确知没有计划时，「去提交」是空状态里的主按钮，这里不再摆一份。 -->
+      <template v-if="plan.kind !== 'empty'" #actions>
         <a href="/flightplan" class="link text-sm">{{
-          plan.kind === "empty"
-            ? t("dashboard.plan.file")
-            : t("dashboard.plan.edit")
+          t("dashboard.plan.edit")
         }}</a>
       </template>
 

@@ -101,7 +101,8 @@ cookie 转发回去。哪天有人要在这里加 Secret，先确认那件事不
   panel:layout 的 `mode`。
 - 提示（`useLayerNotice`）在模式条下面，可见区居中。
 - 缩放和指北针（MapLibre `NavigationControl`）在右上，署名下面。署名每次重挂后
-  `attribution.ts` 把它挪回右上角第一个。
+  `attribution.ts` 把它挪回右上角第一个。可见区窄于 768px 时署名收成「i」按钮
+  （`fit`，内边距变了再调一次），否则展开的署名压在模式条底下。
 - 钉板，可见区底部整宽（平板和桌面，钉板开着时，偏好 `pinboard`，默认开）。右端让给
   比例尺。它的高度加进地图底边内边距（`withPinboard`），框住航路和居中都在栏上面；
   `--map-pinboard-reserve` 给列表和右下角坐标让位；`--chart-viewer-bottom`（写在根元
@@ -136,6 +137,9 @@ cookie 转发回去。哪天有人要在这里加 Secret，先确认那件事不
 不是站头。地图不在插槽里：它靠 `transition:persist` 跨页面存活，排在 `Frame` 后面。
 `<main>` 已经按图标轨让过位（`md:pl-[var(--map-rail-width)]`）。面板是 fixed，自己加
 `--rail-current`。地图铺在图标轨下面，靠内边距让开它（面板右边缘之外才算可见区）。
+Frame 水合时插槽里的 HTML 被重建，面板元素换成新的一份。`FloatingPanel.astro` 的脚本
+在 `astro:page-load` 上挂一次；Frame 那时还带 `ssr` 的话，等它的 `astro:hydrate` 再挂
+一次。只挂前一次，折叠按钮点不动、地图收到全零的矩形。
 
 `AppLayout` 的 `bare`：插槽直接铺满 `<main>`，不放面板，也不放地图。`/404` 用它渲染
 can-ui 的 `NotFound`。

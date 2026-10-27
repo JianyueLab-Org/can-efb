@@ -160,44 +160,54 @@ function toFlightPlan() {
 
 <template>
   <section class="flex flex-col gap-4">
-    <div class="grid gap-3 @md:grid-cols-3">
-      <label class="flex flex-col gap-1">
-        <span class="text-xs text-muted">{{ t("route.generate.from") }}</span>
-        <input
-          v-model="from"
-          class="input font-mono uppercase"
-          maxlength="4"
-          autocomplete="off"
-        />
-      </label>
-      <label class="flex flex-col gap-1">
-        <span class="text-xs text-muted">{{ t("route.generate.to") }}</span>
-        <input
-          v-model="to"
-          class="input font-mono uppercase"
-          maxlength="4"
-          autocomplete="off"
-        />
-      </label>
-      <label class="flex flex-col gap-1">
-        <span class="text-xs text-muted">{{ t("route.generate.level") }}</span>
-        <input
-          v-model="level"
-          class="input font-mono"
-          inputmode="numeric"
-          autocomplete="off"
-        />
-      </label>
-    </div>
+    <form class="flex flex-col gap-4" @submit.prevent="generate">
+      <div class="grid gap-4 @md:grid-cols-3">
+        <label class="block">
+          <span class="mb-1 block text-sm font-medium text-ink">{{
+            t("route.generate.from")
+          }}</span>
+          <input
+            v-model="from"
+            class="input font-mono uppercase"
+            maxlength="4"
+            autocomplete="off"
+            placeholder="ZBAA"
+          />
+        </label>
+        <label class="block">
+          <span class="mb-1 block text-sm font-medium text-ink">{{
+            t("route.generate.to")
+          }}</span>
+          <input
+            v-model="to"
+            class="input font-mono uppercase"
+            maxlength="4"
+            autocomplete="off"
+            placeholder="ZSSS"
+          />
+        </label>
+        <label class="block">
+          <span class="mb-1 block text-sm font-medium text-ink">{{
+            t("route.generate.level")
+          }}</span>
+          <input
+            v-model="level"
+            class="input font-mono"
+            inputmode="numeric"
+            autocomplete="off"
+            placeholder="35000"
+          />
+        </label>
+      </div>
 
-    <button
-      type="button"
-      class="btn btn-primary self-start"
-      :disabled="busy || !from.trim() || !to.trim()"
-      @click="generate"
-    >
-      {{ busy ? t("route.generate.working") : t("route.generate.action") }}
-    </button>
+      <button
+        type="submit"
+        class="btn btn-primary self-start"
+        :disabled="busy || !from.trim() || !to.trim()"
+      >
+        {{ busy ? t("route.generate.working") : t("route.generate.action") }}
+      </button>
+    </form>
 
     <!-- 输入有误（400）留在一行字里：那是「改输入」，不是一种页面状态。 -->
     <p v-if="outcome?.kind === 'input'" class="text-sm text-danger">

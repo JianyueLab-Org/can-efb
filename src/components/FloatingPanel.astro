@@ -105,7 +105,21 @@ const handle = handleState(initialSnap(width), {
 <script>
   import { mountPanel, unmountPanel } from "@/lib/panelController";
 
+  /* 面板在 Frame 岛屿的插槽里。Frame 水合时 Vue 用插槽的 HTML 重建这一段，面板
+     元素换成了新的一份：挂在旧元素上的监听器和量尺寸都落在一块脱离文档的节点上
+     —— 折叠按钮点不动，地图收到全零的矩形。Frame 还没水合（带 `ssr`）就等它的
+     `astro:hydrate` 再挂一次。 */
+  function mountAfterFrame() {
+    mountPanel();
+    const island = document
+      .querySelector("[data-floating-panel]")
+      ?.closest("astro-island");
+    if (island?.hasAttribute("ssr")) {
+      island.addEventListener("astro:hydrate", mountPanel, { once: true });
+    }
+  }
+
   // ClientRouter 下这段模块只执行一次；首屏和每次换页都会发 astro:page-load。
-  document.addEventListener("astro:page-load", mountPanel);
+  document.addEventListener("astro:page-load", mountAfterFrame);
   document.addEventListener("astro:before-swap", unmountPanel);
 </script>

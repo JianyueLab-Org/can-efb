@@ -151,7 +151,7 @@ async function resolve() {
 
 <template>
   <div class="space-y-5">
-    <div class="space-y-4">
+    <form class="space-y-4" @submit.prevent="resolve">
       <div class="grid gap-4 @xs:grid-cols-2 @2xl:grid-cols-4">
         <label class="block">
           <span class="mb-1 block text-sm font-medium text-ink">{{
@@ -175,7 +175,7 @@ async function resolve() {
             placeholder="ZSSS"
           />
         </label>
-        <label class="block sm:col-span-2">
+        <label class="block @xs:col-span-2">
           <span class="mb-1 block text-sm font-medium text-ink">{{
             t("route.route")
           }}</span>
@@ -188,12 +188,7 @@ async function resolve() {
       </div>
 
       <div class="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          class="btn btn-primary"
-          :disabled="loading"
-          @click="resolve"
-        >
+        <button type="submit" class="btn btn-primary" :disabled="loading">
           <Icon name="map" class="size-4" />
           {{ loading ? t("common.loading") : t("route.resolve") }}
         </button>
@@ -202,7 +197,7 @@ async function resolve() {
           {{ t("route.fromPlan") }}
         </button>
       </div>
-    </div>
+    </form>
 
     <StateCard
       v-if="unavailable"

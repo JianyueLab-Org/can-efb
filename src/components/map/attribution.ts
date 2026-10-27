@@ -6,9 +6,20 @@ import { AttributionControl, type Map as MapLibreMap } from "maplibre-gl";
 import { escapeHtml } from "@/lib/mapText";
 import { WEATHER_ATTRIBUTION } from "@/lib/weather";
 
+/**
+ * 可见区窄于这个宽度时署名收成「i」按钮。
+ *
+ * 署名在地图容器的右上角，模式条在可见区的左上角。可见区窄（手机、平板、桌面上的
+ * wide 面板）时两者在同一行，展开的署名压在模式条底下，一半字读不到。收起后点「i」
+ * 仍是全文，许可要求的署名没有少。
+ */
+const EXPANDED_MIN_PX = 768;
+
 export function createAttribution(
   getMap: () => MapLibreMap | null,
   source: () => { firsLabel: string; extra: string[]; weather: boolean },
+  /** 地图可见区的宽度（容器减去左右内边距）。还不知道时是 null。 */
+  visibleWidth: () => number | null,
 ) {
   let control: AttributionControl | null = null;
 
@@ -53,7 +64,22 @@ export function createAttribution(
     if (corner && attrib && corner.firstElementChild !== attrib) {
       corner.prepend(attrib);
     }
+    fit();
   }
 
-  return { apply };
+  /**
+   * 按可见区宽度展开或收起。MapLibre 的 `compact` 挂上时总是展开、拖一下地图才收，
+   * 它自己的判据是整个容器宽，不知道面板盖住了多少。内边距变了要再调一次。
+   */
+  function fit() {
+    const map = getMap();
+    const width = visibleWidth();
+    if (!map || width === null) return;
+    map
+      .getContainer()
+      .querySelector(".maplibregl-ctrl-attrib.maplibregl-compact")
+      ?.classList.toggle("maplibregl-compact-show", width >= EXPANDED_MIN_PX);
+  }
+
+  return { apply, fit };
 }
