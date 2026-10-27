@@ -325,6 +325,12 @@ const attribution = createAttribution(
     extra: props.extraAttribution ?? [],
     weather: Boolean(props.weather),
   }),
+  () =>
+    map && props.padding
+      ? map.getContainer().clientWidth -
+        props.padding.left -
+        props.padding.right
+      : null,
 );
 const camera = createCamera(() => map);
 
@@ -871,6 +877,7 @@ watch(
   () => props.padding,
   (padding) => {
     if (padding) camera.setPadding(padding);
+    attribution.fit();
   },
   { deep: true },
 );
