@@ -194,12 +194,10 @@ const handler: APIRoute = async (context) => {
     );
   }
 
-  // 写操作的 Origin 检查 —— Astro 的 checkOrigin 关掉了（反代下它永远误判，见
-  // astro.config.mjs），这是补上的那一半。缺 Origin 头的请求放行：非浏览器的
-  // 调用方本来就不带它，而它们要过的是 can-api 的守卫，不是这一关。
+  // Browser writes require the configured public Origin, including behind TLS termination.
   if (UNSAFE.has(method)) {
     const sent = context.request.headers.get("origin");
-    if (sent && sent !== origin()) {
+    if (sent !== origin()) {
       return Response.json(
         { error: "bad_origin", message: "跨站请求被拒绝。" },
         { status: 403 },
