@@ -80,7 +80,7 @@ src/
 ├── pages/
 │   ├── api/v1/        走白名单的 can-api 同源反代
 │   ├── api/db/        走白名单的 can-db 同源反代
-│   └── *.astro        五个页面 + 404 + healthz
+│   └── *.astro        五个页面 + 404 + healthz + health
 └── styles/globals.css 设计系统来自 can-ui；本站规则在 import 之后
 ```
 

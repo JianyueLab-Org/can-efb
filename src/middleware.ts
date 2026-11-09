@@ -27,9 +27,14 @@ import { isPublicRoute } from "@/server/publicRoute";
  *   把一个 fetch 重定向到登录页，岛屿拿到的会是一段 HTML。
  * - `/healthz` 是探活，理由写在那个文件里：它必须能在 can-api 挂掉时照样回
  *   200，否则上游一抖，kubelet 就会把这边的 Pod 一起滚掉。
+ * - `/health` 给外部可用性监控，探 can-api，不给探针用。
  */
 function isUnguarded(pathname: string): boolean {
-  return pathname.startsWith("/api/") || pathname === "/healthz";
+  return (
+    pathname.startsWith("/api/") ||
+    pathname === "/healthz" ||
+    pathname === "/health"
+  );
 }
 
 export const onRequest = defineMiddleware(async (context, next) => {
