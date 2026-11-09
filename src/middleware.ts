@@ -11,9 +11,9 @@ import { isPublicRoute } from "@/server/publicRoute";
  * 将来真要开一个公开页，得在 `isPublicRoute` 里显式开口子，而不是默认就开着。
  * 404 不渲染地图。
  *
- * 不重定向的有三处。404 页（`isPublicRoute`）照样问会话，只是从不重定向，
- * can-api 不可用时也按匿名渲染。`/api/*` 和 `/healthz`（`isUnguarded`）连会话
- * 都不问，各自的理由见下方。
+ * 不重定向的有四处。404 页（`isPublicRoute`）照样问会话，只是从不重定向，
+ * can-api 不可用时也按匿名渲染。`/api/*`、`/healthz` 和 `/health`（`isUnguarded`）
+ * 连会话都不问，各自的理由见下方。
  *
  * 重定向去的是 **can-web 的登录页**：EFB 自己没有登录页，也不该有。会话由
  * can-api 在父域上签发，主站上登录过的成员到这里本来就带着 cookie。
@@ -27,9 +27,14 @@ import { isPublicRoute } from "@/server/publicRoute";
  *   把一个 fetch 重定向到登录页，岛屿拿到的会是一段 HTML。
  * - `/healthz` 是探活，理由写在那个文件里：它必须能在 can-api 挂掉时照样回
  *   200，否则上游一抖，kubelet 就会把这边的 Pod 一起滚掉。
+ * - `/health` 给外部可用性监控，探 can-api，不给探针用。
  */
 function isUnguarded(pathname: string): boolean {
-  return pathname.startsWith("/api/") || pathname === "/healthz";
+  return (
+    pathname.startsWith("/api/") ||
+    pathname === "/healthz" ||
+    pathname === "/health"
+  );
 }
 
 export const onRequest = defineMiddleware(async (context, next) => {

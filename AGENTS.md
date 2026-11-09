@@ -209,9 +209,10 @@ OpenWeather 的 key 在 can-api（`OPENWEATHER_API_KEY`），这个站仍然一�
 **整站要登录，没有 PROTECTED_PREFIXES 那样一份清单** —— 清单的意义在于区分公开
 页和受保护页，而 EFB 只有一页公开的：`/404`（`src/server/publicRoute.ts` 的 `isPublicRoute`）。
 匿名访问时它照常渲染、不回 503。它是 can-ui 的 `NotFound`，`AppLayout` 用 `bare`，不论
-有没有会话都没有面板和地图；状态码由页面设成 404。退出登录是 `afterSignOut="reload"`。另有两条完全不问会话，写在 `isUnguarded()` 里：
-`/api/*`（自己有白名单，而且调用方要状态码不要 302）和 `/healthz`（探活必须能
-在 can-api 挂掉时照样回 200，否则上游一抖 kubelet 就把这边的 Pod 一起滚掉）。
+有没有会话都没有面板和地图；状态码由页面设成 404。退出登录是 `afterSignOut="reload"`。另有三条完全不问会话，写在 `isUnguarded()` 里：
+`/api/*`（自己有白名单，而且调用方要状态码不要 302）、`/healthz`（探活必须能
+在 can-api 挂掉时照样回 200，否则上游一抖 kubelet 就把这边的 Pod 一起滚掉）和
+`/health`（给外部可用性监控：探 can-api 的 `/health`，失败回 503，结果缓存 10 秒；不给探针用）。
 
 **没登录就跳 can-web 的登录页，现在会带上 callbackUrl。** 这一段以前写的是「不
 带」，理由是 can-web 的 `/signin` 只接受站内绝对路径（一道防开放重定向的检查），
